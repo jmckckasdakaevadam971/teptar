@@ -1,0 +1,131 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-teptar}
+      POSTGRES_USER: ${POSTGRES_USER:-teptar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teptar}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Тюнинг под сервер 8 ГБ RAM / 4 vCPU. При другом объёме памяти
+    # скорректируйте shared_buffers (≈25% RAM) и effective_cache_size (≈75%).
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=2GB"
+      - "-c"
+      - "effective_cache_size=6GB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teptar} -d ${POSTGRES_DB:-teptar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Порт наружу не публикуем — доступ только внутри сети compose.
+
+  # One-shot инициализация/миграция БД. Запускается один раз, применяет
+  # схему (если БД пустая) и идемпотентный справочник, затем завершается.
+  # Демо-данные грузятся только при SEED_DEMO=1. Реплики backend ждут его.
+  db-init:
+    build: ./backend
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-teptar}:${POSTGRES_PASSWORD:-teptar}@db:5432/${POSTGRES_DB:-teptar}
+      SEED_DEMO: ${SEED_DEMO:-0}
+      FORCE_RESET: ${FORCE_RESET:-0}
+    command: ["node", "scripts/db-init.js"]
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-teptar}:${POSTGRES_PASSWORD:-teptar}@db:5432/${POSTGRES_DB:-teptar}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # Инициализацию выполняет отдельный сервис db-init, поэтому здесь 0.
+      RUN_DB_INIT: "0"
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Несколько процессов Node, чтобы задействовать все ядра CPU.
+    deploy:
+      replicas: ${BACKEND_REPLICAS:-2}
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: ${FRONTEND_REPLICAS:-2}
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      # Подставляется в шаблон конфигурации (envsubst при старте nginx).
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      # Шаблон: nginx сам прогонит envsubst и положит в conf.d.
+      - ./deploy/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+      - nginx_cache:/var/cache/nginx
+
+  # Автоматическое обновление сертификатов Let's Encrypt каждые 12 часов.
+  # Первый выпуск сертификата — через deploy/init-letsencrypt.sh.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+      sleep 12h & wait $${!}; done'
+
+volumes:
+  pgdata:
+  certbot_certs:
+  certbot_www:
+  nginx_cache:

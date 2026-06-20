@@ -1,0 +1,40 @@
+# Зависимости
+node_modules/
+.pnp/
+.pnp.js
+
+# Сборки
+dist/
+build/
+.next/
+out/
+
+# Переменные окружения
+.env
+.env.local
+.env.*.local
+.secrets
+
+# Логи
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Кэш
+.cache/
+.turbo/
+coverage/
+
+# Экспорт-артефакты
+exports/
+*.pdf
+*.xlsx
+*.vdx
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
