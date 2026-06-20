@@ -32,12 +32,7 @@ echo "▶ Домен: ${DOMAIN}, email: ${EMAIL}, staging: ${STAGING}"
 
 # 1. Временный самоподписанный сертификат, чтобы nginx смог стартовать.
 echo "▶ Создаю временный сертификат…"
-docker compose run --rm --entrypoint "\
-  sh -c 'mkdir -p ${CERT_PATH} && \
-  openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-    -keyout ${CERT_PATH}/privkey.pem \
-    -out ${CERT_PATH}/fullchain.pem \
-    -subj \"/CN=${DOMAIN}\"'" certbot
+docker compose run --rm --entrypoint sh certbot -c "mkdir -p ${CERT_PATH} && openssl req -x509 -nodes -newkey rsa:2048 -days 1 -keyout ${CERT_PATH}/privkey.pem -out ${CERT_PATH}/fullchain.pem -subj /CN=${DOMAIN}"
 
 # 2. Поднимаем nginx (он отдаёт ACME-challenge по HTTP).
 echo "▶ Запускаю nginx…"
@@ -46,20 +41,12 @@ sleep 5
 
 # 3. Удаляем временный и запрашиваем настоящий сертификат (webroot).
 echo "▶ Удаляю временный сертификат и запрашиваю настоящий…"
-docker compose run --rm --entrypoint "\
-  rm -rf /etc/letsencrypt/live/${DOMAIN} \
-         /etc/letsencrypt/archive/${DOMAIN} \
-         /etc/letsencrypt/renewal/${DOMAIN}.conf" certbot
+docker compose run --rm --entrypoint sh certbot -c "rm -rf /etc/letsencrypt/live/${DOMAIN} /etc/letsencrypt/archive/${DOMAIN} /etc/letsencrypt/renewal/${DOMAIN}.conf"
 
 STAGING_FLAG=""
 if [ "${STAGING}" = "1" ]; then STAGING_FLAG="--staging"; fi
 
-docker compose run --rm --entrypoint "\
-  certbot certonly --webroot -w /var/www/certbot \
-    ${STAGING_FLAG} \
-    -d ${DOMAIN} -d www.${DOMAIN} \
-    --email ${EMAIL} --rsa-key-size 4096 \
-    --agree-tos --no-eff-email --non-interactive" certbot
+docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /var/www/certbot ${STAGING_FLAG} -d ${DOMAIN} -d www.${DOMAIN} --email ${EMAIL} --rsa-key-size 4096 --agree-tos --no-eff-email --non-interactive
 
 # 4. Перезагружаем nginx с настоящим сертификатом.
 echo "▶ Перезагружаю nginx…"
