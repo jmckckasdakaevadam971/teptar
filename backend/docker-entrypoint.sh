@@ -10,5 +10,12 @@ if [ "$RUN_DB_INIT" = "1" ]; then
   node scripts/db-init.js
 fi
 
+# Запускаем переданную команду (например, node scripts/db-init.js у сервиса
+# db-init). Если команда не задана — стартует API (CMD по умолчанию в Dockerfile).
+if [ "$#" -gt 0 ]; then
+  echo "[entrypoint] Запуск: $*"
+  exec "$@"
+fi
+
 echo "[entrypoint] Запуск API…"
 exec node dist/index.js

@@ -27,3 +27,6 @@ RUN chmod +x ./docker-entrypoint.sh
 
 EXPOSE 4000
 ENTRYPOINT ["./docker-entrypoint.sh"]
+# Команда по умолчанию — запуск API. Сервис db-init переопределяет её
+# на "node scripts/db-init.js" (entrypoint выполнит именно её и завершится).
+CMD ["node", "dist/index.js"]
