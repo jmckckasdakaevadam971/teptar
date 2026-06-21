@@ -38,3 +38,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Временные файлы развёртывания (содержат секреты — не коммитить!)
+.deploy-tmp/
