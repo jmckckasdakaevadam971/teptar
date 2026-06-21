@@ -1,11 +1,19 @@
 import type { ReactNode } from 'react';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthNav } from '@/components/AuthNav/AuthNav';
 import { AdminNavLink } from '@/components/AuthNav/AdminNavLink';
 
-export const metadata = {
-  title: 'Тептар — родословные чеченских тейпов',
-  description: 'Генеалогическое древо по тейпам, поиск общих предков.',
+export const metadata: Metadata = {
+  title: 'Vorhda — Ворх Да · Семь Отцов',
+  description: 'Сохраняем родовую память чеченских тейпов',
+  icons: {
+    icon: '/favicon.svg',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#1B5E20',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -14,8 +22,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <header className="header">
           <div className="container header-inner">
-            <a href="/" className="logo">
-              Тептар
+            <a href="/" className="logo" aria-label="Vorhda — Ворх Да">
+              <img className="logo-img" src="/logo-full.svg" alt="Vorhda — Ворх Да" />
             </a>
             <nav className="nav">
               <a href="/">Поиск</a>
