@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Vorhda — Брендбук</title>
+  <style>
+    body { font-family: Georgia, serif; background: #FFF8E1; color: #1B5E20; margin: 0; padding: 40px; }
+    h1 { text-align: center; font-size: 36px; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #8B6914; margin-bottom: 40px; font-style: italic; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; max-width: 1200px; margin: 0 auto; }
+    .card { background: #fff; border: 2px solid #C9A227; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .card h2 { margin: 0 0 12px; color: #1B5E20; font-size: 18px; }
+    .card .demo { display: flex; justify-content: center; align-items: center; min-height: 200px; background: #fafafa; border-radius: 8px; padding: 16px; }
+    .card .demo.dark { background: #1B5E20; }
+    .card p { color: #5D4037; font-size: 13px; margin-top: 12px; }
+    img { max-width: 100%; height: auto; }
+    .palette { max-width: 800px; margin: 40px auto; padding: 24px; background: #fff; border-left: 4px solid #C9A227; border-radius: 4px; }
+    .palette-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+    .swatch { width: 80px; height: 80px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>VORHDA · ВОРХ ДА</h1>
+  <p class="subtitle">Родовая память чеченских тейпов · Брендбук</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>1. Основной логотип</h2>
+      <div class="demo"><img src="logo-full.svg" alt="Полный логотип"></div>
+      <p>Для шапки сайта, документов, презентаций.</p>
+    </div>
+
+    <div class="card">
+      <h2>2. Квадратный (соцсети)</h2>
+      <div class="demo dark"><img src="logo-square.svg" alt="Квадратный логотип" style="max-width: 240px"></div>
+      <p>Для Instagram, Telegram, аватарок.</p>
+    </div>
+
+    <div class="card">
+      <h2>3. Favicon</h2>
+      <div class="demo"><img src="favicon.svg" alt="Favicon" style="width: 128px; height: 128px"></div>
+      <p>Иконка во вкладке браузера и закладках.</p>
+    </div>
+
+    <div class="card">
+      <h2>4. Чёрно-белая версия</h2>
+      <div class="demo"><img src="logo-mono.svg" alt="Монохром"></div>
+      <p>Для печати, факсов, гравировки.</p>
+    </div>
+  </div>
+
+  <div class="palette">
+    <h2 style="margin-top: 0;">🎨 Цветовая палитра</h2>
+    <div class="palette-grid">
+      <div><div class="swatch" style="background:#1B5E20;"></div><small>#1B5E20<br>Тёмно-зелёный</small></div>
+      <div><div class="swatch" style="background:#C9A227;"></div><small>#C9A227<br>Золотой</small></div>
+      <div><div class="swatch" style="background:#3E2723;"></div><small>#3E2723<br>Тёмно-коричневый</small></div>
+      <div><div class="swatch" style="background:#FFF8E1;border:1px solid #ddd;"></div><small>#FFF8E1<br>Кремовый</small></div>
+      <div><div class="swatch" style="background:#C62828;"></div><small>#C62828<br>Красный</small></div>
+    </div>
+  </div>
+</body>
+</html>
