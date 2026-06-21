@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import './globals.css';
 import { AuthNav } from '@/components/AuthNav/AuthNav';
+import { AdminNavLink } from '@/components/AuthNav/AdminNavLink';
 
 export const metadata = {
   title: 'Тептар — родословные чеченских тейпов',
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <a href="/tree">Древо</a>
               <a href="/persons/new">Добавить</a>
               <a href="/reference">Справочник</a>
-              <a href="/admin">Модерация</a>
+              <AdminNavLink />
               <AuthNav />
             </nav>
           </div>

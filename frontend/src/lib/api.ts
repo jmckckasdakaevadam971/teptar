@@ -10,6 +10,8 @@ import type {
   CommonAncestor,
   AuthResult,
   User,
+  AdminUser,
+  AdminStats,
 } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
@@ -102,6 +104,19 @@ export const api = {
         body: JSON.stringify(input),
       }),
     me: () => request<{ user: User | null }>('/auth/me'),
+  },
+
+  /** Администрирование (только super_admin). */
+  admin: {
+    stats: () => request<AdminStats>('/admin/stats'),
+    users: () => request<AdminUser[]>('/admin/users'),
+    setRole: (id: number, role: User['role']) =>
+      request<{ id: number; role: string }>(`/admin/users/${id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      }),
+    deleteUser: (id: number) =>
+      request<{ deleted: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
   },
 
   /** Ссылка для скачивания экспорта (открывается напрямую). */

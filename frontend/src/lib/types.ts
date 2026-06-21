@@ -89,6 +89,19 @@ export interface CommonAncestor {
   relation: string;
 }
 
+/** Пользователь в админке (с датой регистрации). */
+export interface AdminUser extends User {
+  created_at: string;
+}
+
+/** Сводные счётчики для обзора. */
+export interface AdminStats {
+  users: number;
+  persons: number;
+  teips: number;
+  villages: number;
+}
+
 /** Конверт ответа API. */
 export interface ApiEnvelope<T> {
   success: boolean;
