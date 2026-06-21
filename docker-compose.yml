@@ -82,6 +82,11 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      # Слушать все интерфейсы, иначе healthcheck по localhost не проходит
+      # (Docker задаёт HOSTNAME = ID контейнера, и Next слушает только его).
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
     expose:
       - "3000"
     healthcheck:

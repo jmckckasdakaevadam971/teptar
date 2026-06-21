@@ -16,6 +16,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
+# Docker задаёт HOSTNAME = ID контейнера, и Next standalone слушает именно его
+# (внешний интерфейс). Из-за этого healthcheck по localhost не проходит.
+# Принудительно слушаем все интерфейсы.
+ENV HOSTNAME=0.0.0.0
 
 # Self-contained сервер Next.js + статика
 COPY --from=build /app/.next/standalone ./
