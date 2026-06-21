@@ -90,7 +90,9 @@ services:
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      # 127.0.0.1 (не localhost): Next слушает IPv4, а localhost в контейнере
+      # резолвится в IPv6 ::1 → wget получал «Connection refused».
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
       interval: 10s
       timeout: 5s
       retries: 5
