@@ -41,6 +41,7 @@ export default function LoginPage() {
   // проверку можно включить/выключить без пересборки фронтенда.
   const [siteKey, setSiteKey] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [captchaState, setCaptchaState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const widgetRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
@@ -52,39 +53,70 @@ export default function LoginPage() {
       .catch(() => setSiteKey(null));
   }, []);
 
-  // 2. Загружаем скрипт Turnstile и рисуем виджет.
+  // 2. Загружаем скрипт Turnstile и рисуем виджет (устойчиво к таймингу).
+  // window.turnstile определяется Cloudflare не строго к script.onload, поэтому
+  // просто поллим готовность API и рисуем один раз.
   useEffect(() => {
     if (!siteKey) return;
-    const SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+    const SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    setCaptchaState('loading');
 
     const renderWidget = () => {
-      if (!window.turnstile || !widgetRef.current || widgetIdRef.current) return;
-      widgetIdRef.current = window.turnstile.render(widgetRef.current, {
-        sitekey: siteKey,
-        callback: (t: string) => setToken(t),
-        'expired-callback': () => setToken(null),
-        'error-callback': () => setToken(null),
-      });
+      if (cancelled || widgetIdRef.current) return;
+      if (
+        !window.turnstile ||
+        typeof window.turnstile.render !== 'function' ||
+        !widgetRef.current
+      ) {
+        return;
+      }
+      try {
+        widgetIdRef.current = window.turnstile.render(widgetRef.current, {
+          sitekey: siteKey,
+          callback: (t: string) => setToken(t),
+          'expired-callback': () => setToken(null),
+          'error-callback': () => setToken(null),
+        });
+        setCaptchaState('ready');
+      } catch {
+        setCaptchaState('error');
+      }
     };
 
-    if (window.turnstile) {
-      renderWidget();
-    } else if (!document.querySelector(`script[src="${SCRIPT}"]`)) {
+    // Гарантируем наличие скрипта (не важно, с какими параметрами).
+    if (
+      !window.turnstile &&
+      !document.querySelector('script[src^="https://challenges.cloudflare.com/turnstile"]')
+    ) {
       const s = document.createElement('script');
       s.src = SCRIPT;
       s.async = true;
       s.defer = true;
-      s.onload = renderWidget;
       document.head.appendChild(s);
-    } else {
-      const timer = setInterval(() => {
-        if (window.turnstile) {
-          clearInterval(timer);
-          renderWidget();
+    }
+
+    // Поллинг готовности API до ~10 секунд.
+    renderWidget();
+    if (!widgetIdRef.current) {
+      let tries = 0;
+      timer = setInterval(() => {
+        tries += 1;
+        renderWidget();
+        if (widgetIdRef.current) {
+          if (timer) clearInterval(timer);
+        } else if (tries > 50) {
+          if (timer) clearInterval(timer);
+          if (!cancelled) setCaptchaState('error');
         }
       }, 200);
-      return () => clearInterval(timer);
     }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
   }, [siteKey]);
 
   // Токен одноразовый — после попытки сбрасываем виджет.
@@ -187,6 +219,14 @@ export default function LoginPage() {
 
         {/* Виджет проверки на бота — появляется, только если включён на сервере */}
         <div ref={widgetRef} />
+        {siteKey && captchaState === 'loading' && (
+          <p style={{ color: '#64748b', margin: 0, fontSize: 14 }}>Загрузка проверки…</p>
+        )}
+        {siteKey && captchaState === 'error' && (
+          <p style={{ color: '#dc2626', margin: 0, fontSize: 14 }}>
+            Не удалось загрузить проверку. Обновите страницу (Ctrl+Shift+R).
+          </p>
+        )}
 
         {error && <p style={{ color: '#dc2626', margin: 0 }}>{error}</p>}
 
