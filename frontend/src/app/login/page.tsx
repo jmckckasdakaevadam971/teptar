@@ -1,10 +1,21 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
 
 type Tab = 'login' | 'register';
+
+// Минимальный тип глобального объекта Turnstile (загружается скриптом Cloudflare).
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+      reset: (id?: string) => void;
+      remove: (id?: string) => void;
+    };
+  }
+}
 
 /** Куда вернуться после входа (?next=…), по умолчанию на главную. */
 function nextUrl(): string {
@@ -26,13 +37,75 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Cloudflare Turnstile (проверка на бота). Site key берём с backend в рантайме —
+  // проверку можно включить/выключить без пересборки фронтенда.
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  // 1. Узнаём, включена ли проверка (есть ли site key).
+  useEffect(() => {
+    api.auth
+      .config()
+      .then((c) => setSiteKey(c.turnstile_site_key))
+      .catch(() => setSiteKey(null));
+  }, []);
+
+  // 2. Загружаем скрипт Turnstile и рисуем виджет.
+  useEffect(() => {
+    if (!siteKey) return;
+    const SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+
+    const renderWidget = () => {
+      if (!window.turnstile || !widgetRef.current || widgetIdRef.current) return;
+      widgetIdRef.current = window.turnstile.render(widgetRef.current, {
+        sitekey: siteKey,
+        callback: (t: string) => setToken(t),
+        'expired-callback': () => setToken(null),
+        'error-callback': () => setToken(null),
+      });
+    };
+
+    if (window.turnstile) {
+      renderWidget();
+    } else if (!document.querySelector(`script[src="${SCRIPT}"]`)) {
+      const s = document.createElement('script');
+      s.src = SCRIPT;
+      s.async = true;
+      s.defer = true;
+      s.onload = renderWidget;
+      document.head.appendChild(s);
+    } else {
+      const timer = setInterval(() => {
+        if (window.turnstile) {
+          clearInterval(timer);
+          renderWidget();
+        }
+      }, 200);
+      return () => clearInterval(timer);
+    }
+  }, [siteKey]);
+
+  // Токен одноразовый — после попытки сбрасываем виджет.
+  const resetCaptcha = () => {
+    setToken(null);
+    if (widgetIdRef.current && window.turnstile) {
+      window.turnstile.reset(widgetIdRef.current);
+    }
+  };
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (siteKey && !token) {
+      setError('Подтвердите, что вы не робот.');
+      return;
+    }
     setBusy(true);
     try {
       if (tab === 'login') {
-        const result = await api.auth.login(login.trim(), password);
+        const result = await api.auth.login(login.trim(), password, token ?? undefined);
         saveAuth(result);
       } else {
         const isEmail = login.includes('@');
@@ -41,12 +114,14 @@ export default function LoginPage() {
           password,
           phone: isEmail ? undefined : login.trim(),
           email: isEmail ? login.trim() : email.trim() || undefined,
+          turnstile_token: token ?? undefined,
         });
         saveAuth(result);
       }
       window.location.href = nextUrl();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
+      resetCaptcha();
     } finally {
       setBusy(false);
     }
@@ -110,18 +185,15 @@ export default function LoginPage() {
           />
         </div>
 
+        {/* Виджет проверки на бота — появляется, только если включён на сервере */}
+        <div ref={widgetRef} />
+
         {error && <p style={{ color: '#dc2626', margin: 0 }}>{error}</p>}
 
         <button type="submit" className="btn-primary" disabled={busy}>
           {busy ? '…' : tab === 'login' ? 'Войти' : 'Зарегистрироваться'}
         </button>
       </form>
-
-      {tab === 'login' && (
-        <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 14 }}>
-          Демо-админ: <b>+70000000000</b> / пароль <b>demo12345</b>
-        </p>
-      )}
     </div>
   );
 }

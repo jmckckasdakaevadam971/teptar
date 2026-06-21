@@ -83,16 +83,19 @@ export const api = {
   },
 
   auth: {
-    login: (login: string, password: string) =>
+    /** Публичная конфигурация (нужен ли виджет проверки на бота). */
+    config: () => request<{ turnstile_site_key: string | null }>('/auth/config'),
+    login: (login: string, password: string, turnstile_token?: string) =>
       request<AuthResult>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ login, password }),
+        body: JSON.stringify({ login, password, turnstile_token }),
       }),
     register: (input: {
       display_name: string;
       phone?: string;
       email?: string;
       password: string;
+      turnstile_token?: string;
     }) =>
       request<AuthResult>('/auth/register', {
         method: 'POST',

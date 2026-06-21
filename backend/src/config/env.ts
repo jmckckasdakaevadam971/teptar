@@ -25,4 +25,10 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
 
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
+
+  // Cloudflare Turnstile (проверка на бота). Оба необязательны:
+  // пустой secret → проверка отключена. site key отдаётся фронту
+  // через GET /api/auth/config (публичный, можно менять без пересборки).
+  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY ?? '',
+  turnstileSecret: process.env.TURNSTILE_SECRET ?? '',
 } as const;

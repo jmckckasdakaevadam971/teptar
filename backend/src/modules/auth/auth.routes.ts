@@ -8,6 +8,7 @@ export const authRouter = Router();
 
 authRouter.post('/register', asyncHandler(controller.register));
 authRouter.post('/login', asyncHandler(controller.login));
+authRouter.get('/config', asyncHandler(controller.config));
 authRouter.get('/me', requireAuth, asyncHandler(controller.me));
 
 // Назначение администратора тейпа — только супер-админ

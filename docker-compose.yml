@@ -64,6 +64,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      # Cloudflare Turnstile (проверка на бота). Пустые → проверка отключена.
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
       # Инициализацию выполняет отдельный сервис db-init, поэтому здесь 0.
       RUN_DB_INIT: "0"
     expose:
