@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  Первый выпуск TLS-сертификата Let's Encrypt для Тептара.
+#  Первый выпуск TLS-сертификата Lets Encrypt для Тептара.
 #  Запускать ОДИН раз на сервере, после того как:
 #    • DNS A-запись домена указывает на IP сервера;
 #    • заполнен .env (DOMAIN, CERTBOT_EMAIL);
@@ -25,7 +25,7 @@ if [ -f .env ]; then
 fi
 
 DOMAIN="${DOMAIN:?Задайте DOMAIN в .env (например teptar.ru)}"
-EMAIL="${CERTBOT_EMAIL:?Задайте CERTBOT_EMAIL в .env (для уведомлений Let's Encrypt)}"
+EMAIL="${CERTBOT_EMAIL:?Задайте CERTBOT_EMAIL в .env (email для уведомлений)}"
 STAGING="${CERTBOT_STAGING:-0}"   # 1 = тестовый сервер LE (без лимитов), 0 = боевой
 
 CERT_PATH="/etc/letsencrypt/live/${DOMAIN}"
@@ -71,7 +71,7 @@ if docker compose run --rm --entrypoint certbot certbot certonly --webroot -w /v
 else
   # 4b. Неудача (обычно DNS ещё не указывает на сервер) — НЕ роняем деплой:
   #     восстанавливаем временный сертификат, сайт остаётся доступен.
-  echo "⚠ Let's Encrypt не выдал сертификат."
+  echo "⚠ Сертификат Lets Encrypt не выдан."
   echo "  Проверьте, что A-записи ${DOMAIN} и www.${DOMAIN} указывают на этот сервер,"
   echo "  а порты 80 и 443 открыты. Сейчас сайт поднимется на ВРЕМЕННОМ сертификате."
   make_dummy_cert
