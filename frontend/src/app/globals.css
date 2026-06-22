@@ -365,3 +365,113 @@ select.input {
 .link-btn.danger:hover {
   text-decoration: underline;
 }
+
+/* Видимость древа (PublishControl) и бейджи статуса */
+.vis-card {
+  border-color: #e6dcc0;
+  background: linear-gradient(180deg, #fffdf6, #fff);
+}
+.vis-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.vis-title {
+  margin: 0;
+  font-size: 18px;
+}
+.vis-sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  max-width: 46ch;
+}
+.vis-badge {
+  display: inline-block;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.vis-badge.private {
+  background: #f1f5f9;
+  color: #475569;
+}
+.vis-badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+.vis-badge.public {
+  background: #dcfce7;
+  color: #166534;
+}
+.vis-badge.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.vis-modes {
+  display: grid;
+  gap: 10px;
+  border: 0;
+  margin: 16px 0 0;
+  padding: 0;
+}
+@media (min-width: 560px) {
+  .vis-modes {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.vis-mode {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.vis-mode:hover {
+  border-color: #c9a227;
+}
+.vis-mode.sel {
+  border-color: #1b5e20;
+  background: #f0f7f1;
+}
+.vis-mode input {
+  margin-top: 3px;
+  accent-color: #1b5e20;
+}
+.vis-mode span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vis-mode b {
+  font-size: 15px;
+}
+.vis-mode small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.vis-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.vis-error {
+  color: #b91c1c;
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+.vis-notice {
+  color: #166534;
+  font-size: 14px;
+  margin: 12px 0 0;
+}

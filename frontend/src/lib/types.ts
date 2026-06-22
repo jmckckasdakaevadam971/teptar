@@ -2,6 +2,7 @@
 
 export type Gender = 'm' | 'f';
 export type PersonStatus = 'pending' | 'approved' | 'rejected';
+export type Visibility = 'private' | 'public';
 export type UserRole = 'viewer' | 'editor' | 'teip_admin' | 'super_admin';
 
 export interface User {
@@ -31,6 +32,27 @@ export interface Person {
   village_id: number | null;
   note: string | null;
   status: PersonStatus;
+  visibility: Visibility;
+  created_by: number | null;
+}
+
+/** Состояние своего древа для ползунка видимости. */
+export interface TreeStatus {
+  total: number;
+  private: number;
+  pending: number;
+  published: number;
+  rejected: number;
+  state: 'empty' | 'private' | 'pending' | 'published' | 'mixed';
+}
+
+/** Древо в очереди модерации (сгруппировано по владельцу). */
+export interface PendingTree {
+  owner_id: number;
+  owner_name: string;
+  count: number;
+  min_year: number | null;
+  max_year: number | null;
 }
 
 export interface TreeNode {

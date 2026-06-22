@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
 import type { AdminStats, AdminUser, UserRole } from '@/lib/types';
 
 /** Человекочитаемые названия ролей. */
@@ -30,7 +31,8 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const isAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = user?.role === 'super_admin';
+  const canModerate = isSuperAdmin || user?.role === 'teip_admin';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,9 +49,9 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (ready && isAdmin) void load();
+    if (ready && isSuperAdmin) void load();
     else if (ready) setLoading(false);
-  }, [ready, isAdmin, load]);
+  }, [ready, isSuperAdmin, load]);
 
   async function changeRole(id: number, role: UserRole) {
     setBusyId(id);
@@ -81,13 +83,13 @@ export default function AdminPage() {
 
   if (!ready) return <div className="card">Загрузка…</div>;
 
-  if (!isAdmin) {
+  if (!canModerate) {
     return (
       <div className="card">
         <h1>Админ-панель</h1>
         <p style={{ color: '#64748b' }}>
-          Доступ только для супер-администратора. Войдите под учётной записью с
-          соответствующими правами.
+          Доступ только для администраторов. Войдите под учётной записью с
+          правами модерации.
         </p>
       </div>
     );
@@ -98,17 +100,23 @@ export default function AdminPage() {
       <div>
         <h1>Админ-панель</h1>
         <p style={{ color: '#64748b', margin: 0 }}>
-          Управление пользователями и обзор данных проекта.
+          {isSuperAdmin
+            ? 'Управление пользователями, модерация и обзор данных проекта.'
+            : 'Модерация древ, отправленных пользователями в общую базу.'}
         </p>
       </div>
 
-      {error && (
-        <div className="card" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
-          {error}
-        </div>
-      )}
+      <ModerationPanel />
 
-      {/* Обзор */}
+      {isSuperAdmin && (
+        <>
+          {error && (
+            <div className="card" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+              {error}
+            </div>
+          )}
+
+          {/* Обзор */}
       <div className="stat-grid">
         {STAT_LABELS.map(({ key, label }) => (
           <div key={key} className="stat-card">
@@ -199,6 +207,8 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

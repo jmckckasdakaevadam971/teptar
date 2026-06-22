@@ -1,5 +1,35 @@
 import { query } from '../../db/pool.js';
 import { ApiError } from '../../utils/http.js';
+import type { UserRole } from '../../middleware/auth.js';
+
+/** Кто запрашивает дерево — для контроля видимости. */
+export interface Viewer {
+  userId: number | null;
+  role: UserRole | null;
+}
+
+const ANON: Viewer = { userId: null, role: null };
+
+/**
+ * SQL-фрагмент видимости для алиаса персоны.
+ * Публике — только общая база; владельцу — плюс своё; админам — всё.
+ * userId (если нужен) передаётся параметром $3.
+ */
+function visClause(viewer: Viewer, alias: string): { sql: string; param: number | null } {
+  if (viewer.role === 'teip_admin' || viewer.role === 'super_admin') {
+    return { sql: '', param: null };
+  }
+  if (viewer.userId) {
+    return {
+      sql: ` AND (${alias}.visibility = 'public' AND ${alias}.status = 'approved' OR ${alias}.created_by = $3)`,
+      param: viewer.userId,
+    };
+  }
+  return {
+    sql: ` AND (${alias}.visibility = 'public' AND ${alias}.status = 'approved')`,
+    param: null,
+  };
+}
 
 export interface TreeNode {
   id: number;
@@ -24,50 +54,64 @@ export interface CommonAncestorResult {
  * Предки человека вверх по линии (до maxDepth поколений).
  * Защита от циклов через массив посещённых id.
  */
-export async function getAncestors(id: number, maxDepth = 20): Promise<TreeNode[]> {
+export async function getAncestors(
+  id: number,
+  maxDepth = 20,
+  viewer: Viewer = ANON,
+): Promise<TreeNode[]> {
+  const vis = visClause(viewer, 'p');
+  const args: unknown[] = [id, maxDepth];
+  if (vis.param !== null) args.push(vis.param);
   return query<TreeNode>(
     `
     WITH RECURSIVE ancestors AS (
-      SELECT id, full_name, gender, birth_year, death_year,
-             father_id, mother_id, 0 AS depth, ARRAY[id] AS path
-      FROM persons WHERE id = $1
+      SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
+             p.father_id, p.mother_id, 0 AS depth, ARRAY[p.id] AS path
+      FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
              p.father_id, p.mother_id, a.depth + 1, a.path || p.id
       FROM persons p
       JOIN ancestors a ON p.id = a.father_id OR p.id = a.mother_id
-      WHERE a.depth < $2 AND NOT p.id = ANY(a.path)
+      WHERE a.depth < $2 AND NOT p.id = ANY(a.path)${vis.sql}
     )
     SELECT id, full_name, gender, birth_year, death_year,
            father_id, mother_id, depth
     FROM ancestors
     ORDER BY depth
     `,
-    [id, maxDepth],
+    args,
   );
 }
 
 /** Потомки человека вниз по линии. */
-export async function getDescendants(id: number, maxDepth = 20): Promise<TreeNode[]> {
+export async function getDescendants(
+  id: number,
+  maxDepth = 20,
+  viewer: Viewer = ANON,
+): Promise<TreeNode[]> {
+  const vis = visClause(viewer, 'p');
+  const args: unknown[] = [id, maxDepth];
+  if (vis.param !== null) args.push(vis.param);
   return query<TreeNode>(
     `
     WITH RECURSIVE descendants AS (
-      SELECT id, full_name, gender, birth_year, death_year,
-             father_id, mother_id, 0 AS depth, ARRAY[id] AS path
-      FROM persons WHERE id = $1
+      SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
+             p.father_id, p.mother_id, 0 AS depth, ARRAY[p.id] AS path
+      FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
              p.father_id, p.mother_id, d.depth + 1, d.path || p.id
       FROM persons p
       JOIN descendants d ON p.father_id = d.id OR p.mother_id = d.id
-      WHERE d.depth < $2 AND NOT p.id = ANY(d.path)
+      WHERE d.depth < $2 AND NOT p.id = ANY(d.path)${vis.sql}
     )
     SELECT id, full_name, gender, birth_year, death_year,
            father_id, mother_id, depth
     FROM descendants
     ORDER BY depth
     `,
-    [id, maxDepth],
+    args,
   );
 }
 
@@ -78,8 +122,14 @@ export async function getDescendants(id: number, maxDepth = 20): Promise<TreeNod
 export async function findCommonAncestor(
   aId: number,
   bId: number,
+  viewer: Viewer = ANON,
 ): Promise<CommonAncestorResult> {
   if (aId === bId) throw new ApiError(400, 'Укажите двух разных людей');
+
+  const vis = visClause(viewer, 'p');
+  const visPe = visClause(viewer, 'pe');
+  const args: unknown[] = [aId, bId];
+  if (vis.param !== null) args.push(vis.param);
 
   const rows = await query<{
     ancestor_id: number;
@@ -90,30 +140,30 @@ export async function findCommonAncestor(
     `
     WITH RECURSIVE
     anc_a AS (
-      SELECT id, father_id, mother_id, 0 AS depth, ARRAY[id] AS path
-      FROM persons WHERE id = $1
+      SELECT p.id, p.father_id, p.mother_id, 0 AS depth, ARRAY[p.id] AS path
+      FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.father_id, p.mother_id, a.depth + 1, a.path || p.id
       FROM persons p JOIN anc_a a ON p.id = a.father_id OR p.id = a.mother_id
-      WHERE NOT p.id = ANY(a.path)
+      WHERE NOT p.id = ANY(a.path)${vis.sql}
     ),
     anc_b AS (
-      SELECT id, father_id, mother_id, 0 AS depth, ARRAY[id] AS path
-      FROM persons WHERE id = $2
+      SELECT p.id, p.father_id, p.mother_id, 0 AS depth, ARRAY[p.id] AS path
+      FROM persons p WHERE p.id = $2${vis.sql}
       UNION ALL
       SELECT p.id, p.father_id, p.mother_id, b.depth + 1, b.path || p.id
       FROM persons p JOIN anc_b b ON p.id = b.father_id OR p.id = b.mother_id
-      WHERE NOT p.id = ANY(b.path)
+      WHERE NOT p.id = ANY(b.path)${vis.sql}
     )
     SELECT a.id AS ancestor_id, pe.full_name,
            a.depth AS depth_from_a, b.depth AS depth_from_b
     FROM anc_a a
     JOIN anc_b b ON a.id = b.id
-    JOIN persons pe ON pe.id = a.id
+    JOIN persons pe ON pe.id = a.id${visPe.sql}
     ORDER BY (a.depth + b.depth) ASC
     LIMIT 1
     `,
-    [aId, bId],
+    args,
   );
 
   if (rows.length === 0) {

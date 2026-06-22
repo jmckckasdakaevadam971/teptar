@@ -18,9 +18,17 @@ export function PersonCard({ person, onOpenTree }: PersonCardProps) {
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0 }}>{person.full_name}</h3>
-        <span className={`badge ${person.gender === 'f' ? 'badge-f' : 'badge-m'}`}>
-          {person.gender === 'f' ? 'жен.' : 'муж.'}
-        </span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {person.visibility === 'public' && person.status === 'pending' && (
+            <span className="vis-badge pending">⏳ На модерации</span>
+          )}
+          {person.visibility === 'public' && person.status === 'approved' && (
+            <span className="vis-badge public">🌍 В базе</span>
+          )}
+          <span className={`badge ${person.gender === 'f' ? 'badge-f' : 'badge-m'}`}>
+            {person.gender === 'f' ? 'жен.' : 'муж.'}
+          </span>
+        </div>
       </div>
       <p style={{ color: '#64748b', margin: '6px 0' }}>{years}</p>
       {person.note && <p style={{ marginTop: 8 }}>{person.note}</p>}

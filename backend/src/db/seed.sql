@@ -87,4 +87,7 @@ INSERT INTO marriages (husband_id, wife_id, start_year) VALUES (4, 10, 1928);
 -- Назначение админа тейпа Беной на село Ведено ----------------------------
 INSERT INTO admin_assignments (user_id, teip_id, village_id) VALUES (2, 1, 1);
 
+-- Демо-древо публикуем в общую базу, чтобы оно было видно всем (демонстрация).
+UPDATE persons SET visibility = 'public', status = 'approved', approved_by = 1;
+
 -- Готово. Проверьте поиск общего предка: a=7, b=9  → ожидается ancestor_id=1

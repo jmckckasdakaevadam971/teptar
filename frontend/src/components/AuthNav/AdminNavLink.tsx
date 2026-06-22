@@ -2,9 +2,10 @@
 
 import { useAuth } from '@/lib/auth';
 
-/** Ссылка на админ-панель в шапке — видна только супер-администратору. */
+/** Ссылка на админ-панель в шапке — видна админам (тейпа и супер). */
 export function AdminNavLink() {
   const { user, ready } = useAuth();
-  if (!ready || user?.role !== 'super_admin') return null;
-  return <a href="/admin">Админ</a>;
+  if (!ready) return null;
+  if (user?.role !== 'super_admin' && user?.role !== 'teip_admin') return null;
+  return <a href="/admin">{user.role === 'super_admin' ? 'Админ' : 'Модерация'}</a>;
 }

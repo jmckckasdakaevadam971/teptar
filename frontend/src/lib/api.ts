@@ -12,6 +12,8 @@ import type {
   User,
   AdminUser,
   AdminStats,
+  TreeStatus,
+  PendingTree,
 } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
@@ -50,6 +52,18 @@ export const api = {
       request<Person>('/persons', { method: 'POST', body: JSON.stringify(input) }),
     update: (id: number, input: Partial<Person>) =>
       request<Person>(`/persons/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+
+    /** Состояние своего древа (приватное / на модерации / опубликовано). */
+    treeStatus: () => request<TreeStatus>('/persons/tree/status'),
+    /** Отправить своё древо в общую базу. */
+    publish: (mode: 'all' | 'hide_recent', cutoff_year = 1970) =>
+      request<{ published: number; hidden: number }>('/persons/tree/publish', {
+        method: 'POST',
+        body: JSON.stringify({ mode, cutoff_year }),
+      }),
+    /** Скрыть древо обратно в личное. */
+    unpublish: () =>
+      request<{ count: number }>('/persons/tree/unpublish', { method: 'POST' }),
   },
 
   tree: {
@@ -117,6 +131,15 @@ export const api = {
       }),
     deleteUser: (id: number) =>
       request<{ deleted: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
+  },
+
+  /** Модерация общей базы (teip_admin / super_admin). */
+  moderation: {
+    pending: () => request<PendingTree[]>('/persons/moderation/pending'),
+    approve: (ownerId: number) =>
+      request<{ count: number }>(`/persons/moderation/${ownerId}/approve`, { method: 'POST' }),
+    reject: (ownerId: number) =>
+      request<{ count: number }>(`/persons/moderation/${ownerId}/reject`, { method: 'POST' }),
   },
 
   /** Ссылка для скачивания экспорта (открывается напрямую). */

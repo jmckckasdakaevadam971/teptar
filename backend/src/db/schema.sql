@@ -109,8 +109,13 @@ CREATE TABLE persons (
 
     note        TEXT,                                       -- примечание
 
-    -- Модерация
-    status      TEXT NOT NULL DEFAULT 'pending'
+    -- Видимость и модерация.
+    -- visibility: личное древо (private, по умолчанию) видит только владелец;
+    -- public — отправлено в общую базу. status релевантен только для public:
+    -- pending → approved/rejected (модерация древа целиком).
+    visibility  TEXT NOT NULL DEFAULT 'private'
+                CHECK (visibility IN ('private','public')),
+    status      TEXT NOT NULL DEFAULT 'approved'
                 CHECK (status IN ('pending','approved','rejected')),
     created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
     approved_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
@@ -178,6 +183,8 @@ CREATE INDEX idx_persons_mother    ON persons(mother_id);
 CREATE INDEX idx_persons_teip      ON persons(teip_id);
 CREATE INDEX idx_persons_village   ON persons(village_id);
 CREATE INDEX idx_persons_status    ON persons(status);
+CREATE INDEX idx_persons_created_by ON persons(created_by);
+CREATE INDEX idx_persons_visibility ON persons(visibility, status);
 CREATE INDEX idx_persons_name_trgm ON persons USING gin (full_name gin_trgm_ops);
 
 CREATE INDEX idx_marriages_husband ON marriages(husband_id);

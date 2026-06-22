@@ -14,6 +14,7 @@ export interface PersonRow {
   gar_id: number | null;
   village_id: number | null;
   note: string | null;
+  visibility: 'private' | 'public';
   status: 'pending' | 'approved' | 'rejected';
   created_by: number | null;
   approved_by: number | null;
@@ -51,3 +52,15 @@ export const listPersonsSchema = z.object({
 export type CreatePersonInput = z.infer<typeof createPersonSchema>;
 export type UpdatePersonInput = z.infer<typeof updatePersonSchema>;
 export type ListPersonsQuery = z.infer<typeof listPersonsSchema>;
+
+/**
+ * Публикация древа в общую базу.
+ *  • all         — показать всех (до сегодняшнего дня);
+ *  • hide_recent — скрыть родившихся с cutoff_year (по умолчанию 1970),
+ *                  в общей базе остаются только предки до этого года.
+ */
+export const publishTreeSchema = z.object({
+  mode: z.enum(['all', 'hide_recent']).default('all'),
+  cutoff_year: z.coerce.number().int().min(1800).max(2100).default(1970),
+});
+export type PublishTreeInput = z.infer<typeof publishTreeSchema>;

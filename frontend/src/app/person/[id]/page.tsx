@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { TreeView } from '@/components/TreeView/TreeView';
 import { PersonCard } from '@/components/PersonCard/PersonCard';
+import { PublishControl } from '@/components/PublishControl/PublishControl';
 import { ExportButtons } from '@/features/export/ExportButtons';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -44,6 +45,8 @@ export default function PersonPage({ params }: { params: { id: string } }) {
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       <PersonCard person={person} />
+
+      {user && person.created_by === user.id && <PublishControl />}
 
       {user && (
         <div className="actions">
