@@ -475,3 +475,78 @@ select.input {
   font-size: 14px;
   margin: 12px 0 0;
 }
+
+/* Модерация: разворачивающийся список древ */
+.mod-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mod-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.mod-item.open {
+  border-color: #1b5e20;
+}
+.mod-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  flex-wrap: wrap;
+}
+.mod-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  flex: 1;
+  min-width: 200px;
+}
+.mod-caret {
+  color: #1b5e20;
+  font-size: 13px;
+  transition: transform 0.15s;
+}
+.mod-caret.down {
+  transform: rotate(90deg);
+}
+.mod-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+.mod-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+.mod-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mod-preview {
+  padding: 12px 14px 14px;
+  border-top: 1px dashed var(--border);
+  background: #fafdfa;
+}
+.mod-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.mod-open-tree {
+  padding: 5px 12px;
+  font-size: 13px;
+}

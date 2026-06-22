@@ -316,6 +316,20 @@ export async function listPendingTrees(): Promise<PendingTree[]> {
   );
 }
 
+/**
+ * Персоны конкретного древа, ожидающие модерации (для предпросмотра).
+ * Сортировка: сначала корни (нет отца), затем по году рождения —
+ * чтобы модератору было удобно читать структуру.
+ */
+export async function getPendingPersons(ownerId: number): Promise<PersonRow[]> {
+  return query<PersonRow>(
+    `SELECT * FROM persons
+     WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'
+     ORDER BY (father_id IS NOT NULL), COALESCE(birth_year, 9999), full_name`,
+    [ownerId],
+  );
+}
+
 /** Одобрить древо пользователя целиком. */
 export async function approveTree(ownerId: number, adminId: number): Promise<{ count: number }> {
   const rows = await query(

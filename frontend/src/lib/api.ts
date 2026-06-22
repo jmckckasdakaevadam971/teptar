@@ -136,6 +136,8 @@ export const api = {
   /** Модерация общей базы (teip_admin / super_admin). */
   moderation: {
     pending: () => request<PendingTree[]>('/persons/moderation/pending'),
+    persons: (ownerId: number) =>
+      request<Person[]>(`/persons/moderation/${ownerId}/persons`),
     approve: (ownerId: number) =>
       request<{ count: number }>(`/persons/moderation/${ownerId}/approve`, { method: 'POST' }),
     reject: (ownerId: number) =>

@@ -67,6 +67,11 @@ export async function pending(_req: Request, res: Response): Promise<void> {
   res.json(ok(trees));
 }
 
+export async function pendingPersons(req: Request, res: Response): Promise<void> {
+  const persons = await service.getPendingPersons(Number(req.params.ownerId));
+  res.json(ok(persons));
+}
+
 export async function approve(req: Request, res: Response): Promise<void> {
   const result = await service.approveTree(Number(req.params.ownerId), req.user!.userId);
   res.json(ok(result));

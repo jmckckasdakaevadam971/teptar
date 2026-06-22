@@ -24,6 +24,12 @@ personsRouter.get(
   requireRole('teip_admin', 'super_admin'),
   asyncHandler(controller.pending),
 );
+personsRouter.get(
+  '/moderation/:ownerId/persons',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.pendingPersons),
+);
 personsRouter.post(
   '/moderation/:ownerId/approve',
   requireAuth,
