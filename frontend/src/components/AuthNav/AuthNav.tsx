@@ -18,7 +18,9 @@ export function AuthNav() {
 
   return (
     <span className="auth-nav">
-      <span className="user-name">{user.display_name}</span>
+      <a href="/profile" className="user-name" title="Личный кабинет">
+        {user.display_name}
+      </a>
       <button
         type="button"
         className="link-btn"

@@ -61,3 +61,34 @@ export async function assignAdmin(req: Request, res: Response): Promise<void> {
 export async function me(req: Request, res: Response): Promise<void> {
   res.json(ok({ user: req.user ?? null }));
 }
+
+/** Полный профиль текущего пользователя из БД. */
+export async function profile(req: Request, res: Response): Promise<void> {
+  res.json(ok(await service.getProfile(req.user!.userId)));
+}
+
+const updateProfileSchema = z
+  .object({
+    display_name: z.string().min(2, 'Имя не короче 2 символов').max(120),
+    phone: z.string().min(5).max(20).nullable().optional(),
+    email: z.string().email('Некорректный e-mail').nullable().optional(),
+  })
+  .refine((d) => Boolean(d.phone) || Boolean(d.email), {
+    message: 'Укажите телефон или e-mail',
+  });
+
+export async function updateProfile(req: Request, res: Response): Promise<void> {
+  const input = updateProfileSchema.parse(req.body);
+  res.json(ok(await service.updateProfile(req.user!.userId, input)));
+}
+
+const changePasswordSchema = z.object({
+  current_password: z.string().min(1, 'Введите текущий пароль'),
+  new_password: z.string().min(8, 'Новый пароль не короче 8 символов'),
+});
+
+export async function changePassword(req: Request, res: Response): Promise<void> {
+  const input = changePasswordSchema.parse(req.body);
+  await service.changePassword(req.user!.userId, input.current_password, input.new_password);
+  res.json(ok({ changed: true }));
+}

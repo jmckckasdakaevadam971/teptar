@@ -95,3 +95,72 @@ export async function assignAdmin(input: {
     [input.user_id, input.teip_id, input.village_id ?? null],
   );
 }
+
+/** Профиль пользователя: данные из БД + сводка по своему древу. */
+export interface UserProfile {
+  id: number;
+  display_name: string;
+  phone: string | null;
+  email: string | null;
+  role: UserRole;
+  created_at: string;
+  persons_count: number;
+  root_person_id: number | null;
+}
+
+export async function getProfile(userId: number): Promise<UserProfile> {
+  const rows = await query<UserProfile>(
+    `SELECT u.id, u.display_name, u.phone, u.email, u.role, u.created_at,
+            (SELECT COUNT(*)::int FROM persons WHERE created_by = u.id) AS persons_count,
+            (SELECT id FROM persons
+               WHERE created_by = u.id
+               ORDER BY (father_id IS NOT NULL), COALESCE(birth_year, 9999), id
+               LIMIT 1) AS root_person_id
+     FROM users u WHERE u.id = $1`,
+    [userId],
+  );
+  if (rows.length === 0) throw new ApiError(404, 'Пользователь не найден');
+  return rows[0];
+}
+
+/** Обновить основные данные профиля (имя, телефон, e-mail). */
+export async function updateProfile(
+  userId: number,
+  input: { display_name: string; phone?: string | null; email?: string | null },
+): Promise<UserProfile> {
+  const phone = input.phone ?? null;
+  const email = input.email ?? null;
+
+  const dup = await query<{ id: number }>(
+    `SELECT id FROM users
+     WHERE id <> $1 AND ((phone = $2 AND $2 IS NOT NULL) OR (email = $3 AND $3 IS NOT NULL))`,
+    [userId, phone, email],
+  );
+  if (dup.length > 0) {
+    throw new ApiError(409, 'Такой телефон или e-mail уже занят другим пользователем');
+  }
+
+  await query(
+    `UPDATE users SET display_name = $2, phone = $3, email = $4 WHERE id = $1`,
+    [userId, input.display_name, phone, email],
+  );
+  return getProfile(userId);
+}
+
+/** Смена пароля с проверкой текущего. */
+export async function changePassword(
+  userId: number,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const rows = await query<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
+  const user = rows[0];
+  if (!user) throw new ApiError(404, 'Пользователь не найден');
+  if (!user.password_hash || !verifyPassword(currentPassword, user.password_hash)) {
+    throw new ApiError(400, 'Текущий пароль неверен');
+  }
+  await query('UPDATE users SET password_hash = $2 WHERE id = $1', [
+    userId,
+    hashPassword(newPassword),
+  ]);
+}

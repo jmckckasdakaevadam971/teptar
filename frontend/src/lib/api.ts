@@ -10,6 +10,7 @@ import type {
   CommonAncestor,
   AuthResult,
   User,
+  UserProfile,
   AdminUser,
   AdminStats,
   TreeStatus,
@@ -118,6 +119,20 @@ export const api = {
         body: JSON.stringify(input),
       }),
     me: () => request<{ user: User | null }>('/auth/me'),
+    /** Полный профиль текущего пользователя. */
+    profile: () => request<UserProfile>('/auth/profile'),
+    /** Обновить имя / телефон / e-mail. */
+    updateProfile: (input: { display_name: string; phone?: string | null; email?: string | null }) =>
+      request<UserProfile>('/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      }),
+    /** Сменить пароль. */
+    changePassword: (current_password: string, new_password: string) =>
+      request<{ changed: boolean }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ current_password, new_password }),
+      }),
   },
 
   /** Администрирование (только super_admin). */

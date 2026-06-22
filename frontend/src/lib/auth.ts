@@ -43,6 +43,16 @@ export function getStoredUser(): User | null {
   }
 }
 
+/** Обновить сохранённого пользователя (например, после редактирования профиля). */
+export function patchStoredUser(patch: Partial<User>): void {
+  if (typeof window === 'undefined') return;
+  const current = getStoredUser();
+  if (!current) return;
+  const next = { ...current, ...patch };
+  localStorage.setItem(USER_KEY, JSON.stringify(next));
+  window.dispatchEvent(new Event(AUTH_EVENT));
+}
+
 /** Может ли роль создавать записи сразу подтверждёнными. */
 export function canModerate(role: User['role'] | undefined): boolean {
   return role === 'teip_admin' || role === 'super_admin';

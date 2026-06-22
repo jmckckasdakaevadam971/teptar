@@ -10,6 +10,9 @@ authRouter.post('/register', asyncHandler(controller.register));
 authRouter.post('/login', asyncHandler(controller.login));
 authRouter.get('/config', asyncHandler(controller.config));
 authRouter.get('/me', requireAuth, asyncHandler(controller.me));
+authRouter.get('/profile', requireAuth, asyncHandler(controller.profile));
+authRouter.patch('/profile', requireAuth, asyncHandler(controller.updateProfile));
+authRouter.post('/change-password', requireAuth, asyncHandler(controller.changePassword));
 
 // Назначение администратора тейпа — только супер-админ
 authRouter.post(

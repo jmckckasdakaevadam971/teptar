@@ -18,6 +18,13 @@ export interface AuthResult {
   user: User;
 }
 
+/** Расширенный профиль для личного кабинета. */
+export interface UserProfile extends User {
+  created_at: string;
+  persons_count: number;
+  root_person_id: number | null;
+}
+
 export interface Person {
   id: number;
   full_name: string;
