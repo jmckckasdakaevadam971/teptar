@@ -41,3 +41,8 @@ Thumbs.db
 
 # Временные файлы развёртывания (содержат секреты — не коммитить!)
 .deploy-tmp/
+
+# scratch / local artifacts
+.playwright-mcp/
+vorhda-*.png
+frontend/tsconfig.tsbuildinfo

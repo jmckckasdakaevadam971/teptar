@@ -13,13 +13,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#1B5E20',
+  themeColor: '#0e0b08',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru">
       <body>
+        <div className="ornament-band" />
         <header className="header">
           <div className="container header-inner">
             <a href="/" className="logo" aria-label="Vorhda — Ворх Да">
@@ -36,8 +37,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
         <main className="container main">{children}</main>
+        <div className="ornament-band" />
         <footer className="footer">
-          <div className="container">© Тептар — родовая память</div>
+          <div className="container">© Тептар — родовая память · Ворх Да</div>
         </footer>
       </body>
     </html>
