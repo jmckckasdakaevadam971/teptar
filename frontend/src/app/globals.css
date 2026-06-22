@@ -1028,3 +1028,140 @@ select.input {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ════════════ Добавление родственников ════════════ */
+.reladd {
+  border: 1px solid var(--gold-soft);
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.08), rgba(23, 19, 16, 0.9));
+}
+.reladd-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.reladd-title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--cream);
+}
+.reladd-sub {
+  color: var(--muted);
+  font-size: 14px;
+}
+.reladd-kinds {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.relkind {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 78px;
+  padding: 12px 14px;
+  background: var(--stone-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--cream);
+  cursor: pointer;
+  font-size: 14px;
+  transition: 0.15s;
+}
+.relkind:hover {
+  border-color: var(--gold-soft);
+  transform: translateY(-2px);
+}
+.relkind.sel {
+  border-color: var(--gold);
+  background: rgba(201, 162, 39, 0.16);
+  color: var(--gold-2);
+}
+.relkind-ic {
+  font-size: 24px;
+  line-height: 1;
+}
+.reladd-form {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+.reladd-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.reladd-row .input {
+  flex: 1;
+  min-width: 160px;
+}
+.reladd-year {
+  flex: 0 0 90px !important;
+  min-width: 0 !important;
+}
+.reladd-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ════════════ Блок «Семья» ════════════ */
+.family-title {
+  margin: 0 0 14px;
+  font-size: 18px;
+  color: var(--cream);
+}
+.family-grid {
+  display: grid;
+  gap: 16px;
+}
+.family-group-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.family-chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.relchip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--stone-3);
+  text-decoration: none;
+  transition: 0.15s;
+  border-left: 3px solid var(--gold-soft);
+}
+.relchip:hover {
+  border-color: var(--gold-soft);
+  transform: translateY(-2px);
+}
+.relchip.f {
+  border-left-color: #c77dad;
+}
+.relchip.m {
+  border-left-color: #5a8fd6;
+}
+.relchip-role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.relchip-name {
+  color: var(--cream);
+  font-weight: 600;
+  font-size: 15px;
+}
+.relchip-years {
+  color: var(--muted);
+  font-size: 12px;
+}

@@ -84,6 +84,56 @@ export async function getPerson(id: number, viewer?: Viewer): Promise<PersonRow>
   return rows[0];
 }
 
+/** Ближайшее окружение персоны: родители, супруги, дети. */
+export interface Family {
+  person: PersonRow;
+  father: PersonRow | null;
+  mother: PersonRow | null;
+  spouses: PersonRow[];
+  children: PersonRow[];
+}
+
+/**
+ * Семья человека для быстрого обзора рядом с древом.
+ * Дети — по отцу или матери; супруги — из браков. Всё с учётом видимости.
+ */
+export async function getFamily(id: number, viewer: Viewer = ANON): Promise<Family> {
+  const person = await getPerson(id, viewer);
+
+  const parentIds = [person.father_id, person.mother_id].filter(
+    (x): x is number => x != null,
+  );
+  const parents = parentIds.length
+    ? await query<PersonRow>('SELECT * FROM persons WHERE id = ANY($1)', [parentIds])
+    : [];
+
+  const children = await query<PersonRow>(
+    `SELECT * FROM persons
+     WHERE father_id = $1 OR mother_id = $1
+     ORDER BY COALESCE(birth_year, 9999), full_name`,
+    [id],
+  );
+
+  const spouses = await query<PersonRow>(
+    `SELECT p.* FROM marriages m
+     JOIN persons p ON p.id = CASE WHEN m.husband_id = $1 THEN m.wife_id ELSE m.husband_id END
+     WHERE m.husband_id = $1 OR m.wife_id = $1
+     ORDER BY p.full_name`,
+    [id],
+  );
+
+  const visible = (p: PersonRow | undefined): PersonRow | null =>
+    p && canView(p, viewer) ? p : null;
+
+  return {
+    person,
+    father: visible(parents.find((p) => p.id === person.father_id)),
+    mother: visible(parents.find((p) => p.id === person.mother_id)),
+    spouses: spouses.filter((p) => canView(p, viewer)),
+    children: children.filter((p) => canView(p, viewer)),
+  };
+}
+
 /**
  * Проверка на цикл: новый отец/мать не должен быть потомком ребёнка.
  * Иначе образуется петля в графе родства.

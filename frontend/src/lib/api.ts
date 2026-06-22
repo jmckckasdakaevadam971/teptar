@@ -1,6 +1,7 @@
 import type {
   ApiEnvelope,
   Person,
+  Family,
   TreeNode,
   Teip,
   Tukhum,
@@ -8,6 +9,7 @@ import type {
   Nekyi,
   Village,
   CommonAncestor,
+  Marriage,
   AuthResult,
   User,
   UserProfile,
@@ -49,6 +51,8 @@ export const api = {
       return request<Person[]>(`/persons?${qs.toString()}`);
     },
     get: (id: number) => request<Person>(`/persons/${id}`),
+    /** Ближайшее окружение: родители, супруги, дети. */
+    family: (id: number) => request<Family>(`/persons/${id}/family`),
     create: (input: Partial<Person>) =>
       request<Person>('/persons', { method: 'POST', body: JSON.stringify(input) }),
     update: (id: number, input: Partial<Person>) =>
@@ -74,6 +78,19 @@ export const api = {
       request<TreeNode[]>(`/ancestors/${id}/down?depth=${depth}`),
     commonAncestor: (a: number, b: number) =>
       request<CommonAncestor>(`/ancestors/common?a=${a}&b=${b}`),
+  },
+
+  /** Браки (связи супругов). */
+  relations: {
+    marriages: (personId: number) =>
+      request<Marriage[]>(`/relations/marriages/${personId}`),
+    addMarriage: (husband_id: number, wife_id: number) =>
+      request<Marriage>('/relations/marriages', {
+        method: 'POST',
+        body: JSON.stringify({ husband_id, wife_id }),
+      }),
+    deleteMarriage: (id: number) =>
+      request<void>(`/relations/marriages/${id}`, { method: 'DELETE' }),
   },
 
   teips: {

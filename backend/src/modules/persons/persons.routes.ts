@@ -45,6 +45,7 @@ personsRouter.post(
 
 // Одна персона
 personsRouter.get('/:id', asyncHandler(controller.getById));
+personsRouter.get('/:id/family', asyncHandler(controller.family));
 
 // Изменения — только авторизованным
 personsRouter.post('/', requireAuth, asyncHandler(controller.create));

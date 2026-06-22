@@ -25,6 +25,11 @@ export async function getById(req: Request, res: Response): Promise<void> {
   res.json(ok(person));
 }
 
+export async function family(req: Request, res: Response): Promise<void> {
+  const data = await service.getFamily(Number(req.params.id), viewerOf(req));
+  res.json(ok(data));
+}
+
 export async function create(req: Request, res: Response): Promise<void> {
   const input = createPersonSchema.parse(req.body);
   const person = await service.createPerson(input, req.user!.userId);

@@ -49,7 +49,9 @@ relationsRouter.post(
     const input = createSchema.parse(req.body);
     const rows = await query<MarriageRow>(
       `INSERT INTO marriages (husband_id, wife_id, start_year, end_year, note)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (husband_id, wife_id) DO UPDATE SET note = EXCLUDED.note
+       RETURNING *`,
       [
         input.husband_id,
         input.wife_id,
@@ -59,5 +61,15 @@ relationsRouter.post(
       ],
     );
     res.status(201).json(ok(rows[0]));
+  }),
+);
+
+// Удалить брак по id
+relationsRouter.delete(
+  '/marriages/:id',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    await query('DELETE FROM marriages WHERE id = $1', [Number(req.params.id)]);
+    res.status(204).end();
   }),
 );

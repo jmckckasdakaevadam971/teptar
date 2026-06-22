@@ -43,6 +43,25 @@ export interface Person {
   created_by: number | null;
 }
 
+/** Брак (связь супругов). */
+export interface Marriage {
+  id: number;
+  husband_id: number;
+  wife_id: number;
+  start_year: number | null;
+  end_year: number | null;
+  note: string | null;
+}
+
+/** Ближайшее окружение персоны: родители, супруги, дети. */
+export interface Family {
+  person: Person;
+  father: Person | null;
+  mother: Person | null;
+  spouses: Person[];
+  children: Person[];
+}
+
 /** Состояние своего древа для ползунка видимости. */
 export interface TreeStatus {
   total: number;
