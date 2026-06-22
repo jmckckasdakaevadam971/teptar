@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth, clearAuth, patchStoredUser } from '@/lib/auth';
-import { PublishControl } from '@/components/PublishControl/PublishControl';
-import type { UserProfile, TreeStatus, UserRole } from '@/lib/types';
+import type { UserProfile, UserRole } from '@/lib/types';
 
 const ROLE_LABELS: Record<UserRole, string> = {
   viewer: 'Читатель',
@@ -32,7 +31,6 @@ function formatDate(iso: string): string {
 export default function ProfilePage() {
   const { user, ready } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [tree, setTree] = useState<TreeStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,12 +52,8 @@ export default function ProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const [p, t] = await Promise.all([
-        api.auth.profile(),
-        api.persons.treeStatus().catch(() => null),
-      ]);
+      const p = await api.auth.profile();
       setProfile(p);
-      setTree(t);
       setForm({ display_name: p.display_name, phone: p.phone ?? '', email: p.email ?? '' });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить профиль');
@@ -178,51 +172,16 @@ export default function ProfilePage() {
 
       {profileMsg && <p className="vis-notice">{profileMsg}</p>}
 
-      {/* Моё древо */}
-      <div className="card">
-        <div className="profile-section-head">
-          <h2 className="profile-h2">Моё древо</h2>
-          <div className="profile-quick">
-            {profile.root_person_id && (
-              <a className="btn-secondary" href={`/person/${profile.root_person_id}`}>
-                Открыть древо
-              </a>
-            )}
-            <a className="btn-primary" href="/persons/new">
-              + Добавить человека
-            </a>
-          </div>
-        </div>
-
-        {tree && tree.total > 0 ? (
-          <div className="profile-stats">
-            <div className="pstat">
-              <span className="pstat-num">{tree.total}</span>
-              <span className="pstat-lbl">всего персон</span>
-            </div>
-            <div className="pstat">
-              <span className="pstat-num">{tree.published}</span>
-              <span className="pstat-lbl">в общей базе</span>
-            </div>
-            <div className="pstat">
-              <span className="pstat-num">{tree.pending}</span>
-              <span className="pstat-lbl">на модерации</span>
-            </div>
-            <div className="pstat">
-              <span className="pstat-num">{tree.private}</span>
-              <span className="pstat-lbl">только у меня</span>
-            </div>
-          </div>
-        ) : (
-          <p style={{ color: 'var(--muted)', margin: 0 }}>
-            Вы ещё не добавили ни одного человека. Начните строить своё древо —
-            добавьте себя или старшего родственника.
+      {/* Быстрый переход к древу */}
+      <a className="card profile-link-card" href="/my">
+        <div>
+          <h2 className="profile-h2" style={{ margin: 0 }}>🌳 Моё древо</h2>
+          <p style={{ color: 'var(--muted)', margin: '6px 0 0' }}>
+            Стройте родословную, добавляйте родственников и управляйте видимостью.
           </p>
-        )}
-      </div>
-
-      {/* Управление видимостью (готовый компонент) */}
-      <PublishControl />
+        </div>
+        <span className="profile-link-arrow">→</span>
+      </a>
 
       {/* Данные профиля */}
       <div className="card">

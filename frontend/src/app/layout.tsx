@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthNav } from '@/components/AuthNav/AuthNav';
 import { AdminNavLink } from '@/components/AuthNav/AdminNavLink';
+import { MyTreeNavLink } from '@/components/AuthNav/MyTreeNavLink';
 
 export const metadata: Metadata = {
   title: 'Vorhda — Ворх Да · Семь Отцов',
@@ -27,9 +28,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <img className="logo-img" src="/logo-full.svg" alt="Vorhda — Ворх Да" />
             </a>
             <nav className="nav">
-              <a href="/">Поиск</a>
-              <a href="/tree">Древо</a>
-              <a href="/persons/new">Добавить</a>
+              <a href="/">Главная</a>
+              <MyTreeNavLink />
+              <a href="/relatives">Родство</a>
               <a href="/reference">Справочник</a>
               <AdminNavLink />
               <AuthNav />

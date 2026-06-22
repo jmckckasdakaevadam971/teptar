@@ -46,3 +46,4 @@ Thumbs.db
 .playwright-mcp/
 vorhda-*.png
 frontend/tsconfig.tsbuildinfo
+design-concepts/

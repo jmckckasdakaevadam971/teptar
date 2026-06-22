@@ -1165,3 +1165,146 @@ select.input {
   color: var(--muted);
   font-size: 12px;
 }
+
+/* ════════════ Кликабельные карточки-возможности ════════════ */
+.feature-link {
+  display: block;
+  text-decoration: none;
+  cursor: pointer;
+}
+.feature-link h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feature-link::after {
+  content: 'Перейти →';
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold-2);
+  opacity: 0.85;
+}
+.feature-link:hover::after {
+  opacity: 1;
+}
+
+/* ════════════ Родство / общий предок ════════════ */
+.rel-hint {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0 0 18px;
+}
+.rel-pickers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: end;
+}
+.rel-result {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid var(--gold-soft);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.1), rgba(23, 19, 16, 0.6));
+  text-align: center;
+}
+.rel-ancestor {
+  display: inline-block;
+  margin: 6px 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold-2);
+  text-decoration: none;
+}
+.rel-ancestor:hover {
+  text-decoration: underline;
+}
+.rel-degree {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 4px 0 0;
+}
+.rel-tip {
+  margin-top: 18px;
+}
+.rel-steps {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: var(--text);
+  line-height: 1.9;
+}
+.rel-steps li::marker {
+  color: var(--gold);
+}
+
+/* ════════════ Моё древо ════════════ */
+.mytree-empty {
+  text-align: center;
+  padding: 56px 24px;
+}
+.mytree-empty-ic {
+  font-size: 64px;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+.mytree-empty-title {
+  margin: 0 0 8px;
+  font-size: 26px;
+  color: var(--cream);
+}
+.mytree-empty-sub {
+  color: var(--muted);
+  font-size: 16px;
+  max-width: 460px;
+  margin: 0 auto 24px;
+  line-height: 1.6;
+}
+.mytree-cta {
+  font-size: 17px;
+  padding: 14px 28px;
+}
+.mytree-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.mytree-h2 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--cream);
+}
+.mytree-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ════════════ Карточка-ссылка в профиле ════════════ */
+.profile-link-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  text-decoration: none;
+  transition: 0.2s;
+}
+.profile-link-card:hover {
+  border-color: var(--gold-soft);
+  transform: translateY(-2px);
+}
+.profile-link-arrow {
+  font-size: 28px;
+  color: var(--gold-2);
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .rel-pickers {
+    grid-template-columns: 1fr;
+  }
+}

@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react';
 import { HeroScene } from '@/components/HeroScene/HeroScene';
 import { PersonCard } from '@/components/PersonCard/PersonCard';
-import { CommonAncestorWidget } from '@/features/commonAncestor/CommonAncestorWidget';
 import { api } from '@/lib/api';
 import type { Person } from '@/lib/types';
 
@@ -16,20 +15,23 @@ const STATS = [
 
 const FEATURES = [
   {
-    title: 'Древо рода',
-    text: 'Постройте генеалогическое древо своей семьи и сохраните его для потомков.',
+    title: 'Моё древо',
+    text: 'Постройте родословную своей семьи и сохраните её для потомков.',
+    href: '/my',
     icon: (
       <path d="M12 2v8m0 0L6 14m6-4l6 4M6 14v6m12-6v6M4 22h4m8 0h4M10 22h4" />
     ),
   },
   {
-    title: 'Общий предок',
-    text: 'Найдите общего предка двух человек и узнайте, как связаны ваши рода.',
+    title: 'Родство',
+    text: 'Узнайте, кем приходятся друг другу два человека и кто их общий предок.',
+    href: '/relatives',
     icon: <path d="M12 3v6m0 0l-5 4m5-4l5 4M5 13v4a2 2 0 002 2h10a2 2 0 002-2v-4" />,
   },
   {
     title: 'Справочник',
     text: 'Тейпы, тукхумы и сёла Чечни в едином структурированном справочнике.',
+    href: '/reference',
     icon: <path d="M4 5a2 2 0 012-2h12a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5z" />,
   },
 ];
@@ -84,8 +86,8 @@ export default function HomePage() {
             <button type="submit" aria-label="Найти">→</button>
           </form>
           <div className="hero-actions">
-            <a className="btn-primary" href="/persons/new">+ Добавить человека</a>
-            <a className="btn-secondary" href="/tree">Смотреть древо</a>
+            <a className="btn-primary" href="/my">🌳 Моё древо</a>
+            <a className="btn-secondary" href="/relatives">🔗 Кем мы родственники</a>
           </div>
         </div>
       </section>
@@ -127,19 +129,14 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* ── ОБЩИЙ ПРЕДОК ── */}
-      <section style={{ marginTop: 48 }}>
-        <CommonAncestorWidget />
-      </section>
-
-      {/* ── ВОЗМОЖНОСТИ ── */}
+      {/* ── ЧТО МОЖНО СДЕЛАТЬ ── */}
       <section className="panel-dark" style={{ marginTop: 56 }}>
         <div className="container">
-          <h2 className="section-title">Возможности</h2>
+          <h2 className="section-title">Что можно сделать</h2>
           <div className="divider">◆</div>
           <div className="features">
             {FEATURES.map((f) => (
-              <div className="feature" key={f.title}>
+              <a className="feature feature-link" key={f.title} href={f.href}>
                 <svg
                   className="ic"
                   viewBox="0 0 24 24"
@@ -153,7 +150,7 @@ export default function HomePage() {
                 </svg>
                 <h3>{f.title}</h3>
                 <p>{f.text}</p>
-              </div>
+              </a>
             ))}
           </div>
         </div>
