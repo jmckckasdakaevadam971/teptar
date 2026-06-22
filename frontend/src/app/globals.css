@@ -425,6 +425,10 @@ select.input {
   color: var(--muted);
   font-size: 12px;
 }
+.user-name {
+  color: var(--gold-2);
+  font-weight: 600;
+}
 .link-btn.danger {
   color: #dc2626;
 }
@@ -555,7 +559,7 @@ select.input {
   transition: border-color 0.15s;
 }
 .mod-item.open {
-  border-color: #1b5e20;
+  border-color: var(--gold-soft);
 }
 .mod-row {
   display: flex;
@@ -571,6 +575,7 @@ select.input {
   gap: 10px;
   background: none;
   border: 0;
+  color: var(--cream);
   cursor: pointer;
   padding: 0;
   text-align: left;
@@ -578,7 +583,7 @@ select.input {
   min-width: 200px;
 }
 .mod-caret {
-  color: #1b5e20;
+  color: var(--gold);
   font-size: 13px;
   transition: transform 0.15s;
 }
@@ -586,8 +591,9 @@ select.input {
   transform: rotate(90deg);
 }
 .mod-name {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 15px;
+  color: var(--gold-2);
 }
 .mod-meta {
   color: var(--muted);

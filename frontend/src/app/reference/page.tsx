@@ -96,10 +96,11 @@ export default function ReferencePage() {
                   background: 'none',
                   cursor: 'pointer',
                   textAlign: 'left',
+                  color: 'var(--cream)',
                 }}
               >
                 <span>
-                  <b style={{ fontSize: 17 }}>{tk.name}</b>
+                  <b style={{ fontSize: 17, color: 'var(--gold-2)' }}>{tk.name}</b>
                   {tk.description && (
                     <span style={{ color: 'var(--muted)', marginLeft: 10, fontSize: 13 }}>
                       {tk.description}

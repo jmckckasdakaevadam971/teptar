@@ -158,7 +158,7 @@ export default function AdminPage() {
                   return (
                     <tr key={u.id}>
                       <td>
-                        {u.display_name}
+                        <span className="user-name">{u.display_name}</span>
                         {isSelf && <span className="self-tag"> (вы)</span>}
                       </td>
                       <td>{u.phone ?? '—'}</td>
