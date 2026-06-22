@@ -65,7 +65,7 @@ export default function ReferencePage() {
     <div style={{ display: 'grid', gap: 20 }}>
       <section>
         <h1>Справочник Чеченской Республики</h1>
-        <p style={{ color: '#64748b', marginTop: 0 }}>
+        <p className="ref-sub" style={{ marginTop: 0 }}>
           Тукхумы, тейпы, гары и некъи; населённые пункты — действующие и
           исторические.
         </p>
@@ -101,7 +101,7 @@ export default function ReferencePage() {
                 <span>
                   <b style={{ fontSize: 17 }}>{tk.name}</b>
                   {tk.description && (
-                    <span style={{ color: '#94a3b8', marginLeft: 10, fontSize: 13 }}>
+                    <span style={{ color: 'var(--muted)', marginLeft: 10, fontSize: 13 }}>
                       {tk.description}
                     </span>
                   )}
@@ -119,20 +119,12 @@ export default function ReferencePage() {
                     }}
                   >
                     {(teipsCache[tk.id] ?? []).map((t) => (
-                      <div
-                        key={t.id}
-                        style={{
-                          padding: '8px 12px',
-                          background: '#f8fafc',
-                          borderRadius: 8,
-                          fontSize: 14,
-                        }}
-                      >
+                      <div key={t.id} className="ref-chip">
                         {t.name}
                       </div>
                     ))}
                     {teipsCache[tk.id]?.length === 0 && (
-                      <span style={{ color: '#94a3b8' }}>Тейпы не указаны</span>
+                      <span style={{ color: 'var(--muted)' }}>Тейпы не указаны</span>
                     )}
                   </div>
                 </div>
@@ -163,7 +155,7 @@ export default function ReferencePage() {
                 Исторические
               </button>
             </div>
-            <span style={{ color: '#94a3b8', fontSize: 14 }}>показано: {totalShown}</span>
+            <span style={{ color: 'var(--muted)', fontSize: 14 }}>показано: {totalShown}</span>
           </div>
 
           {villagesByDistrict.map(([district, list]) => (
@@ -179,21 +171,12 @@ export default function ReferencePage() {
                 {list.map((v) => (
                   <div
                     key={v.id}
-                    style={{
-                      padding: '8px 12px',
-                      background: v.is_extant ? '#f8fafc' : '#fef2f2',
-                      borderRadius: 8,
-                      fontSize: 14,
-                    }}
+                    className={v.is_extant ? 'ref-chip' : 'ref-chip extinct'}
                     title={v.note ?? ''}
                   >
                     {v.name}
-                    {v.type && (
-                      <span style={{ color: '#94a3b8', fontSize: 12 }}> · {v.type}</span>
-                    )}
-                    {!v.is_extant && (
-                      <span style={{ color: '#dc2626', fontSize: 12 }}> · нежилое</span>
-                    )}
+                    {v.type && <span className="meta"> · {v.type}</span>}
+                    {!v.is_extant && <span className="dead"> · нежилое</span>}
                   </div>
                 ))}
               </div>

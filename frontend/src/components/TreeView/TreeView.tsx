@@ -59,7 +59,7 @@ export function TreeView({
       .join('path')
       .attr('class', 'link')
       .attr('fill', 'none')
-      .attr('stroke', '#cbd5e1')
+      .attr('stroke', '#6b5e3f')
       .attr('stroke-width', 1.5)
       .attr(
         'd',
@@ -93,7 +93,7 @@ export function TreeView({
       .append('circle')
       .attr('r', 0)
       .attr('fill', (d) => (d.data.gender === 'f' ? '#f9a8d4' : '#3b82f6'))
-      .attr('stroke', '#1e293b')
+      .attr('stroke', '#f1e9d8')
       .attr('stroke-width', 1.5)
       .transition()
       .delay((_d, i) => i * 60)
@@ -105,7 +105,7 @@ export function TreeView({
       .attr('dy', 34)
       .attr('text-anchor', 'middle')
       .attr('font-size', 12)
-      .attr('fill', '#0f172a')
+      .attr('fill', '#f1e9d8')
       .text((d) => d.data.full_name)
       .style('opacity', 0)
       .transition()
@@ -118,7 +118,7 @@ export function TreeView({
       .attr('dy', 48)
       .attr('text-anchor', 'middle')
       .attr('font-size', 10)
-      .attr('fill', '#64748b')
+      .attr('fill', '#b3a78d')
       .text((d) => {
         const b = d.data.birth_year ?? '';
         const dd = d.data.death_year ?? '';
@@ -131,7 +131,7 @@ export function TreeView({
       ref={svgRef}
       width={width}
       height={height}
-      style={{ background: '#f8fafc', borderRadius: 12, width: '100%', height: 'auto' }}
+      style={{ background: '#171310', border: '1px solid #3a3225', borderRadius: 12, width: '100%', height: 'auto' }}
     />
   );
 }

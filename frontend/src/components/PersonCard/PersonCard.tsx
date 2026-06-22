@@ -30,7 +30,7 @@ export function PersonCard({ person, onOpenTree }: PersonCardProps) {
           </span>
         </div>
       </div>
-      <p style={{ color: '#64748b', margin: '6px 0' }}>{years}</p>
+      <p style={{ color: 'var(--muted)', margin: '6px 0' }}>{years}</p>
       {person.note && <p style={{ marginTop: 8 }}>{person.note}</p>}
       {onOpenTree && (
         <button className="btn-secondary" onClick={() => onOpenTree(person.id)} style={{ marginTop: 12 }}>

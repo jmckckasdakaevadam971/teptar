@@ -179,6 +179,32 @@ body {
   color: #9d174d;
 }
 
+/* Reference: чипы тейпов и сёл */
+.ref-sub {
+  color: var(--muted);
+}
+.ref-chip {
+  padding: 8px 12px;
+  background: var(--stone-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--cream);
+}
+.ref-chip.extinct {
+  background: #2a1714;
+  border-color: #5b2c25;
+  color: #e6c9c2;
+}
+.ref-chip .meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ref-chip .dead {
+  color: #e08a7a;
+  font-size: 12px;
+}
+
 /* Toggle */
 .toggle {
   display: inline-flex;

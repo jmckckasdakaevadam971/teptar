@@ -99,7 +99,7 @@ export default function AdminPage() {
     <div style={{ display: 'grid', gap: 24 }}>
       <div>
         <h1>Админ-панель</h1>
-        <p style={{ color: '#64748b', margin: 0 }}>
+        <p style={{ color: 'var(--muted)', margin: 0 }}>
           {isSuperAdmin
             ? 'Управление пользователями, модерация и обзор данных проекта.'
             : 'Модерация древ, отправленных пользователями в общую базу.'}
@@ -111,7 +111,7 @@ export default function AdminPage() {
       {isSuperAdmin && (
         <>
           {error && (
-            <div className="card" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+            <div className="card" style={{ borderColor: '#5b2c25', background: '#2a1714', color: '#e08a7a' }}>
               {error}
             </div>
           )}
@@ -178,7 +178,7 @@ export default function AdminPage() {
                           ))}
                         </select>
                       </td>
-                      <td style={{ whiteSpace: 'nowrap', color: '#64748b' }}>
+                      <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>
                         {new Date(u.created_at).toLocaleDateString('ru-RU', {
                           year: 'numeric',
                           month: '2-digit',
