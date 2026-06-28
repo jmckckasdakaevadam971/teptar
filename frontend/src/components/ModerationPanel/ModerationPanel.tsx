@@ -57,8 +57,6 @@ export function ModerationPanel() {
   const [previewLoading, setPreviewLoading] = useState(false);
   // Возможные дубли с другими древами (по владельцу).
   const [duplicates, setDuplicates] = useState<Record<number, DuplicatePair[]>>({});
-  // Правки, появившиеся после повторной отправки (что изменилось).
-  const [changes, setChanges] = useState<Record<number, TreeChange[]>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,10 +89,6 @@ export function ModerationPanel() {
         ]);
         setPreview((prev) => ({ ...prev, [ownerId]: persons }));
         setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
-        api.moderation
-          .changes(ownerId)
-          .then((ch) => setChanges((prev) => ({ ...prev, [ownerId]: ch })))
-          .catch(() => undefined);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Не удалось загрузить древо');
         setOpenId(null);
@@ -250,29 +244,6 @@ export function ModerationPanel() {
                       <p className="m-0 text-sand">В этом древе нет персон на модерации.</p>
                     )}
 
-                    {changes[t.owner_id] && changes[t.owner_id].length > 0 && (
-                      <div className="mt-3 rounded-lg border border-line bg-gold/[0.04] p-3">
-                        <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
-                          ✎ Что изменилось ({changes[t.owner_id].length})
-                        </p>
-                        <div className="flex flex-col gap-2">
-                          {changes[t.owner_id].map((c, i) => (
-                            <div key={`${c.person_id}-${i}`} className="text-[13px]">
-                              <span className="text-gold-light">{c.full_name}</span>
-                              <ul className="m-0 mt-1 list-disc pl-5 text-sand">
-                                {Object.entries(c.diff).map(([field, v]) => (
-                                  <li key={field}>
-                                    {FIELD_RU[field] ?? field}: <s>{String(v.from ?? '—')}</s> →{' '}
-                                    <span className="text-cream">{String(v.to ?? '—')}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                     {duplicates[t.owner_id] && duplicates[t.owner_id].length > 0 && (
                       <div className="mt-3 rounded-lg border border-gold-soft bg-gold/[0.06] p-3">
                         <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
@@ -325,6 +296,75 @@ export function ModerationPanel() {
           })}
         </div>
       )}
+
+      <EditQueue />
+    </div>
+  );
+}
+
+/** Очередь правок опубликованных записей: старые данные публичны, новые ждут одобрения. */
+function EditQueue() {
+  const [owners, setOwners] = useState<PendingTree[]>([]);
+  const [changes, setChanges] = useState<Record<number, TreeChange[]>>({});
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const os = await api.moderation.editOwners();
+      setOwners(os);
+      const map: Record<number, TreeChange[]> = {};
+      await Promise.all(
+        os.map((o) => api.moderation.changes(o.owner_id).then((c) => { map[o.owner_id] = c; }).catch(() => undefined)),
+      );
+      setChanges(map);
+    } catch {
+      setOwners([]);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function act(personId: number, action: 'approveEdit' | 'rejectEdit') {
+    setBusy(personId);
+    try {
+      await api.moderation[action](personId);
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (owners.length === 0) return null;
+
+  return (
+    <div className="mt-6 border-t border-line pt-4">
+      <h3 className="m-0 mb-3 text-lg font-semibold text-cream">Правки опубликованных записей</h3>
+      <div className="flex flex-col gap-3">
+        {owners.map((o) =>
+          (changes[o.owner_id] ?? []).map((c) => (
+            <div key={c.person_id} className="rounded-xl border border-line p-3">
+              <p className="m-0 text-[14px] font-bold text-gold-light">{c.full_name}</p>
+              <span className="text-[12px] text-sand">{o.owner_name}</span>
+              <ul className="m-0 mt-1.5 list-disc pl-5 text-[13px] text-sand">
+                {Object.entries(c.diff).map(([field, v]) => (
+                  <li key={field}>
+                    {FIELD_RU[field] ?? field}: <s>{String(v.from ?? '—')}</s> →{' '}
+                    <span className="text-cream">{String(v.to ?? '—')}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex gap-2">
+                <button type="button" className={`${BTN_PRIMARY} !px-3 !py-1 !text-[13px]`} disabled={busy === c.person_id} onClick={() => void act(c.person_id, 'approveEdit')}>
+                  ✓ Применить
+                </button>
+                <button type="button" className={`${LINK_DANGER}`} disabled={busy === c.person_id} onClick={() => void act(c.person_id, 'rejectEdit')}>
+                  ✖ Отклонить
+                </button>
+              </div>
+            </div>
+          )),
+        )}
+      </div>
     </div>
   );
 }

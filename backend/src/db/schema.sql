@@ -120,6 +120,11 @@ CREATE TABLE persons (
     created_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
     approved_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
 
+    -- Правки опубликованной записи ждут модерации здесь (старые данные остаются публичными).
+    pending_diff JSONB,
+    pending_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    pending_at  TIMESTAMPTZ,
+
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 

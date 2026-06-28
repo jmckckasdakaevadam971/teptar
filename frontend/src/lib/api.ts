@@ -184,6 +184,7 @@ export const api = {
   /** Модерация общей базы (teip_admin / super_admin). */
   moderation: {
     pending: () => request<PendingTree[]>('/persons/moderation/pending'),
+    editOwners: () => request<PendingTree[]>('/persons/moderation/edits'),
     persons: (ownerId: number) =>
       request<Person[]>(`/persons/moderation/${ownerId}/persons`),
     approve: (ownerId: number) =>
@@ -196,6 +197,10 @@ export const api = {
     /** Что изменилось в древе перед повторной модерацией. */
     changes: (ownerId: number) =>
       request<TreeChange[]>(`/persons/moderation/${ownerId}/changes`),
+    approveEdit: (personId: number) =>
+      request<{ id: number }>(`/persons/moderation/edit/${personId}/approve`, { method: 'POST' }),
+    rejectEdit: (personId: number) =>
+      request<{ rejected: boolean }>(`/persons/moderation/edit/${personId}/reject`, { method: 'POST' }),
     merge: (keep_id: number, drop_id: number) =>
       request<{ merged: boolean }>('/persons/moderation/merge', {
         method: 'POST',

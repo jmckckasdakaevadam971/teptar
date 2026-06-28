@@ -28,6 +28,12 @@ personsRouter.get(
   asyncHandler(controller.pending),
 );
 personsRouter.get(
+  '/moderation/edits',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.editOwners),
+);
+personsRouter.get(
   '/moderation/:ownerId/persons',
   requireAuth,
   requireRole('teip_admin', 'super_admin'),
@@ -56,6 +62,18 @@ personsRouter.get(
   requireAuth,
   requireRole('teip_admin', 'super_admin'),
   asyncHandler(controller.changes),
+);
+personsRouter.post(
+  '/moderation/edit/:id/approve',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.approveEdit),
+);
+personsRouter.post(
+  '/moderation/edit/:id/reject',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.rejectEdit),
 );
 personsRouter.post(
   '/moderation/merge',

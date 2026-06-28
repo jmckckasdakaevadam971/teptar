@@ -249,26 +249,35 @@ export async function updatePerson(
   if (input.father_id) await assertNoCycle(id, input.father_id);
   if (input.mother_id) await assertNoCycle(id, input.mother_id);
 
-  const fields: string[] = [];
-  const args: unknown[] = [];
   const diff: Record<string, { from: unknown; to: unknown }> = {};
   for (const [key, value] of Object.entries(input)) {
-    args.push(value);
-    fields.push(`${key} = $${args.length}`);
     const before = (existing as unknown as Record<string, unknown>)[key];
     if (before !== value) diff[key] = { from: before ?? null, to: value ?? null };
   }
-  if (fields.length === 0) return getPerson(id);
+  if (Object.keys(diff).length === 0) return existing;
 
-  // Если владелец правит уже опубликованную запись — она возвращается на
-  // модерацию, чтобы изменения проверил модератор. Админ правит сразу.
+  // Если владелец правит уже опубликованную запись — старые данные остаются
+  // публичными, а новые значения складываем в pending_diff до одобрения модератором.
   const wasPublic = existing.visibility === 'public' && existing.status === 'approved';
-  const sendToReview = wasPublic && !isAdmin(viewer);
-  if (sendToReview) {
-    args.push('pending');
-    fields.push(`status = $${args.length}`);
+  if (wasPublic && !isAdmin(viewer)) {
+    await query(
+      `UPDATE persons SET pending_diff = $2, pending_by = $3, pending_at = now() WHERE id = $1`,
+      [id, JSON.stringify(input), viewer.userId],
+    );
+    await query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES ($1, $2, 'update', $3)`,
+      [id, viewer.userId, JSON.stringify({ fields: diff, sent_to_review: true })],
+    );
+    return existing; // публике по-прежнему видны прежние данные
   }
 
+  const fields: string[] = [];
+  const args: unknown[] = [];
+  for (const [key, value] of Object.entries(input)) {
+    args.push(value);
+    fields.push(`${key} = $${args.length}`);
+  }
   args.push(id);
   const rows = await query<PersonRow>(
     `UPDATE persons SET ${fields.join(', ')} WHERE id = $${args.length} RETURNING *`,
@@ -278,7 +287,7 @@ export async function updatePerson(
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES ($1, $2, 'update', $3)`,
-    [id, viewer.userId, JSON.stringify({ fields: diff, sent_to_review: sendToReview })],
+    [id, viewer.userId, JSON.stringify({ fields: diff, sent_to_review: false })],
   );
 
   return rows[0];
@@ -400,6 +409,18 @@ export interface PendingTree {
   max_year: number | null;
 }
 
+/** Владельцы, у кого есть ожидающие правки опубликованных записей. */
+export function listEditOwners(): Promise<PendingTree[]> {
+  return query<PendingTree>(
+    `SELECT u.id AS owner_id, u.display_name AS owner_name,
+            COUNT(p.id)::int AS count,
+            MIN(p.birth_year) AS min_year, MAX(p.birth_year) AS max_year
+     FROM persons p JOIN users u ON u.id = p.created_by
+     WHERE p.pending_diff IS NOT NULL
+     GROUP BY u.id, u.display_name ORDER BY count DESC`,
+  );
+}
+
 /** Очередь модерации: древа, ожидающие одобрения, сгруппированы по владельцу. */
 export async function listPendingTrees(): Promise<PendingTree[]> {
   return query<PendingTree>(
@@ -462,7 +483,7 @@ export async function rejectTree(ownerId: number, adminId: number): Promise<{ co
   return { count: rows.length };
 }
 
-/** Что изменилось в древе перед повторной модерацией (последние правки). */
+/** Изменение опубликованной персоны, ожидающее модерации. */
 export interface TreeChange {
   person_id: number;
   full_name: string;
@@ -470,23 +491,66 @@ export interface TreeChange {
   created_at: string;
 }
 
+/** Список ожидающих правок (pending_diff) — старые данные остаются публичными. */
 export async function getTreeChanges(ownerId: number): Promise<TreeChange[]> {
-  const rows = await query<{ person_id: number; full_name: string; diff: any; created_at: string }>(
-    `SELECT cl.person_id, p.full_name, cl.diff, cl.created_at
-     FROM change_log cl
-     JOIN persons p ON p.id = cl.person_id
-     WHERE p.created_by = $1 AND p.visibility = 'public' AND p.status = 'pending'
-       AND cl.action = 'update'
-     ORDER BY cl.created_at DESC
-     LIMIT 100`,
+  const rows = await query<PersonRow & { pending_diff: any; pending_at: string }>(
+    `SELECT * FROM persons
+     WHERE created_by = $1 AND pending_diff IS NOT NULL
+     ORDER BY pending_at DESC LIMIT 100`,
     [ownerId],
   );
-  return rows.map((r) => ({
-    person_id: r.person_id,
-    full_name: r.full_name,
-    diff: r.diff?.fields ?? {},
-    created_at: r.created_at,
-  }));
+  return rows.map((p) => {
+    const diff: Record<string, { from: unknown; to: unknown }> = {};
+    for (const [k, v] of Object.entries(p.pending_diff ?? {})) {
+      const before = (p as unknown as Record<string, unknown>)[k];
+      if (before !== v) diff[k] = { from: before ?? null, to: v ?? null };
+    }
+    return { person_id: p.id, full_name: p.full_name, diff, created_at: p.pending_at };
+  });
+}
+
+/** Применить ожидающие правки персоны (модератор). */
+export async function approveEdit(personId: number, adminId: number): Promise<PersonRow> {
+  const rows = await query<PersonRow & { pending_diff: any }>(
+    'SELECT * FROM persons WHERE id = $1',
+    [personId],
+  );
+  if (rows.length === 0 || !rows[0].pending_diff) throw new ApiError(404, 'Нет ожидающих правок');
+  const input = rows[0].pending_diff as Record<string, unknown>;
+  const fields: string[] = [];
+  const args: unknown[] = [];
+  for (const [k, v] of Object.entries(input)) {
+    args.push(v);
+    fields.push(`${k} = $${args.length}`);
+  }
+  args.push(personId);
+  const updated = await query<PersonRow>(
+    `UPDATE persons SET ${fields.join(', ')}, pending_diff = NULL, pending_by = NULL,
+       pending_at = NULL, updated_at = now() WHERE id = $${args.length} RETURNING *`,
+    args,
+  );
+  await query(
+    `INSERT INTO change_log (person_id, user_id, action, diff)
+     VALUES ($1, $2, 'approve', $3)`,
+    [personId, adminId, JSON.stringify({ applied: input })],
+  );
+  return updated[0];
+}
+
+/** Отклонить ожидающие правки персоны — оставить публичными старые данные. */
+export async function rejectEdit(personId: number, adminId: number): Promise<{ rejected: boolean }> {
+  const rows = await query(
+    `UPDATE persons SET pending_diff = NULL, pending_by = NULL, pending_at = NULL
+     WHERE id = $1 AND pending_diff IS NOT NULL RETURNING id`,
+    [personId],
+  );
+  if (rows.length === 0) throw new ApiError(404, 'Нет ожидающих правок');
+  await query(
+    `INSERT INTO change_log (person_id, user_id, action, diff)
+     VALUES ($1, $2, 'reject', '{}')`,
+    [personId, adminId],
+  );
+  return { rejected: true };
 }
 //  Используется и для «примерного родства», и для поиска дублей.
 //  Правило: нечёткое совпадение ФИО (pg_trgm) + тот же тейп + год ±2.

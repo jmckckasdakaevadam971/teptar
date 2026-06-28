@@ -74,6 +74,13 @@ async function run() {
       await client.query(sql('reference_data.sql'));
       console.log('✅ Справочник обновлён, пользовательские данные сохранены.');
     }
+
+    // Лёгкие идемпотентные миграции (безопасны при каждом старте).
+    await client.query(
+      `ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_diff JSONB;
+       ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_by BIGINT;
+       ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_at TIMESTAMPTZ;`,
+    );
   } catch (err) {
     console.error('❌ Ошибка инициализации:', err);
     process.exitCode = 1;

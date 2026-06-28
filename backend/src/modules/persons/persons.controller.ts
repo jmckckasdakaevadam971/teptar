@@ -74,6 +74,11 @@ export async function pending(_req: Request, res: Response): Promise<void> {
   res.json(ok(trees));
 }
 
+export async function editOwners(_req: Request, res: Response): Promise<void> {
+  const owners = await service.listEditOwners();
+  res.json(ok(owners));
+}
+
 export async function pendingPersons(req: Request, res: Response): Promise<void> {
   const persons = await service.getPendingPersons(Number(req.params.ownerId));
   res.json(ok(persons));
@@ -107,6 +112,16 @@ export async function duplicates(req: Request, res: Response): Promise<void> {
 export async function changes(req: Request, res: Response): Promise<void> {
   const list = await service.getTreeChanges(Number(req.params.ownerId));
   res.json(ok(list));
+}
+
+export async function approveEdit(req: Request, res: Response): Promise<void> {
+  const person = await service.approveEdit(Number(req.params.id), req.user!.userId);
+  res.json(ok(person));
+}
+
+export async function rejectEdit(req: Request, res: Response): Promise<void> {
+  const result = await service.rejectEdit(Number(req.params.id), req.user!.userId);
+  res.json(ok(result));
 }
 
 export async function merge(req: Request, res: Response): Promise<void> {
