@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import type { Person } from '@/lib/types';
+import { BTN_SECONDARY, FIELD, INPUT, LABEL, LINK_BTN } from '@/lib/ui';
 
 export interface PersonRef {
   id: number;
@@ -46,13 +47,13 @@ export function PersonPicker({ label, value, onChange, excludeId, placeholder }:
 
   if (value) {
     return (
-      <div className="field">
-        <label>{label}</label>
-        <div className="picker-selected">
-          <span>
-            {value.full_name} <span style={{ color: '#94a3b8' }}>#{value.id}</span>
+      <div className={FIELD}>
+        <label className={LABEL}>{label}</label>
+        <div className="flex items-center justify-between rounded-[10px] border border-line bg-stone-700 px-3.5 py-2.5">
+          <span className="text-cream">
+            {value.full_name} <span className="text-sand/60">#{value.id}</span>
           </span>
-          <button type="button" className="link-btn" onClick={() => onChange(null)}>
+          <button type="button" className={LINK_BTN} onClick={() => onChange(null)}>
             убрать
           </button>
         </div>
@@ -61,11 +62,11 @@ export function PersonPicker({ label, value, onChange, excludeId, placeholder }:
   }
 
   return (
-    <div className="field" style={{ position: 'relative' }}>
-      <label>{label}</label>
-      <div style={{ display: 'flex', gap: 8 }}>
+    <div className={`${FIELD} relative`}>
+      <label className={LABEL}>{label}</label>
+      <div className="flex gap-2">
         <input
-          className="input"
+          className={`${INPUT} flex-1`}
           value={q}
           placeholder={placeholder ?? 'Поиск по ФИО…'}
           onChange={(e) => setQ(e.target.value)}
@@ -76,19 +77,19 @@ export function PersonPicker({ label, value, onChange, excludeId, placeholder }:
             }
           }}
         />
-        <button type="button" className="btn-secondary" onClick={search} disabled={loading}>
+        <button type="button" className={BTN_SECONDARY} onClick={search} disabled={loading}>
           {loading ? '…' : 'Найти'}
         </button>
       </div>
 
       {open && (
-        <div className="picker-list">
-          {results.length === 0 && <div className="picker-empty">Ничего не найдено</div>}
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-[10px] border border-line bg-stone-800 shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
+          {results.length === 0 && <div className="px-3.5 py-3 text-sm text-sand">Ничего не найдено</div>}
           {results.map((p) => (
             <button
               key={p.id}
               type="button"
-              className="picker-item"
+              className="block w-full cursor-pointer border-0 bg-transparent px-3.5 py-2.5 text-left text-sm text-cream hover:bg-gold/15"
               onClick={() => {
                 onChange({ id: p.id, full_name: p.full_name });
                 setOpen(false);
@@ -96,7 +97,7 @@ export function PersonPicker({ label, value, onChange, excludeId, placeholder }:
               }}
             >
               {p.full_name}
-              <span style={{ color: '#94a3b8', marginLeft: 6 }}>
+              <span className="ml-1.5 text-sand/60">
                 {p.birth_year ?? '?'}
                 {p.death_year ? `–${p.death_year}` : ''}
               </span>

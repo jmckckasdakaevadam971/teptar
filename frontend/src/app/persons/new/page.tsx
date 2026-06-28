@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Person } from '@/lib/types';
 import type { PersonRef } from '@/components/PersonPicker/PersonPicker';
+import { BTN_PRIMARY, CARD } from '@/lib/ui';
 
 /**
  * Создание персоны в трёх режимах (определяется query-параметрами):
@@ -67,17 +68,17 @@ export default function NewPersonPage() {
 
   if (ready && !user) {
     return (
-      <div className="card" style={{ maxWidth: 460, margin: '0 auto' }}>
-        <h1>Нужен вход</h1>
-        <p style={{ color: '#64748b' }}>Чтобы добавлять людей в древо, войдите в систему.</p>
-        <a className="btn-primary" href="/login?next=/persons/new">
+      <div className={`${CARD} mx-auto max-w-[460px]`}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Нужен вход</h1>
+        <p className="text-sand">Чтобы добавлять людей в древо, войдите в систему.</p>
+        <a className={`${BTN_PRIMARY} mt-3`} href="/login?next=/persons/new">
           Войти
         </a>
       </div>
     );
   }
 
-  if (!ready || !loaded) return <p>Загрузка…</p>;
+  if (!ready || !loaded) return <p className="text-sand">Загрузка…</p>;
 
   const title = childId
     ? `Добавить отца для: ${childName || '…'}`
@@ -92,9 +93,9 @@ export default function NewPersonPage() {
       : 'Создайте родоначальника. Затем добавляйте к нему детей и стройте древо.';
 
   return (
-    <div className="card" style={{ maxWidth: 680, margin: '0 auto' }}>
-      <h1>{title}</h1>
-      <p style={{ color: '#64748b', marginTop: 0 }}>{hint}</p>
+    <div className={`${CARD} mx-auto max-w-[680px]`}>
+      <h1 className="mb-2 text-3xl font-bold text-cream">{title}</h1>
+      <p className="mt-0 text-sand">{hint}</p>
       <PersonForm
         mode="create"
         lockedFather={childId ? null : father}

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { ACCENT_CARD, BTN_PRIMARY, BTN_SECONDARY, ERR_TEXT, INPUT } from '@/lib/ui';
 import type { Person } from '@/lib/types';
 
 /** Тип добавляемого родственника. */
@@ -126,31 +127,33 @@ export function RelativeAdder({ person, onAdded }: RelativeAdderProps) {
   const activeLabel = options.find((o) => o.kind === kind)?.label ?? '';
 
   return (
-    <div className="card reladd">
-      <div className="reladd-head">
-        <h3 className="reladd-title">Добавить родственника</h3>
-        <span className="reladd-sub">к: {person.full_name}</span>
+    <div className={ACCENT_CARD}>
+      <div className="mb-3 flex flex-wrap items-baseline gap-2.5">
+        <h3 className="m-0 text-lg font-semibold text-cream">Добавить родственника</h3>
+        <span className="text-sm text-sand">к: {person.full_name}</span>
       </div>
 
-      <div className="reladd-kinds">
+      <div className="flex flex-wrap gap-2.5">
         {options.map((o) => (
           <button
             key={o.kind}
             type="button"
-            className={`relkind ${kind === o.kind ? 'sel' : ''}`}
+            className={`flex min-w-[78px] cursor-pointer flex-col items-center gap-1 rounded-xl border bg-stone-700 px-3.5 py-3 text-sm transition hover:-translate-y-0.5 hover:border-gold-soft ${
+              kind === o.kind ? 'border-gold bg-gold/15 text-gold-light' : 'border-line text-cream'
+            }`}
             onClick={() => pickKind(o.kind)}
           >
-            <span className="relkind-ic">{o.icon}</span>
+            <span className="text-2xl leading-none">{o.icon}</span>
             <span>{o.label}</span>
           </button>
         ))}
       </div>
 
       {kind && (
-        <div className="reladd-form">
-          <div className="reladd-row">
+        <div className="mt-3.5 grid gap-3">
+          <div className="flex flex-wrap gap-2.5">
             <input
-              className="input"
+              className={`${INPUT} min-w-[160px] flex-1`}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={`Имя (${activeLabel.toLowerCase()})`}
@@ -160,14 +163,14 @@ export function RelativeAdder({ person, onAdded }: RelativeAdderProps) {
               }}
             />
             <input
-              className="input reladd-year"
+              className={`${INPUT} !w-[90px] !flex-none`}
               type="number"
               value={birth}
               onChange={(e) => setBirth(e.target.value)}
               placeholder="г.р."
             />
             <input
-              className="input reladd-year"
+              className={`${INPUT} !w-[90px] !flex-none`}
               type="number"
               value={death}
               onChange={(e) => setDeath(e.target.value)}
@@ -175,18 +178,18 @@ export function RelativeAdder({ person, onAdded }: RelativeAdderProps) {
             />
           </div>
 
-          {error && <p className="vis-error">{error}</p>}
+          {error && <p className={ERR_TEXT}>{error}</p>}
 
-          <div className="reladd-actions">
+          <div className="flex gap-2.5">
             <button
               type="button"
-              className="btn-primary"
+              className={BTN_PRIMARY}
               onClick={() => void submit()}
               disabled={busy || name.trim().length < 2}
             >
               {busy ? 'Добавляю…' : `Добавить: ${activeLabel}`}
             </button>
-            <button type="button" className="btn-secondary" onClick={reset} disabled={busy}>
+            <button type="button" className={BTN_SECONDARY} onClick={reset} disabled={busy}>
               Отмена
             </button>
           </div>

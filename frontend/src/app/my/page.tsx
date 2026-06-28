@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { PublishControl } from '@/components/PublishControl/PublishControl';
+import { BTN_PRIMARY, BTN_SECONDARY, CARD } from '@/lib/ui';
 import type { TreeStatus, UserProfile } from '@/lib/types';
 
 /**
@@ -40,16 +41,16 @@ export default function MyTreePage() {
     else if (ready) setLoading(false);
   }, [ready, user, load]);
 
-  if (!ready || loading) return <div className="card">Загрузка…</div>;
+  if (!ready || loading) return <div className={CARD}>Загрузка…</div>;
 
   if (!user) {
     return (
-      <div className="card" style={{ textAlign: 'center', maxWidth: 480, margin: '0 auto' }}>
-        <h1>Моё древо</h1>
-        <p style={{ color: 'var(--muted)' }}>
+      <div className={`${CARD} mx-auto max-w-[480px] text-center`}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Моё древо</h1>
+        <p className="text-sand">
           Войдите, чтобы создавать и вести своё родословное древо.
         </p>
-        <a className="btn-primary" href="/login?next=/my">
+        <a className={`${BTN_PRIMARY} mt-3`} href="/login?next=/my">
           Войти
         </a>
       </div>
@@ -60,75 +61,70 @@ export default function MyTreePage() {
   const rootId = profile?.root_person_id ?? null;
 
   return (
-    <div style={{ display: 'grid', gap: 20, maxWidth: 820, margin: '0 auto' }}>
+    <div className="mx-auto grid max-w-[820px] gap-5">
       <div>
-        <h1>Моё древо</h1>
-        <p style={{ color: 'var(--muted)', marginTop: 0 }}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Моё древо</h1>
+        <p className="mt-0 text-sand">
           Здесь вы строите свою родословную и решаете, делиться ли ею с общей базой.
         </p>
       </div>
 
       {error && (
-        <div className="card">
-          <p className="vis-error" style={{ margin: 0 }}>{error}</p>
+        <div className={CARD}>
+          <p className="m-0 text-sm text-[#dc2626]">{error}</p>
         </div>
       )}
 
       {isEmpty ? (
         /* Пустое состояние — крупный призыв начать */
-        <div className="card mytree-empty">
-          <div className="mytree-empty-ic">🌳</div>
-          <h2 className="mytree-empty-title">У вас ещё нет древа</h2>
-          <p className="mytree-empty-sub">
+        <div className={`${CARD} px-6 py-14 text-center`}>
+          <div className="mb-3.5 text-[64px] leading-none">🌳</div>
+          <h2 className="mb-2 text-[26px] font-bold text-cream">У вас ещё нет древа</h2>
+          <p className="mx-auto mb-6 max-w-[460px] text-base leading-relaxed text-sand">
             Начните с себя или со старшего родственника — затем добавляйте родителей,
             детей и супругов прямо в древе одним кликом.
           </p>
-          <a className="btn-primary mytree-cta" href="/persons/new">
+          <a className={`${BTN_PRIMARY} !px-7 !py-3.5 !text-[17px]`} href="/persons/new">
             + Создать своё древо
           </a>
         </div>
       ) : (
         <>
           {/* Быстрые действия */}
-          <div className="card mytree-actions">
+          <div className={`${CARD} mb-3.5 flex flex-wrap items-center justify-between gap-4`}>
             <div>
-              <h2 className="mytree-h2">Продолжить построение</h2>
-              <p style={{ color: 'var(--muted)', margin: 0 }}>
+              <h2 className="m-0 text-[22px] font-semibold text-cream">Продолжить построение</h2>
+              <p className="m-0 text-sand">
                 Откройте древо и добавляйте родственников кнопками «сын / дочь / отец / жена».
               </p>
             </div>
-            <div className="mytree-buttons">
+            <div className="flex flex-wrap gap-2.5">
               {rootId && (
-                <a className="btn-primary" href={`/person/${rootId}`}>
+                <a className={BTN_PRIMARY} href={`/person/${rootId}`}>
                   Открыть моё древо
                 </a>
               )}
-              <a className="btn-secondary" href="/persons/new">
+              <a className={BTN_SECONDARY} href="/persons/new">
                 + Новый корень
               </a>
             </div>
           </div>
 
           {/* Статистика */}
-          <div className="card">
-            <h2 className="mytree-h2">Сводка</h2>
-            <div className="profile-stats">
-              <div className="pstat">
-                <span className="pstat-num">{tree!.total}</span>
-                <span className="pstat-lbl">всего персон</span>
-              </div>
-              <div className="pstat">
-                <span className="pstat-num">{tree!.published}</span>
-                <span className="pstat-lbl">в общей базе</span>
-              </div>
-              <div className="pstat">
-                <span className="pstat-num">{tree!.pending}</span>
-                <span className="pstat-lbl">на модерации</span>
-              </div>
-              <div className="pstat">
-                <span className="pstat-num">{tree!.private}</span>
-                <span className="pstat-lbl">только у меня</span>
-              </div>
+          <div className={CARD}>
+            <h2 className="m-0 text-[22px] font-semibold text-cream">Сводка</h2>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { num: tree!.total, lbl: 'всего персон' },
+                { num: tree!.published, lbl: 'в общей базе' },
+                { num: tree!.pending, lbl: 'на модерации' },
+                { num: tree!.private, lbl: 'только у меня' },
+              ].map((s) => (
+                <div key={s.lbl} className="rounded-[10px] border border-line bg-stone-700 px-3 py-4 text-center">
+                  <span className="block text-[28px] font-bold leading-none text-gold-light">{s.num}</span>
+                  <span className="mt-1.5 block text-xs text-sand">{s.lbl}</span>
+                </div>
+              ))}
             </div>
           </div>
 

@@ -8,6 +8,7 @@ import { RelativeAdder } from '@/components/RelativeAdder/RelativeAdder';
 import { ExportButtons } from '@/features/export/ExportButtons';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { BTN_SECONDARY, CARD, TOGGLE, toggleBtn } from '@/lib/ui';
 import type { Person, TreeNode, Family } from '@/lib/types';
 
 /** Краткая подпись с годами жизни. */
@@ -20,10 +21,15 @@ function years(p: { birth_year: number | null; death_year: number | null }): str
 function RelativeChip({ p, role }: { p: Person; role: string }) {
   const y = years(p);
   return (
-    <a className={`relchip ${p.gender === 'f' ? 'f' : 'm'}`} href={`/person/${p.id}`}>
-      <span className="relchip-role">{role}</span>
-      <span className="relchip-name">{p.full_name}</span>
-      {y && <span className="relchip-years">{y}</span>}
+    <a
+      className={`inline-flex flex-col gap-0.5 rounded-[10px] border border-l-[3px] border-line bg-stone-700 px-3.5 py-2.5 no-underline transition hover:-translate-y-0.5 hover:border-gold-soft ${
+        p.gender === 'f' ? 'border-l-[#c77dad]' : 'border-l-[#5a8fd6]'
+      }`}
+      href={`/person/${p.id}`}
+    >
+      <span className="text-[11px] uppercase tracking-[0.04em] text-sand">{role}</span>
+      <span className="text-[15px] font-semibold text-cream">{p.full_name}</span>
+      {y && <span className="text-xs text-sand">{y}</span>}
     </a>
   );
 }
@@ -58,8 +64,8 @@ export default function PersonPage({ params }: { params: { id: string } }) {
     void load();
   }, [load]);
 
-  if (error) return <p style={{ color: '#e08a7a' }}>{error}</p>;
-  if (!person) return <p>Загрузка…</p>;
+  if (error) return <p className="text-[#e08a7a]">{error}</p>;
+  if (!person) return <p className="text-sand">Загрузка…</p>;
 
   const isOwner = !!user && person.created_by === user.id;
   const canEdit = !!user && (isOwner || user.role === 'teip_admin' || user.role === 'super_admin');
@@ -69,7 +75,7 @@ export default function PersonPage({ params }: { params: { id: string } }) {
     (family.father || family.mother || family.spouses.length > 0 || family.children.length > 0);
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
+    <div className="grid gap-5">
       <PersonCard person={person} />
 
       {isOwner && <PublishControl />}
@@ -79,24 +85,24 @@ export default function PersonPage({ params }: { params: { id: string } }) {
 
       {/* Семья: родители, супруги, дети */}
       {hasFamily && (
-        <div className="card">
-          <h3 className="family-title">Семья</h3>
-          <div className="family-grid">
+        <div className={CARD}>
+          <h3 className="mb-3.5 mt-0 text-lg font-semibold text-cream">Семья</h3>
+          <div className="grid gap-4">
             {(family!.father || family!.mother) && (
-              <div className="family-group">
-                <div className="family-group-label">Родители</div>
-                <div className="family-chips">
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-sand">Родители</div>
+                <div className="flex flex-wrap gap-2.5">
                   {family!.father && <RelativeChip p={family!.father} role="отец" />}
                   {family!.mother && <RelativeChip p={family!.mother} role="мать" />}
                 </div>
               </div>
             )}
             {family!.spouses.length > 0 && (
-              <div className="family-group">
-                <div className="family-group-label">
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-sand">
                   {person.gender === 'm' ? 'Жёны' : 'Мужья'}
                 </div>
-                <div className="family-chips">
+                <div className="flex flex-wrap gap-2.5">
                   {family!.spouses.map((s) => (
                     <RelativeChip
                       key={s.id}
@@ -108,9 +114,9 @@ export default function PersonPage({ params }: { params: { id: string } }) {
               </div>
             )}
             {family!.children.length > 0 && (
-              <div className="family-group">
-                <div className="family-group-label">Дети ({family!.children.length})</div>
-                <div className="family-chips">
+              <div>
+                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-sand">Дети ({family!.children.length})</div>
+                <div className="flex flex-wrap gap-2.5">
                   {family!.children.map((c) => (
                     <RelativeChip
                       key={c.id}
@@ -126,32 +132,26 @@ export default function PersonPage({ params }: { params: { id: string } }) {
       )}
 
       {canEdit && (
-        <div className="actions">
-          <a className="btn-secondary" href={`/person/${personId}/edit`}>
+        <div className="flex flex-wrap gap-2">
+          <a className={BTN_SECONDARY} href={`/person/${personId}/edit`}>
             Редактировать данные
           </a>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="toggle">
-          <button
-            className={direction === 'down' ? 'active' : ''}
-            onClick={() => setDirection('down')}
-          >
+      <div className="flex flex-wrap items-center gap-2">
+        <div className={TOGGLE}>
+          <button className={toggleBtn(direction === 'down')} onClick={() => setDirection('down')}>
             Потомки
           </button>
-          <button
-            className={direction === 'up' ? 'active' : ''}
-            onClick={() => setDirection('up')}
-          >
+          <button className={toggleBtn(direction === 'up')} onClick={() => setDirection('up')}>
             Предки
           </button>
         </div>
         <ExportButtons personId={personId} />
       </div>
 
-      <div className="card">
+      <div className={CARD}>
         <TreeView
           nodes={nodes}
           rootId={personId}

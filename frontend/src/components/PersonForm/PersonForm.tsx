@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { canModerate, useAuth } from '@/lib/auth';
 import type { Gender, Person, Teip, Village } from '@/lib/types';
 import { PersonPicker, type PersonRef } from '@/components/PersonPicker/PersonPicker';
+import { BTN_PRIMARY, BTN_SECONDARY, FIELD, FORM_GRID, FORM_ROW, INPUT, LABEL, LINK_BTN } from '@/lib/ui';
 
 interface PersonFormProps {
   mode: 'create' | 'edit';
@@ -137,11 +138,11 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
   }
 
   return (
-    <form className="person-form" onSubmit={handleSubmit}>
-      <div className="field">
-        <label>ФИО *</label>
+    <form className={FORM_GRID} onSubmit={handleSubmit}>
+      <div className={FIELD}>
+        <label className={LABEL}>ФИО *</label>
         <input
-          className="input"
+          className={INPUT}
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Например, Магомед Ахмадович"
@@ -149,28 +150,28 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
         />
       </div>
 
-      <div className="form-row">
-        <div className="field">
-          <label>Пол</label>
-          <select className="input" value={gender} onChange={(e) => setGender(e.target.value as Gender)}>
+      <div className={FORM_ROW}>
+        <div className={FIELD}>
+          <label className={LABEL}>Пол</label>
+          <select className={INPUT} value={gender} onChange={(e) => setGender(e.target.value as Gender)}>
             <option value="m">муж.</option>
             <option value="f">жен.</option>
           </select>
         </div>
-        <div className="field">
-          <label>Год рождения</label>
+        <div className={FIELD}>
+          <label className={LABEL}>Год рождения</label>
           <input
-            className="input"
+            className={INPUT}
             type="number"
             value={birthYear}
             onChange={(e) => setBirthYear(e.target.value)}
             placeholder="1940"
           />
         </div>
-        <div className="field">
-          <label>Год смерти</label>
+        <div className={FIELD}>
+          <label className={LABEL}>Год смерти</label>
           <input
-            className="input"
+            className={INPUT}
             type="number"
             value={deathYear}
             onChange={(e) => setDeathYear(e.target.value)}
@@ -179,10 +180,10 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
         </div>
       </div>
 
-      <div className="form-row">
-        <div className="field">
-          <label>Тейп</label>
-          <select className="input" value={teipId} onChange={(e) => setTeipId(e.target.value)}>
+      <div className={FORM_ROW}>
+        <div className={FIELD}>
+          <label className={LABEL}>Тейп</label>
+          <select className={INPUT} value={teipId} onChange={(e) => setTeipId(e.target.value)}>
             <option value="">— не указан —</option>
             {teipsByTukhum.map(([tukhum, list]) => (
               <optgroup key={tukhum} label={tukhum}>
@@ -195,9 +196,9 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
             ))}
           </select>
         </div>
-        <div className="field">
-          <label>Населённый пункт</label>
-          <select className="input" value={villageId} onChange={(e) => setVillageId(e.target.value)}>
+        <div className={FIELD}>
+          <label className={LABEL}>Населённый пункт</label>
+          <select className={INPUT} value={villageId} onChange={(e) => setVillageId(e.target.value)}>
             <option value="">— не указан —</option>
             {villages.map((v) => (
               <option key={v.id} value={v.id}>
@@ -209,25 +210,25 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
           </select>
           {canModerate(user?.role) &&
             (showNewVillage ? (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <div className="mt-2 flex gap-2">
                 <input
-                  className="input"
+                  className={INPUT}
                   value={newVillage}
                   placeholder="Новое село"
                   onChange={(e) => setNewVillage(e.target.value)}
                 />
                 <input
-                  className="input"
+                  className={INPUT}
                   value={newDistrict}
                   placeholder="Район"
                   onChange={(e) => setNewDistrict(e.target.value)}
                 />
-                <button type="button" className="btn-secondary" onClick={addVillage}>
+                <button type="button" className={BTN_SECONDARY} onClick={addVillage}>
                   ОК
                 </button>
               </div>
             ) : (
-              <button type="button" className="link-btn" onClick={() => setShowNewVillage(true)}>
+              <button type="button" className={LINK_BTN} onClick={() => setShowNewVillage(true)}>
                 + добавить село
               </button>
             ))}
@@ -249,10 +250,10 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
         placeholder="Найти мать по ФИО…"
       />
 
-      <div className="field">
-        <label>Примечание</label>
+      <div className={FIELD}>
+        <label className={LABEL}>Примечание</label>
         <textarea
-          className="input"
+          className={`${INPUT} resize-y`}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
@@ -260,9 +261,9 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
         />
       </div>
 
-      {error && <p style={{ color: '#dc2626', margin: 0 }}>{error}</p>}
+      {error && <p className="m-0 text-red-600">{error}</p>}
 
-      <button type="submit" className="btn-primary" disabled={saving}>
+      <button type="submit" className={BTN_PRIMARY} disabled={saving}>
         {saving ? 'Сохранение…' : submitLabel ?? (mode === 'create' ? 'Создать' : 'Сохранить')}
       </button>
     </form>

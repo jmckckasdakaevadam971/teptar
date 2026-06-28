@@ -5,6 +5,7 @@ import { PersonForm } from '@/components/PersonForm/PersonForm';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Person } from '@/lib/types';
+import { BTN_PRIMARY, CARD } from '@/lib/ui';
 
 /** Редактирование существующей персоны. */
 export default function EditPersonPage({ params }: { params: { id: string } }) {
@@ -22,22 +23,22 @@ export default function EditPersonPage({ params }: { params: { id: string } }) {
 
   if (ready && !user) {
     return (
-      <div className="card" style={{ maxWidth: 460, margin: '0 auto' }}>
-        <h1>Нужен вход</h1>
-        <p style={{ color: '#64748b' }}>Чтобы редактировать запись, войдите в систему.</p>
-        <a className="btn-primary" href={`/login?next=/person/${personId}/edit`}>
+      <div className={`${CARD} mx-auto max-w-[460px]`}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Нужен вход</h1>
+        <p className="text-sand">Чтобы редактировать запись, войдите в систему.</p>
+        <a className={`${BTN_PRIMARY} mt-3`} href={`/login?next=/person/${personId}/edit`}>
           Войти
         </a>
       </div>
     );
   }
 
-  if (error) return <p style={{ color: '#dc2626' }}>{error}</p>;
-  if (!person) return <p>Загрузка…</p>;
+  if (error) return <p className="text-[#dc2626]">{error}</p>;
+  if (!person) return <p className="text-sand">Загрузка…</p>;
 
   return (
-    <div className="card" style={{ maxWidth: 680, margin: '0 auto' }}>
-      <h1>Редактировать: {person.full_name}</h1>
+    <div className={`${CARD} mx-auto max-w-[680px]`}>
+      <h1 className="mb-3 text-3xl font-bold text-cream">Редактировать: {person.full_name}</h1>
       <PersonForm
         mode="edit"
         initial={person}

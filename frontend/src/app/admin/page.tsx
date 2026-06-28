@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
+import { BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
 import type { AdminStats, AdminUser, UserRole } from '@/lib/types';
 
 /** Человекочитаемые названия ролей. */
@@ -81,13 +82,13 @@ export default function AdminPage() {
     }
   }
 
-  if (!ready) return <div className="card">Загрузка…</div>;
+  if (!ready) return <div className={CARD}>Загрузка…</div>;
 
   if (!canModerate) {
     return (
-      <div className="card">
-        <h1>Админ-панель</h1>
-        <p style={{ color: '#64748b' }}>
+      <div className={CARD}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Админ-панель</h1>
+        <p className="text-sand">
           Доступ только для администраторов. Войдите под учётной записью с
           правами модерации.
         </p>
@@ -96,10 +97,10 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 24 }}>
+    <div className="grid gap-6">
       <div>
-        <h1>Админ-панель</h1>
-        <p style={{ color: 'var(--muted)', margin: 0 }}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Админ-панель</h1>
+        <p className="m-0 text-sand">
           {isSuperAdmin
             ? 'Управление пользователями, модерация и обзор данных проекта.'
             : 'Модерация древ, отправленных пользователями в общую базу.'}
@@ -111,102 +112,104 @@ export default function AdminPage() {
       {isSuperAdmin && (
         <>
           {error && (
-            <div className="card" style={{ borderColor: '#5b2c25', background: '#2a1714', color: '#e08a7a' }}>
+            <div className="rounded border border-[#5b2c25] bg-[#2a1714] p-[18px] text-[#e08a7a]">
               {error}
             </div>
           )}
 
           {/* Обзор */}
-      <div className="stat-grid">
-        {STAT_LABELS.map(({ key, label }) => (
-          <div key={key} className="stat-card">
-            <div className="stat-value">{stats ? stats[key] : '—'}</div>
-            <div className="stat-label">{label}</div>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
+            {STAT_LABELS.map(({ key, label }) => (
+              <div key={key} className="rounded-[14px] border border-line bg-stone-800 p-5 text-center">
+                <div className="text-[32px] font-extrabold leading-[1.1] text-gold-light">
+                  {stats ? stats[key] : '—'}
+                </div>
+                <div className="mt-1.5 text-sm text-sand">{label}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Пользователи */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 20 }}>Пользователи</h2>
-          <button type="button" className="btn-secondary" onClick={() => void load()} disabled={loading}>
-            Обновить
-          </button>
-        </div>
+          {/* Пользователи */}
+          <div className={CARD}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="m-0 text-xl font-semibold text-cream">Пользователи</h2>
+              <button type="button" className={BTN_SECONDARY} onClick={() => void load()} disabled={loading}>
+                Обновить
+              </button>
+            </div>
 
-        {loading ? (
-          <p style={{ color: '#64748b' }}>Загрузка…</p>
-        ) : users.length === 0 ? (
-          <p style={{ color: '#64748b' }}>Пользователей пока нет.</p>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Имя</th>
-                  <th>Телефон</th>
-                  <th>E-mail</th>
-                  <th>Роль</th>
-                  <th>Регистрация</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => {
-                  const isSelf = u.id === user?.id;
-                  return (
-                    <tr key={u.id}>
-                      <td>
-                        <span className="user-name">{u.display_name}</span>
-                        {isSelf && <span className="self-tag"> (вы)</span>}
-                      </td>
-                      <td>{u.phone ?? '—'}</td>
-                      <td>{u.email ?? '—'}</td>
-                      <td>
-                        <select
-                          className="role-select"
-                          value={u.role}
-                          disabled={isSelf || busyId === u.id}
-                          onChange={(e) => void changeRole(u.id, e.target.value as UserRole)}
-                          title={isSelf ? 'Нельзя менять собственную роль' : 'Сменить роль'}
-                        >
-                          {ROLE_OPTIONS.map((r) => (
-                            <option key={r} value={r}>
-                              {ROLE_LABELS[r]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)' }}>
-                        {new Date(u.created_at).toLocaleDateString('ru-RU', {
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </td>
-                      <td>
-                        {!isSelf && (
-                          <button
-                            type="button"
-                            className="link-btn danger"
-                            disabled={busyId === u.id}
-                            onClick={() => void removeUser(u.id, u.display_name)}
-                          >
-                            Удалить
-                          </button>
-                        )}
-                      </td>
+            {loading ? (
+              <p className="text-sand">Загрузка…</p>
+            ) : users.length === 0 ? (
+              <p className="text-sand">Пользователей пока нет.</p>
+            ) : (
+              <div className={TABLE_WRAP}>
+                <table className={TABLE}>
+                  <thead>
+                    <tr>
+                      <th>Имя</th>
+                      <th>Телефон</th>
+                      <th>E-mail</th>
+                      <th>Роль</th>
+                      <th>Регистрация</th>
+                      <th></th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => {
+                      const isSelf = u.id === user?.id;
+                      return (
+                        <tr key={u.id}>
+                          <td className="whitespace-nowrap">
+                            <span className="font-semibold text-gold-light">{u.display_name}</span>
+                            {isSelf && <span className="text-xs text-sand"> (вы)</span>}
+                          </td>
+                          <td className="whitespace-nowrap">{u.phone ?? '—'}</td>
+                          <td className="whitespace-nowrap">{u.email ?? '—'}</td>
+                          <td>
+                            <select
+                              className={ROLE_SELECT}
+                              value={u.role}
+                              disabled={isSelf || busyId === u.id}
+                              onChange={(e) => void changeRole(u.id, e.target.value as UserRole)}
+                              title={isSelf ? 'Нельзя менять собственную роль' : 'Сменить роль'}
+                            >
+                              {ROLE_OPTIONS.map((r) => (
+                                <option key={r} value={r}>
+                                  {ROLE_LABELS[r]}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="whitespace-nowrap text-sand">
+                            {new Date(u.created_at).toLocaleDateString('ru-RU', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td>
+                            {!isSelf && (
+                              <button
+                                type="button"
+                                className={LINK_DANGER}
+                                disabled={busyId === u.id}
+                                onClick={() => void removeUser(u.id, u.display_name)}
+                              >
+                                Удалить
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
         </>
       )}
     </div>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth, clearAuth, patchStoredUser } from '@/lib/auth';
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, ERR_TEXT, FIELD, INPUT, LABEL, OK_TEXT } from '@/lib/ui';
 import type { UserProfile, UserRole } from '@/lib/types';
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -116,14 +117,14 @@ export default function ProfilePage() {
     }
   }
 
-  if (!ready || loading) return <div className="card">Загрузка…</div>;
+  if (!ready || loading) return <div className={CARD}>Загрузка…</div>;
 
   if (!user) {
     return (
-      <div className="card" style={{ textAlign: 'center' }}>
-        <h1>Личный кабинет</h1>
-        <p style={{ color: 'var(--muted)' }}>Войдите, чтобы увидеть свой профиль и древо.</p>
-        <a className="btn-primary" href="/login">
+      <div className={`${CARD} text-center`}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Личный кабинет</h1>
+        <p className="text-sand">Войдите, чтобы увидеть свой профиль и древо.</p>
+        <a className={`${BTN_PRIMARY} mt-3`} href="/login">
           Войти
         </a>
       </div>
@@ -132,10 +133,10 @@ export default function ProfilePage() {
 
   if (error || !profile) {
     return (
-      <div className="card">
-        <h1>Личный кабинет</h1>
-        <p className="vis-error">{error ?? 'Профиль недоступен.'}</p>
-        <button type="button" className="btn-secondary" onClick={() => void load()}>
+      <div className={CARD}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Личный кабинет</h1>
+        <p className={ERR_TEXT}>{error ?? 'Профиль недоступен.'}</p>
+        <button type="button" className={`${BTN_SECONDARY} mt-3`} onClick={() => void load()}>
           Повторить
         </button>
       </div>
@@ -143,24 +144,28 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="profile-wrap">
+    <div className="grid gap-[18px]">
       {/* Шапка профиля */}
-      <div className="card profile-hero">
-        <div className="profile-avatar">{initials(profile.display_name)}</div>
-        <div className="profile-ident">
-          <h1 className="profile-name">{profile.display_name}</h1>
-          <div className="profile-tags">
-            <span className="role-badge">{ROLE_LABELS[profile.role]}</span>
-            <span className="profile-since">в проекте с {formatDate(profile.created_at)}</span>
+      <div className={`${CARD} flex flex-wrap items-center gap-5`}>
+        <div className="grid h-[76px] w-[76px] flex-shrink-0 place-items-center rounded-full bg-gradient-to-b from-gold-light to-gold text-[28px] font-bold text-stone-900 shadow-[0_6px_18px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.35)]">
+          {initials(profile.display_name)}
+        </div>
+        <div className="min-w-[200px] flex-1">
+          <h1 className="mb-1.5 mt-0 text-[26px] font-bold text-cream">{profile.display_name}</h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="rounded-full border border-gold-soft bg-gold/15 px-2.5 py-0.5 text-xs text-gold-light">
+              {ROLE_LABELS[profile.role]}
+            </span>
+            <span className="text-[13px] text-sand">в проекте с {formatDate(profile.created_at)}</span>
           </div>
-          <div className="profile-contacts">
+          <div className="mt-2 flex flex-wrap gap-4 text-sm text-cream">
             {profile.phone && <span>📞 {profile.phone}</span>}
             {profile.email && <span>✉️ {profile.email}</span>}
           </div>
         </div>
         <button
           type="button"
-          className="link-btn profile-logout"
+          className="cursor-pointer self-start border-0 bg-transparent p-0 text-[13px] text-[#e08a7a] hover:underline"
           onClick={() => {
             clearAuth();
             window.location.href = '/';
@@ -170,66 +175,69 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      {profileMsg && <p className="vis-notice">{profileMsg}</p>}
+      {profileMsg && <p className={OK_TEXT}>{profileMsg}</p>}
 
       {/* Быстрый переход к древу */}
-      <a className="card profile-link-card" href="/my">
+      <a
+        className={`${CARD} flex items-center justify-between gap-4 no-underline transition hover:-translate-y-0.5 hover:border-gold-soft`}
+        href="/my"
+      >
         <div>
-          <h2 className="profile-h2" style={{ margin: 0 }}>🌳 Моё древо</h2>
-          <p style={{ color: 'var(--muted)', margin: '6px 0 0' }}>
+          <h2 className="m-0 text-xl font-semibold text-cream">🌳 Моё древо</h2>
+          <p className="mt-1.5 text-sand">
             Стройте родословную, добавляйте родственников и управляйте видимостью.
           </p>
         </div>
-        <span className="profile-link-arrow">→</span>
+        <span className="flex-shrink-0 text-[28px] text-gold-light">→</span>
       </a>
 
       {/* Данные профиля */}
-      <div className="card">
-        <div className="profile-section-head">
-          <h2 className="profile-h2">Данные профиля</h2>
+      <div className={CARD}>
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="m-0 text-xl font-semibold text-cream">Данные профиля</h2>
           {!editing && (
-            <button type="button" className="btn-secondary" onClick={() => setEditing(true)}>
+            <button type="button" className={BTN_SECONDARY} onClick={() => setEditing(true)}>
               Редактировать
             </button>
           )}
         </div>
 
-        {profileErr && <p className="vis-error">{profileErr}</p>}
+        {profileErr && <p className={ERR_TEXT}>{profileErr}</p>}
 
         {editing ? (
-          <div className="profile-form">
-            <label className="field">
-              <span className="field-label">Имя</span>
+          <div className="grid max-w-[460px] gap-3.5">
+            <label className={FIELD}>
+              <span className={LABEL}>Имя</span>
               <input
-                className="input"
+                className={INPUT}
                 value={form.display_name}
                 onChange={(e) => setForm({ ...form, display_name: e.target.value })}
                 placeholder="Как вас зовут"
               />
             </label>
-            <label className="field">
-              <span className="field-label">Телефон</span>
+            <label className={FIELD}>
+              <span className={LABEL}>Телефон</span>
               <input
-                className="input"
+                className={INPUT}
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 placeholder="+7…"
               />
             </label>
-            <label className="field">
-              <span className="field-label">E-mail</span>
+            <label className={FIELD}>
+              <span className={LABEL}>E-mail</span>
               <input
-                className="input"
+                className={INPUT}
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="you@example.ru"
               />
             </label>
-            <div className="profile-form-actions">
+            <div className="flex gap-2.5">
               <button
                 type="button"
-                className="btn-primary"
+                className={BTN_PRIMARY}
                 onClick={() => void saveProfile()}
                 disabled={savingProfile || form.display_name.trim().length < 2}
               >
@@ -237,7 +245,7 @@ export default function ProfilePage() {
               </button>
               <button
                 type="button"
-                className="btn-secondary"
+                className={BTN_SECONDARY}
                 onClick={() => {
                   setEditing(false);
                   setProfileErr(null);
@@ -254,57 +262,55 @@ export default function ProfilePage() {
             </div>
           </div>
         ) : (
-          <dl className="profile-info">
-            <div>
-              <dt>Имя</dt>
-              <dd>{profile.display_name}</dd>
-            </div>
-            <div>
-              <dt>Телефон</dt>
-              <dd>{profile.phone ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>E-mail</dt>
-              <dd>{profile.email ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Роль</dt>
-              <dd>{ROLE_LABELS[profile.role]}</dd>
-            </div>
+          <dl className="m-0 grid gap-0">
+            {[
+              { dt: 'Имя', dd: profile.display_name },
+              { dt: 'Телефон', dd: profile.phone ?? '—' },
+              { dt: 'E-mail', dd: profile.email ?? '—' },
+              { dt: 'Роль', dd: ROLE_LABELS[profile.role] },
+            ].map((row) => (
+              <div
+                key={row.dt}
+                className="flex justify-between gap-4 border-b border-line py-2.5 last:border-b-0"
+              >
+                <dt className="text-sm text-sand">{row.dt}</dt>
+                <dd className="m-0 font-semibold text-cream">{row.dd}</dd>
+              </div>
+            ))}
           </dl>
         )}
       </div>
 
       {/* Безопасность */}
-      <div className="card">
-        <div className="profile-section-head">
-          <h2 className="profile-h2">Безопасность</h2>
+      <div className={CARD}>
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="m-0 text-xl font-semibold text-cream">Безопасность</h2>
           {!pwOpen && (
-            <button type="button" className="btn-secondary" onClick={() => setPwOpen(true)}>
+            <button type="button" className={BTN_SECONDARY} onClick={() => setPwOpen(true)}>
               Сменить пароль
             </button>
           )}
         </div>
 
-        {pwMsg && <p className="vis-notice">{pwMsg}</p>}
-        {pwErr && <p className="vis-error">{pwErr}</p>}
+        {pwMsg && <p className={OK_TEXT}>{pwMsg}</p>}
+        {pwErr && <p className={ERR_TEXT}>{pwErr}</p>}
 
         {pwOpen && (
-          <div className="profile-form">
-            <label className="field">
-              <span className="field-label">Текущий пароль</span>
+          <div className="grid max-w-[460px] gap-3.5">
+            <label className={FIELD}>
+              <span className={LABEL}>Текущий пароль</span>
               <input
-                className="input"
+                className={INPUT}
                 type="password"
                 value={pw.current}
                 onChange={(e) => setPw({ ...pw, current: e.target.value })}
                 autoComplete="current-password"
               />
             </label>
-            <label className="field">
-              <span className="field-label">Новый пароль</span>
+            <label className={FIELD}>
+              <span className={LABEL}>Новый пароль</span>
               <input
-                className="input"
+                className={INPUT}
                 type="password"
                 value={pw.next}
                 onChange={(e) => setPw({ ...pw, next: e.target.value })}
@@ -312,20 +318,20 @@ export default function ProfilePage() {
                 placeholder="не короче 8 символов"
               />
             </label>
-            <label className="field">
-              <span className="field-label">Повторите новый</span>
+            <label className={FIELD}>
+              <span className={LABEL}>Повторите новый</span>
               <input
-                className="input"
+                className={INPUT}
                 type="password"
                 value={pw.confirm}
                 onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
                 autoComplete="new-password"
               />
             </label>
-            <div className="profile-form-actions">
+            <div className="flex gap-2.5">
               <button
                 type="button"
-                className="btn-primary"
+                className={BTN_PRIMARY}
                 onClick={() => void savePassword()}
                 disabled={savingPw || !pw.current || !pw.next}
               >
@@ -333,7 +339,7 @@ export default function ProfilePage() {
               </button>
               <button
                 type="button"
-                className="btn-secondary"
+                className={BTN_SECONDARY}
                 onClick={() => {
                   setPwOpen(false);
                   setPwErr(null);

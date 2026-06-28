@@ -1,6 +1,7 @@
 'use client';
 
 import type { Person } from '@/lib/types';
+import { BADGE_F, BADGE_M, BTN_SECONDARY, CARD, VIS_PENDING, VIS_PUBLIC } from '@/lib/ui';
 
 interface PersonCardProps {
   person: Person;
@@ -15,25 +16,25 @@ export function PersonCard({ person, onOpenTree }: PersonCardProps) {
       : 'годы неизвестны';
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 style={{ margin: 0 }}>{person.full_name}</h3>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div className={CARD}>
+      <div className="flex items-center justify-between">
+        <h3 className="m-0 text-lg font-semibold text-cream">{person.full_name}</h3>
+        <div className="flex items-center gap-2">
           {person.visibility === 'public' && person.status === 'pending' && (
-            <span className="vis-badge pending">⏳ На модерации</span>
+            <span className={VIS_PENDING}>⏳ На модерации</span>
           )}
           {person.visibility === 'public' && person.status === 'approved' && (
-            <span className="vis-badge public">🌍 В базе</span>
+            <span className={VIS_PUBLIC}>🌍 В базе</span>
           )}
-          <span className={`badge ${person.gender === 'f' ? 'badge-f' : 'badge-m'}`}>
+          <span className={person.gender === 'f' ? BADGE_F : BADGE_M}>
             {person.gender === 'f' ? 'жен.' : 'муж.'}
           </span>
         </div>
       </div>
-      <p style={{ color: 'var(--muted)', margin: '6px 0' }}>{years}</p>
-      {person.note && <p style={{ marginTop: 8 }}>{person.note}</p>}
+      <p className="my-1.5 text-sand">{years}</p>
+      {person.note && <p className="mt-2 text-cream/90">{person.note}</p>}
       {onOpenTree && (
-        <button className="btn-secondary" onClick={() => onOpenTree(person.id)} style={{ marginTop: 12 }}>
+        <button className={`${BTN_SECONDARY} mt-3`} onClick={() => onOpenTree(person.id)}>
           Показать древо
         </button>
       )}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
+import { BTN_PRIMARY, CARD, FIELD, FORM_GRID, INPUT, LABEL, TABS, tabBtn } from '@/lib/ui';
 
 type Tab = 'login' | 'register';
 
@@ -160,22 +161,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="card" style={{ maxWidth: 460, margin: '0 auto' }}>
-      <div className="tabs">
-        <button className={tab === 'login' ? 'active' : ''} onClick={() => setTab('login')}>
+    <div className={`${CARD} mx-auto max-w-[460px]`}>
+      <div className={TABS}>
+        <button className={tabBtn(tab === 'login')} onClick={() => setTab('login')}>
           Вход
         </button>
-        <button className={tab === 'register' ? 'active' : ''} onClick={() => setTab('register')}>
+        <button className={tabBtn(tab === 'register')} onClick={() => setTab('register')}>
           Регистрация
         </button>
       </div>
 
-      <form className="auth-form" onSubmit={submit}>
+      <form className={FORM_GRID} onSubmit={submit}>
         {tab === 'register' && (
-          <div className="field">
-            <label>Имя</label>
+          <div className={FIELD}>
+            <label className={LABEL}>Имя</label>
             <input
-              className="input"
+              className={INPUT}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Как вас называть"
@@ -183,10 +184,10 @@ export default function LoginPage() {
           </div>
         )}
 
-        <div className="field">
-          <label>{tab === 'login' ? 'Телефон или e-mail' : 'Телефон или e-mail (логин)'}</label>
+        <div className={FIELD}>
+          <label className={LABEL}>{tab === 'login' ? 'Телефон или e-mail' : 'Телефон или e-mail (логин)'}</label>
           <input
-            className="input"
+            className={INPUT}
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             placeholder="+7… или mail@example.com"
@@ -194,10 +195,10 @@ export default function LoginPage() {
         </div>
 
         {tab === 'register' && !login.includes('@') && (
-          <div className="field">
-            <label>E-mail (необязательно)</label>
+          <div className={FIELD}>
+            <label className={LABEL}>E-mail (необязательно)</label>
             <input
-              className="input"
+              className={INPUT}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -206,10 +207,10 @@ export default function LoginPage() {
           </div>
         )}
 
-        <div className="field">
-          <label>Пароль</label>
+        <div className={FIELD}>
+          <label className={LABEL}>Пароль</label>
           <input
-            className="input"
+            className={INPUT}
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -220,17 +221,17 @@ export default function LoginPage() {
         {/* Виджет проверки на бота — появляется, только если включён на сервере */}
         <div ref={widgetRef} />
         {siteKey && captchaState === 'loading' && (
-          <p style={{ color: '#64748b', margin: 0, fontSize: 14 }}>Загрузка проверки…</p>
+          <p className="m-0 text-sm text-sand">Загрузка проверки…</p>
         )}
         {siteKey && captchaState === 'error' && (
-          <p style={{ color: '#dc2626', margin: 0, fontSize: 14 }}>
+          <p className="m-0 text-sm text-red-600">
             Не удалось загрузить проверку. Обновите страницу (Ctrl+Shift+R).
           </p>
         )}
 
-        {error && <p style={{ color: '#dc2626', margin: 0 }}>{error}</p>}
+        {error && <p className="m-0 text-red-600">{error}</p>}
 
-        <button type="submit" className="btn-primary" disabled={busy}>
+        <button type="submit" className={BTN_PRIMARY} disabled={busy}>
           {busy ? '…' : tab === 'login' ? 'Войти' : 'Зарегистрироваться'}
         </button>
       </form>

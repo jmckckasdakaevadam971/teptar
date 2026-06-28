@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, LINK_DANGER, TABLE, TABLE_WRAP } from '@/lib/ui';
 import type { PendingTree, Person } from '@/lib/types';
 
 /** Описание диапазона лет древа. */
@@ -95,45 +96,50 @@ export function ModerationPanel() {
   }
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Модерация общей базы</h2>
-        <button type="button" className="btn-secondary" onClick={() => void load()} disabled={loading}>
+    <div className={CARD}>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="m-0 text-xl font-semibold text-cream">Модерация общей базы</h2>
+        <button type="button" className={BTN_SECONDARY} onClick={() => void load()} disabled={loading}>
           Обновить
         </button>
       </div>
 
-      {error && <p style={{ color: '#b91c1c' }}>{error}</p>}
+      {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
 
       {loading ? (
-        <p style={{ color: '#64748b' }}>Загрузка…</p>
+        <p className="text-sand">Загрузка…</p>
       ) : trees.length === 0 ? (
-        <p style={{ color: '#64748b' }}>Нет древ, ожидающих модерации.</p>
+        <p className="text-sand">Нет древ, ожидающих модерации.</p>
       ) : (
-        <div className="mod-list">
+        <div className="flex flex-col gap-2.5">
           {trees.map((t) => {
             const open = openId === t.owner_id;
             const persons = preview[t.owner_id];
             const root = persons ? rootOf(persons) : null;
             return (
-              <div key={t.owner_id} className={`mod-item ${open ? 'open' : ''}`}>
-                <div className="mod-row">
+              <div
+                key={t.owner_id}
+                className={`overflow-hidden rounded-xl border transition-colors ${
+                  open ? 'border-gold-soft' : 'border-line'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
                   <button
                     type="button"
-                    className="mod-toggle"
+                    className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-2.5 border-0 bg-transparent p-0 text-left text-cream"
                     onClick={() => void toggle(t.owner_id)}
                     aria-expanded={open}
                   >
-                    <span className={`mod-caret ${open ? 'down' : ''}`}>▸</span>
-                    <span className="mod-name">{t.owner_name}</span>
-                    <span className="mod-meta">
+                    <span className={`inline-block text-[13px] text-gold transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+                    <span className="text-[15px] font-bold text-gold-light">{t.owner_name}</span>
+                    <span className="text-[13px] text-sand">
                       {t.count} {t.count === 1 ? 'персона' : 'персон'} · {yearsLabel(t.min_year, t.max_year)}
                     </span>
                   </button>
-                  <div className="mod-actions">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      className="btn-primary"
+                      className={BTN_PRIMARY}
                       disabled={busyId === t.owner_id}
                       onClick={() => void decide(t.owner_id, 'approve', t.owner_name)}
                     >
@@ -141,7 +147,7 @@ export function ModerationPanel() {
                     </button>
                     <button
                       type="button"
-                      className="link-btn danger"
+                      className={LINK_DANGER}
                       disabled={busyId === t.owner_id}
                       onClick={() => void decide(t.owner_id, 'reject', t.owner_name)}
                     >
@@ -151,18 +157,18 @@ export function ModerationPanel() {
                 </div>
 
                 {open && (
-                  <div className="mod-preview">
+                  <div className="border-t border-dashed border-line bg-gold/[0.04] px-3.5 pb-3.5 pt-3">
                     {previewLoading && !persons ? (
-                      <p style={{ color: '#64748b', margin: 0 }}>Загрузка древа…</p>
+                      <p className="m-0 text-sand">Загрузка древа…</p>
                     ) : persons && persons.length > 0 ? (
                       <>
-                        <div className="mod-preview-head">
-                          <span style={{ color: '#64748b', fontSize: 13 }}>
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2.5">
+                          <span className="text-[13px] text-sand">
                             Персоны древа ({persons.length})
                           </span>
                           {root && (
                             <a
-                              className="btn-secondary mod-open-tree"
+                              className={`${BTN_SECONDARY} !px-3 !py-[5px] !text-[13px]`}
                               href={`/person/${root.id}`}
                               target="_blank"
                               rel="noreferrer"
@@ -171,8 +177,8 @@ export function ModerationPanel() {
                             </a>
                           )}
                         </div>
-                        <div className="table-wrap">
-                          <table className="data-table">
+                        <div className={TABLE_WRAP}>
+                          <table className={TABLE}>
                             <thead>
                               <tr>
                                 <th>ФИО</th>
@@ -186,8 +192,8 @@ export function ModerationPanel() {
                                 <tr key={p.id}>
                                   <td>{p.full_name}</td>
                                   <td>{p.gender === 'f' ? 'жен.' : 'муж.'}</td>
-                                  <td style={{ whiteSpace: 'nowrap' }}>{personYears(p)}</td>
-                                  <td style={{ color: '#64748b', whiteSpace: 'normal' }}>{p.note ?? '—'}</td>
+                                  <td className="whitespace-nowrap">{personYears(p)}</td>
+                                  <td className="whitespace-normal text-sand">{p.note ?? '—'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -195,7 +201,7 @@ export function ModerationPanel() {
                         </div>
                       </>
                     ) : (
-                      <p style={{ color: '#64748b', margin: 0 }}>В этом древе нет персон на модерации.</p>
+                      <p className="m-0 text-sand">В этом древе нет персон на модерации.</p>
                     )}
                   </div>
                 )}
