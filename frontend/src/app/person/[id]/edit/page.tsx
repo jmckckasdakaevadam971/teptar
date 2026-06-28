@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { PersonForm } from '@/components/PersonForm/PersonForm';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { api } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, canModerate } from '@/lib/auth';
 import type { Person } from '@/lib/types';
 import { BTN_PRIMARY, CARD } from '@/lib/ui';
 
@@ -44,6 +44,20 @@ function EditPersonPageInner({ params }: { params: { id: string } }) {
 
   if (error) return <p className="text-[#dc2626]">{error}</p>;
   if (!person) return <p className="text-sand">Загрузка…</p>;
+
+  // Редактировать можно только своё древо (или модераторам).
+  const canEdit = !!user && (person.created_by === user.id || canModerate(user.role));
+  if (!canEdit) {
+    return (
+      <div className={`${CARD} mx-auto max-w-[460px]`}>
+        <h1 className="mb-2 text-3xl font-bold text-cream">Чужое древо</h1>
+        <p className="text-sand">Эту запись можно только просматривать. Редактировать чужие древа нельзя.</p>
+        <a className={`${BTN_PRIMARY} mt-3`} href={`/person/${personId}`}>
+          К записи
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className={`${CARD} mx-auto max-w-[680px]`}>

@@ -34,7 +34,7 @@ export async function family(req: Request, res: Response): Promise<void> {
 
 export async function create(req: Request, res: Response): Promise<void> {
   const input = createPersonSchema.parse(req.body);
-  const person = await service.createPerson(input, req.user!.userId);
+  const person = await service.createPerson(input, viewerOf(req));
   res.status(201).json(ok(person));
 }
 
@@ -45,7 +45,7 @@ export async function update(req: Request, res: Response): Promise<void> {
 }
 
 export async function remove(req: Request, res: Response): Promise<void> {
-  await service.deletePerson(Number(req.params.id));
+  await service.deletePerson(Number(req.params.id), viewerOf(req));
   res.status(204).end();
 }
 

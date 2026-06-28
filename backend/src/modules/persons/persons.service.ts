@@ -161,16 +161,41 @@ async function assertNoCycle(childId: number, parentId: number): Promise<void> {
  * пользователь свободно строит своё древо. В общую базу древо уходит
  * отдельным действием «опубликовать».
  */
+/**
+ * Проверяет, что указанные родители принадлежат тому же пользователю (или он админ).
+ * Не даёт добавлять детей в чужое древо или пристыковываться к чужой персоне. */
+async function assertOwnsParents(
+  fatherId: number | null,
+  motherId: number | null,
+  viewer: Viewer,
+): Promise<void> {
+  if (isAdmin(viewer)) return;
+  const ids = [fatherId, motherId].filter((x): x is number => !!x);
+  if (ids.length === 0) return;
+  const rows = await query<{ id: number; created_by: number | null }>(
+    'SELECT id, created_by FROM persons WHERE id = ANY($1)',
+    [ids],
+  );
+  for (const r of rows) {
+    if (r.created_by !== viewer.userId) {
+      throw new ApiError(403, 'Нельзя добавлять людей в чужое древо');
+    }
+  }
+}
+
 export async function createPerson(
   input: CreatePersonInput,
-  userId: number | null,
+  viewer: Viewer,
 ): Promise<PersonRow> {
+  const userId = viewer.userId;
   // Корень древа (нет ни отца, ни матери) обязан иметь тейп и населённый пункт —
   // это основа для каталога древ и сопоставления родства между древами.
   const isRoot = !input.father_id && !input.mother_id;
   if (isRoot && (!input.teip_id || !input.village_id)) {
     throw new ApiError(400, 'Для корня древа укажите тейп и населённый пункт');
   }
+  // Нельзя добавлять людей в чужое древо: родитель должен быть своим (или вы админ).
+  await assertOwnsParents(input.father_id ?? null, input.mother_id ?? null, viewer);
 
   return withTransaction(async (client) => {
     const result = await client.query<PersonRow>(
@@ -218,6 +243,8 @@ export async function updatePerson(
   if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
     throw new ApiError(403, 'Можно редактировать только своё древо');
   }
+  // Нельзя привязать свою персону к родителю из чужого древа.
+  await assertOwnsParents(input.father_id ?? null, input.mother_id ?? null, viewer);
 
   if (input.father_id) await assertNoCycle(id, input.father_id);
   if (input.mother_id) await assertNoCycle(id, input.mother_id);
@@ -245,8 +272,12 @@ export async function updatePerson(
   return rows[0];
 }
 
-/** Удалить персону. */
-export async function deletePerson(id: number): Promise<void> {
+/** Удалить персону. Убирать можно только своё древо (или админам). */
+export async function deletePerson(id: number, viewer: Viewer): Promise<void> {
+  const existing = await getPerson(id);
+  if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
+    throw new ApiError(403, 'Удалять можно только своё древо');
+  }
   const rows = await query('DELETE FROM persons WHERE id = $1 RETURNING id', [id]);
   if (rows.length === 0) throw new ApiError(404, 'Человек не найден');
 }
