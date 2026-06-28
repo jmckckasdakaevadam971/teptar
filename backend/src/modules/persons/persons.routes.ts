@@ -12,6 +12,9 @@ export const personsRouter = Router();
 // Публичное чтение (с учётом видимости)
 personsRouter.get('/', asyncHandler(controller.list));
 
+// Публичный каталог опубликованных древ
+personsRouter.get('/trees/public', asyncHandler(controller.publicTrees));
+
 // Своё древо: статус и публикация в общую базу
 personsRouter.get('/tree/status', requireAuth, asyncHandler(controller.treeStatus));
 personsRouter.post('/tree/publish', requireAuth, asyncHandler(controller.publish));
@@ -41,6 +44,18 @@ personsRouter.post(
   requireAuth,
   requireRole('teip_admin', 'super_admin'),
   asyncHandler(controller.reject),
+);
+personsRouter.get(
+  '/moderation/:ownerId/duplicates',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.duplicates),
+);
+personsRouter.post(
+  '/moderation/merge',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.merge),
 );
 
 // Одна персона

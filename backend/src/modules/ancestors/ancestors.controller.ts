@@ -35,3 +35,8 @@ export async function common(req: Request, res: Response): Promise<void> {
   const result = await service.findCommonAncestor(a, b, viewerOf(req));
   res.json(ok(result));
 }
+
+export async function relatedTrees(req: Request, res: Response): Promise<void> {
+  const trees = await service.findRelatedTrees(req.user!.userId);
+  res.json(ok(trees));
+}

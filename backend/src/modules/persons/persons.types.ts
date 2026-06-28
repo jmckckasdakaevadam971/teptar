@@ -64,3 +64,18 @@ export const publishTreeSchema = z.object({
   cutoff_year: z.coerce.number().int().min(1800).max(2100).default(1970),
 });
 export type PublishTreeInput = z.infer<typeof publishTreeSchema>;
+
+/** Каталог опубликованных древ — фильтры. */
+export const publicTreesSchema = z.object({
+  q: z.string().optional(),
+  teip_id: z.coerce.number().int().positive().optional(),
+  village_id: z.coerce.number().int().positive().optional(),
+});
+export type PublicTreesQuery = z.infer<typeof publicTreesSchema>;
+
+/** Объединение двух персон (модератор). */
+export const mergeSchema = z.object({
+  keep_id: z.number().int().positive(),
+  drop_id: z.number().int().positive(),
+});
+export type MergeInput = z.infer<typeof mergeSchema>;

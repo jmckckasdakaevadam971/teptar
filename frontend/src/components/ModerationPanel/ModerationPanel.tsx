@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, LINK_DANGER, TABLE, TABLE_WRAP } from '@/lib/ui';
-import type { PendingTree, Person } from '@/lib/types';
+import type { PendingTree, Person, DuplicatePair } from '@/lib/types';
 
 /** Описание диапазона лет древа. */
 function yearsLabel(min: number | null, max: number | null): string {
@@ -41,6 +41,8 @@ export function ModerationPanel() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [preview, setPreview] = useState<Record<number, Person[]>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Возможные дубли с другими древами (по владельцу).
+  const [duplicates, setDuplicates] = useState<Record<number, DuplicatePair[]>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,8 +69,12 @@ export function ModerationPanel() {
     if (!preview[ownerId]) {
       setPreviewLoading(true);
       try {
-        const persons = await api.moderation.persons(ownerId);
+        const [persons, dups] = await Promise.all([
+          api.moderation.persons(ownerId),
+          api.moderation.duplicates(ownerId).catch(() => [] as DuplicatePair[]),
+        ]);
         setPreview((prev) => ({ ...prev, [ownerId]: persons }));
+        setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Не удалось загрузить древо');
         setOpenId(null);
@@ -90,6 +96,26 @@ export function ModerationPanel() {
       if (openId === ownerId) setOpenId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось выполнить действие');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** Объединить две записи: keep остаётся, drop удаляется и перепривязывается. */
+  async function merge(ownerId: number, keepId: number, dropId: number) {
+    if (!confirm('Объединить эти две записи? Действие необратимо.')) return;
+    setBusyId(ownerId);
+    setError(null);
+    try {
+      await api.moderation.merge(keepId, dropId);
+      const [persons, dups] = await Promise.all([
+        api.moderation.persons(ownerId),
+        api.moderation.duplicates(ownerId).catch(() => [] as DuplicatePair[]),
+      ]);
+      setPreview((prev) => ({ ...prev, [ownerId]: persons }));
+      setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось объединить');
     } finally {
       setBusyId(null);
     }
@@ -202,6 +228,52 @@ export function ModerationPanel() {
                       </>
                     ) : (
                       <p className="m-0 text-sand">В этом древе нет персон на модерации.</p>
+                    )}
+
+                    {duplicates[t.owner_id] && duplicates[t.owner_id].length > 0 && (
+                      <div className="mt-3 rounded-lg border border-gold-soft bg-gold/[0.06] p-3">
+                        <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
+                          ⚠ Возможные совпадения с другими древами ({duplicates[t.owner_id].length})
+                        </p>
+                        <div className="flex flex-col gap-2">
+                          {duplicates[t.owner_id].map((d, i) => (
+                            <div
+                              key={`${d.person.id}-${d.candidate.id}-${i}`}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-2.5 py-2"
+                            >
+                              <div className="min-w-[220px] flex-1 text-[13px] text-cream">
+                                <span className="text-gold-light">{d.person.full_name}</span>
+                                <span className="text-sand"> ({d.person.birth_year ?? '?'})</span>
+                                <span className="text-sand"> ↔ </span>
+                                <span className="text-gold-light">{d.candidate.full_name}</span>
+                                <span className="text-sand"> ({d.candidate.birth_year ?? '?'})</span>
+                                <span className="text-sand">
+                                  {' · '}
+                                  {d.candidate.owner_name ?? 'другой автор'} · ~{Math.round(d.candidate.similarity * 100)}%
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className={`${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`}
+                                  disabled={busyId === t.owner_id}
+                                  onClick={() => void merge(t.owner_id, d.candidate.id, d.person.id)}
+                                >
+                                  Оставить чужую
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`}
+                                  disabled={busyId === t.owner_id}
+                                  onClick={() => void merge(t.owner_id, d.person.id, d.candidate.id)}
+                                >
+                                  Оставить эту
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}

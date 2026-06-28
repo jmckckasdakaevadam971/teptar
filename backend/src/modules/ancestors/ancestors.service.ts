@@ -1,6 +1,7 @@
 import { query } from '../../db/pool.js';
 import { ApiError } from '../../utils/http.js';
 import type { UserRole } from '../../middleware/auth.js';
+import { findSimilarApproved } from '../persons/persons.service.js';
 
 /** Кто запрашивает дерево — для контроля видимости. */
 export interface Viewer {
@@ -189,4 +190,82 @@ function describeRelation(a: number, b: number): string {
   if (a === 3 && b === 3) return 'Троюродные';
   if (a === 4 && b === 4) return 'Четвероюродные';
   return `Дальнее родство (предки на ${a} и ${b} поколений)`;
+}
+
+// ============================================================================
+//  ПРИМЕРНОЕ РОДСТВО С ДРУГИМИ ДРЕВАМИ
+//  Древа разных людей не связаны по id, поэтому родство «примерное» —
+//  через нечёткое совпадение персон (ядро findSimilarApproved).
+// ============================================================================
+
+export interface RelatedTreeMatch {
+  my_person: { id: number; full_name: string; birth_year: number | null };
+  their_person: { id: number; full_name: string; birth_year: number | null };
+  similarity: number;
+}
+
+export interface RelatedTree {
+  owner_id: number;
+  owner_name: string | null;
+  teip_name: string | null;
+  match_count: number;
+  best: RelatedTreeMatch;
+  /** Персона в чужом древе, к которой можно перейти. */
+  link_person_id: number;
+}
+
+/**
+ * Найти чужие древа, где встречаются похожие на моих люди.
+ * Группируем по владельцу; для каждого — лучшее совпадение и ссылка.
+ */
+export async function findRelatedTrees(userId: number): Promise<RelatedTree[]> {
+  const mine = await query<{
+    id: number;
+    full_name: string;
+    birth_year: number | null;
+    teip_id: number | null;
+  }>(
+    `SELECT id, full_name, birth_year, teip_id
+     FROM persons WHERE created_by = $1 AND teip_id IS NOT NULL`,
+    [userId],
+  );
+
+  const byOwner = new Map<number, RelatedTree>();
+
+  for (const me of mine) {
+    const matches = await findSimilarApproved({
+      id: me.id,
+      full_name: me.full_name,
+      birth_year: me.birth_year,
+      teip_id: me.teip_id,
+      created_by: userId,
+    });
+    for (const m of matches) {
+      if (m.created_by === null || m.created_by === userId) continue;
+      const existing = byOwner.get(m.created_by);
+      const match: RelatedTreeMatch = {
+        my_person: { id: me.id, full_name: me.full_name, birth_year: me.birth_year },
+        their_person: { id: m.id, full_name: m.full_name, birth_year: m.birth_year },
+        similarity: m.similarity,
+      };
+      if (!existing) {
+        byOwner.set(m.created_by, {
+          owner_id: m.created_by,
+          owner_name: m.owner_name,
+          teip_name: m.teip_name,
+          match_count: 1,
+          best: match,
+          link_person_id: m.id,
+        });
+      } else {
+        existing.match_count += 1;
+        if (match.similarity > existing.best.similarity) {
+          existing.best = match;
+          existing.link_person_id = m.id;
+        }
+      }
+    }
+  }
+
+  return [...byOwner.values()].sort((a, b) => b.best.similarity - a.best.similarity);
 }

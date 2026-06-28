@@ -5,6 +5,8 @@ import {
   updatePersonSchema,
   listPersonsSchema,
   publishTreeSchema,
+  publicTreesSchema,
+  mergeSchema,
 } from './persons.types.js';
 import * as service from './persons.service.js';
 import type { Viewer } from './persons.service.js';
@@ -84,5 +86,26 @@ export async function approve(req: Request, res: Response): Promise<void> {
 
 export async function reject(req: Request, res: Response): Promise<void> {
   const result = await service.rejectTree(Number(req.params.ownerId), req.user!.userId);
+  res.json(ok(result));
+}
+
+// ── Каталог опубликованных древ (публично) ──────────────────────
+
+export async function publicTrees(req: Request, res: Response): Promise<void> {
+  const params = publicTreesSchema.parse(req.query);
+  const trees = await service.listPublicTrees(params);
+  res.json(ok(trees));
+}
+
+// ── Дубли и объединение (модератор) ──────────────────────────
+
+export async function duplicates(req: Request, res: Response): Promise<void> {
+  const pairs = await service.findOwnerDuplicates(Number(req.params.ownerId));
+  res.json(ok(pairs));
+}
+
+export async function merge(req: Request, res: Response): Promise<void> {
+  const { keep_id, drop_id } = mergeSchema.parse(req.body);
+  const result = await service.mergePersons(keep_id, drop_id, req.user!.userId);
   res.json(ok(result));
 }

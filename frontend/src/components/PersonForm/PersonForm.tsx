@@ -111,6 +111,17 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
       return;
     }
 
+    // Корень древа (без родителей) обязан иметь тейп и населённый пункт.
+    const isRoot = !father && !mother;
+    if (isRoot && !teipId) {
+      setError('Для корня древа выберите тейп');
+      return;
+    }
+    if (isRoot && !villageId) {
+      setError('Для корня древа выберите населённый пункт');
+      return;
+    }
+
     const payload: Partial<Person> = {
       full_name: fullName.trim(),
       gender,
@@ -136,6 +147,9 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
       setSaving(false);
     }
   }
+
+  // Корень древа — нет ни отца, ни матери: тейп и село обязательны.
+  const isRoot = !father && !mother;
 
   return (
     <form className={FORM_GRID} onSubmit={handleSubmit}>
@@ -182,7 +196,7 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
 
       <div className={FORM_ROW}>
         <div className={FIELD}>
-          <label className={LABEL}>Тейп</label>
+          <label className={LABEL}>Тейп{isRoot ? ' *' : ''}</label>
           <select className={INPUT} value={teipId} onChange={(e) => setTeipId(e.target.value)}>
             <option value="">— не указан —</option>
             {teipsByTukhum.map(([tukhum, list]) => (
@@ -197,7 +211,7 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
           </select>
         </div>
         <div className={FIELD}>
-          <label className={LABEL}>Населённый пункт</label>
+          <label className={LABEL}>Населённый пункт{isRoot ? ' *' : ''}</label>
           <select className={INPUT} value={villageId} onChange={(e) => setVillageId(e.target.value)}>
             <option value="">— не указан —</option>
             {villages.map((v) => (
@@ -234,6 +248,13 @@ export function PersonForm({ mode, initial, lockedFather, onSaved, submitLabel }
             ))}
         </div>
       </div>
+
+      {isRoot ? (
+        <p className="m-0 text-[13px] text-sand">
+          Это корень древа (родители не указаны) — тейп и населённый пункт
+          обязательны.
+        </p>
+      ) : null}
 
       <PersonPicker
         label="Отец"

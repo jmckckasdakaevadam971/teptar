@@ -165,6 +165,13 @@ export async function createPerson(
   input: CreatePersonInput,
   userId: number | null,
 ): Promise<PersonRow> {
+  // Корень древа (нет ни отца, ни матери) обязан иметь тейп и населённый пункт —
+  // это основа для каталога древ и сопоставления родства между древами.
+  const isRoot = !input.father_id && !input.mother_id;
+  if (isRoot && (!input.teip_id || !input.village_id)) {
+    throw new ApiError(400, 'Для корня древа укажите тейп и населённый пункт');
+  }
+
   return withTransaction(async (client) => {
     const result = await client.query<PersonRow>(
       `
@@ -410,4 +417,255 @@ export async function rejectTree(ownerId: number, adminId: number): Promise<{ co
     [adminId, JSON.stringify({ owner: ownerId, count: rows.length })],
   );
   return { count: rows.length };
+}
+
+// ============================================================================
+//  ПОХОЖЕСТЬ ПЕРСОН МЕЖДУ ДРЕВАМИ (общее ядро)
+//  Используется и для «примерного родства», и для поиска дублей.
+//  Правило: нечёткое совпадение ФИО (pg_trgm) + тот же тейп + год ±2.
+// ============================================================================
+
+export interface SimilarPerson {
+  id: number;
+  full_name: string;
+  birth_year: number | null;
+  death_year: number | null;
+  teip_id: number | null;
+  teip_name: string | null;
+  created_by: number | null;
+  owner_name: string | null;
+  similarity: number;
+}
+
+/** Ключевые поля персоны для сопоставления. */
+export interface MatchSeed {
+  id: number;
+  full_name: string;
+  birth_year: number | null;
+  teip_id: number | null;
+  created_by: number | null;
+}
+
+/**
+ * Найти похожих людей в ЧУЖИХ древах (другой владелец).
+ * statuses — какие статусы целевых персон учитывать (approved и/или pending).
+ */
+export async function findSimilar(
+  seed: MatchSeed,
+  statuses: Array<'approved' | 'pending'>,
+): Promise<SimilarPerson[]> {
+  if (!seed.teip_id || !seed.full_name) return [];
+  return query<SimilarPerson>(
+    `
+    SELECT p.id, p.full_name, p.birth_year, p.death_year, p.teip_id,
+           t.name AS teip_name, p.created_by, u.display_name AS owner_name,
+           similarity(p.full_name, $2) AS similarity
+    FROM persons p
+    LEFT JOIN users u ON u.id = p.created_by
+    LEFT JOIN teips t ON t.id = p.teip_id
+    WHERE p.id <> $1
+      AND p.created_by IS DISTINCT FROM $5
+      AND p.visibility = 'public'
+      AND p.status = ANY($6)
+      AND p.teip_id = $3
+      AND p.full_name % $2
+      AND ($4::int IS NULL OR p.birth_year IS NULL OR abs(p.birth_year - $4) <= 2)
+    ORDER BY similarity DESC
+    LIMIT 8
+    `,
+    [seed.id, seed.full_name, seed.teip_id, seed.birth_year, seed.created_by, statuses],
+  );
+}
+
+/** Похожие только среди одобренных (для кросс-древо родства). */
+export function findSimilarApproved(seed: MatchSeed): Promise<SimilarPerson[]> {
+  return findSimilar(seed, ['approved']);
+}
+
+// ============================================================================
+//  КАТАЛОГ ОПУБЛИКОВАННЫХ ДРЕВ («видеть друг друга»)
+// ============================================================================
+
+export interface PublicTree {
+  owner_id: number;
+  owner_name: string;
+  count: number;
+  min_year: number | null;
+  max_year: number | null;
+  root_person_id: number | null;
+  root_person_name: string | null;
+  teip_id: number | null;
+  teip_name: string | null;
+}
+
+/**
+ * Список опубликованных (public + approved) древ, сгруппированный по владельцу.
+ * Фильтры: фамилия (q), тейп, село — древо попадаёт в выдачу, если содержит
+ * хотя бы одну подходящую персону; статистика считается по всему древу.
+ */
+export async function listPublicTrees(filters: {
+  q?: string;
+  teip_id?: number;
+  village_id?: number;
+}): Promise<PublicTree[]> {
+  const match: string[] = [
+    `p.visibility = 'public'`,
+    `p.status = 'approved'`,
+    `p.created_by IS NOT NULL`,
+  ];
+  const args: unknown[] = [];
+  if (filters.teip_id) {
+    args.push(filters.teip_id);
+    match.push(`p.teip_id = $${args.length}`);
+  }
+  if (filters.village_id) {
+    args.push(filters.village_id);
+    match.push(`p.village_id = $${args.length}`);
+  }
+  if (filters.q) {
+    args.push(`%${filters.q}%`);
+    match.push(`p.full_name ILIKE $${args.length}`);
+  }
+
+  return query<PublicTree>(
+    `
+    WITH matched_owners AS (
+      SELECT DISTINCT p.created_by AS owner_id
+      FROM persons p
+      WHERE ${match.join(' AND ')}
+    ),
+    pub AS (
+      SELECT p.created_by, p.teip_id, p.birth_year, u.display_name AS owner_name
+      FROM persons p
+      JOIN users u ON u.id = p.created_by
+      WHERE p.visibility = 'public' AND p.status = 'approved'
+        AND p.created_by IN (SELECT owner_id FROM matched_owners)
+    )
+    SELECT owner.owner_id, owner.owner_name, owner.count,
+           owner.min_year, owner.max_year,
+           root.id AS root_person_id, root.full_name AS root_person_name,
+           t.id AS teip_id, t.name AS teip_name
+    FROM (
+      SELECT created_by AS owner_id,
+             MAX(owner_name) AS owner_name,
+             COUNT(*)::int AS count,
+             MIN(birth_year) AS min_year,
+             MAX(birth_year) AS max_year,
+             MODE() WITHIN GROUP (ORDER BY teip_id) AS teip_id
+      FROM pub
+      GROUP BY created_by
+    ) owner
+    LEFT JOIN teips t ON t.id = owner.teip_id
+    LEFT JOIN LATERAL (
+      SELECT id, full_name FROM persons
+      WHERE created_by = owner.owner_id
+        AND visibility = 'public' AND status = 'approved'
+      ORDER BY (father_id IS NOT NULL), COALESCE(birth_year, 9999), id
+      LIMIT 1
+    ) root ON true
+    ORDER BY owner.count DESC, owner.owner_name
+    LIMIT 100
+    `,
+    args,
+  );
+}
+
+// ============================================================================
+//  ДУБЛИ МЕЖДУ ДРЕВАМИ И ОБЪЕДИНЕНИЕ (модератор)
+// ============================================================================
+
+export interface DuplicatePair {
+  person: {
+    id: number;
+    full_name: string;
+    birth_year: number | null;
+    death_year: number | null;
+  };
+  candidate: SimilarPerson;
+}
+
+/**
+ * Возможные дубли для древа на модерации: каждая pending-персона владельца
+ * сверяется с персонами из чужих древ (approved или pending).
+ */
+export async function findOwnerDuplicates(ownerId: number): Promise<DuplicatePair[]> {
+  const persons = await query<PersonRow>(
+    `SELECT * FROM persons
+     WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'`,
+    [ownerId],
+  );
+  const pairs: DuplicatePair[] = [];
+  for (const p of persons) {
+    const candidates = await findSimilar(
+      { id: p.id, full_name: p.full_name, birth_year: p.birth_year, teip_id: p.teip_id, created_by: ownerId },
+      ['approved', 'pending'],
+    );
+    for (const candidate of candidates) {
+      pairs.push({
+        person: {
+          id: p.id,
+          full_name: p.full_name,
+          birth_year: p.birth_year,
+          death_year: p.death_year,
+        },
+        candidate,
+      });
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Объединить две записи: keep остаётся, drop удаляется.
+ * Дети и браки drop перепривязываются на keep. Так два древа связываются.
+ */
+export async function mergePersons(
+  keepId: number,
+  dropId: number,
+  adminId: number,
+): Promise<{ merged: boolean }> {
+  if (keepId === dropId) {
+    throw new ApiError(400, 'Нельзя объединить запись саму с собой');
+  }
+  return withTransaction(async (client) => {
+    const both = await client.query<{ id: number }>(
+      'SELECT id FROM persons WHERE id = ANY($1)',
+      [[keepId, dropId]],
+    );
+    if (both.rows.length < 2) throw new ApiError(404, 'Одна из записей не найдена');
+
+    // Перепривязать детей с drop на keep (но не сделать keep своим родителем).
+    await client.query(
+      'UPDATE persons SET father_id = $1 WHERE father_id = $2 AND id <> $1',
+      [keepId, dropId],
+    );
+    await client.query(
+      'UPDATE persons SET mother_id = $1 WHERE mother_id = $2 AND id <> $1',
+      [keepId, dropId],
+    );
+
+    // Перенести браки, избегая дублей и самобрака.
+    await client.query(
+      `UPDATE marriages mm SET husband_id = $1
+       WHERE mm.husband_id = $2 AND mm.wife_id <> $1
+         AND NOT EXISTS (SELECT 1 FROM marriages m WHERE m.husband_id = $1 AND m.wife_id = mm.wife_id)`,
+      [keepId, dropId],
+    );
+    await client.query(
+      `UPDATE marriages mm SET wife_id = $1
+       WHERE mm.wife_id = $2 AND mm.husband_id <> $1
+         AND NOT EXISTS (SELECT 1 FROM marriages m WHERE m.wife_id = $1 AND m.husband_id = mm.husband_id)`,
+      [keepId, dropId],
+    );
+
+    // Удалить дубль (оставшиеся его браки уйдут каскадом).
+    await client.query('DELETE FROM persons WHERE id = $1', [dropId]);
+
+    await client.query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES ($1, $2, 'merge', $3)`,
+      [keepId, adminId, JSON.stringify({ keep: keepId, drop: dropId })],
+    );
+    return { merged: true };
+  });
 }

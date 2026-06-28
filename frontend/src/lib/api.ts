@@ -17,6 +17,9 @@ import type {
   AdminStats,
   TreeStatus,
   PendingTree,
+  PublicTree,
+  RelatedTree,
+  DuplicatePair,
 } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
@@ -69,6 +72,16 @@ export const api = {
     /** Скрыть древо обратно в личное. */
     unpublish: () =>
       request<{ count: number }>('/persons/tree/unpublish', { method: 'POST' }),
+
+    /** Общий каталог опубликованных древ. */
+    publicTrees: (params: { q?: string; teip_id?: number; village_id?: number } = {}) => {
+      const qs = new URLSearchParams();
+      if (params.q) qs.set('q', params.q);
+      if (params.teip_id) qs.set('teip_id', String(params.teip_id));
+      if (params.village_id) qs.set('village_id', String(params.village_id));
+      const s = qs.toString();
+      return request<PublicTree[]>(`/persons/trees/public${s ? `?${s}` : ''}`);
+    },
   },
 
   tree: {
@@ -78,6 +91,8 @@ export const api = {
       request<TreeNode[]>(`/ancestors/${id}/down?depth=${depth}`),
     commonAncestor: (a: number, b: number) =>
       request<CommonAncestor>(`/ancestors/common?a=${a}&b=${b}`),
+    /** Примерное родство с другими древами. */
+    relatedTrees: () => request<RelatedTree[]>('/ancestors/related-trees'),
   },
 
   /** Браки (связи супругов). */
@@ -174,6 +189,15 @@ export const api = {
       request<{ count: number }>(`/persons/moderation/${ownerId}/approve`, { method: 'POST' }),
     reject: (ownerId: number) =>
       request<{ count: number }>(`/persons/moderation/${ownerId}/reject`, { method: 'POST' }),
+    /** Возможные дубли древа в других древах. */
+    duplicates: (ownerId: number) =>
+      request<DuplicatePair[]>(`/persons/moderation/${ownerId}/duplicates`),
+    /** Объединить две персоны (keep остаётся, drop удаляется). */
+    merge: (keep_id: number, drop_id: number) =>
+      request<{ merged: boolean }>('/persons/moderation/merge', {
+        method: 'POST',
+        body: JSON.stringify({ keep_id, drop_id }),
+      }),
   },
 
   /** Ссылка для скачивания экспорта (открывается напрямую). */

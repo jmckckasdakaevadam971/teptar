@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, GitBranch } from 'lucide-react'
+import { Search, GitBranch, Network, ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { TreeNode } from '@/lib/types'
+import type { TreeNode, RelatedTree } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const DEGREES = [
@@ -49,6 +49,8 @@ export function RelationsView({
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [degree, setDegree] = useState('Все')
+  const [related, setRelated] = useState<RelatedTree[]>([])
+  const [relatedLoading, setRelatedLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
@@ -60,6 +62,15 @@ export function RelationsView({
         setError(e instanceof Error ? e.message : 'Ошибка загрузки'),
       )
       .finally(() => setLoading(false))
+  }, [rootId])
+
+  useEffect(() => {
+    setRelatedLoading(true)
+    api.tree
+      .relatedTrees()
+      .then(setRelated)
+      .catch(() => setRelated([]))
+      .finally(() => setRelatedLoading(false))
   }, [rootId])
 
   const items = useMemo(
@@ -175,6 +186,64 @@ export function RelationsView({
           ) : null}
         </>
       )}
+
+      {/* Возможные родственники из других древ */}
+      <section className="flex flex-col gap-4 border-t border-border pt-8">
+        <div className="flex items-center gap-2">
+          <Network className="h-4 w-4 text-primary" />
+          <h2 className="font-serif text-xl font-semibold text-foreground">
+            Возможные родственники из других древ
+          </h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Совпадения по ФИО, тейпу и году рождения (±2) в проверенных
+          древах других составителей. Это предполагаемое родство — проверьте лично.
+        </p>
+        {relatedLoading ? (
+          <p className="py-6 text-center text-muted-foreground">Поиск совпадений…</p>
+        ) : related.length === 0 ? (
+          <p className="py-6 text-center text-muted-foreground">
+            Совпадений в других древах пока не найдено.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {related.map((r) => (
+              <div
+                key={r.owner_id}
+                className="rounded-2xl border border-border bg-card p-5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-serif text-base font-semibold text-foreground">
+                    Древо: {r.owner_name ?? 'без имени'}
+                  </p>
+                  <span className="shrink-0 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    ~{Math.round(r.best.similarity * 100)}%
+                  </span>
+                </div>
+                {r.teip_name ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Тейп: {r.teip_name}
+                  </p>
+                ) : null}
+                <p className="mt-3 text-sm text-foreground">
+                  <span className="text-muted-foreground">Совпадение: </span>
+                  {r.best.my_person.full_name} ↔ {r.best.their_person.full_name}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Всего совпадений: {r.match_count}
+                </p>
+                <a
+                  href={`/person/${r.link_person_id}`}
+                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-foreground"
+                >
+                  Перейти к древу
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

@@ -81,6 +81,59 @@ export interface PendingTree {
   max_year: number | null;
 }
 
+/** Опубликованное древо в общем каталоге. */
+export interface PublicTree {
+  owner_id: number;
+  owner_name: string;
+  count: number;
+  min_year: number | null;
+  max_year: number | null;
+  root_person_id: number | null;
+  root_person_name: string | null;
+  teip_id: number | null;
+  teip_name: string | null;
+}
+
+/** Похожая персона из чужого древа. */
+export interface SimilarPerson {
+  id: number;
+  full_name: string;
+  birth_year: number | null;
+  death_year: number | null;
+  teip_id: number | null;
+  teip_name: string | null;
+  created_by: number | null;
+  owner_name: string | null;
+  similarity: number;
+}
+
+/** Примерное родство с другим древом. */
+export interface RelatedTreeMatch {
+  my_person: { id: number; full_name: string; birth_year: number | null };
+  their_person: { id: number; full_name: string; birth_year: number | null };
+  similarity: number;
+}
+
+export interface RelatedTree {
+  owner_id: number;
+  owner_name: string | null;
+  teip_name: string | null;
+  match_count: number;
+  best: RelatedTreeMatch;
+  link_person_id: number;
+}
+
+/** Возможный дубль для модератора. */
+export interface DuplicatePair {
+  person: {
+    id: number;
+    full_name: string;
+    birth_year: number | null;
+    death_year: number | null;
+  };
+  candidate: SimilarPerson;
+}
+
 export interface TreeNode {
   id: number;
   full_name: string;
