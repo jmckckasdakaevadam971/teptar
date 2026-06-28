@@ -72,7 +72,22 @@ echo "▶ Собираю образы…"
 ssh "${SSH_TARGET}" "cd ${REMOTE_DIR} && docker compose build"
 
 echo "▶ Поднимаю БД и применяю инициализацию…"
-ssh "${SSH_TARGET}" "cd ${REMOTE_DIR} && docker compose up -d db && docker compose up db-init"
+ssh "${SSH_TARGET}" "cd ${REMOTE_DIR} && docker compose up -d db"
+
+# Том БД мог быть создан с другим паролем (повторные деплои / ротация .secrets),
+# из-за чего db-init падает с auth_failed. Выравниваем пароль роли через
+# локальный сокет контейнера (там trust), берём актуальные секреты из .env.
+echo "▶ Синхронизирую пароль БД с .env…"
+ssh "${SSH_TARGET}" bash -s <<'SYNC_PW' || true
+  cd /opt/teptar
+  set -a; . ./.env; set +a
+  USR="${POSTGRES_USER:-teptar}"; DB="${POSTGRES_DB:-teptar}"; PW="${POSTGRES_PASSWORD}"
+  for i in $(seq 1 20); do docker compose exec -T db pg_isready -U "$USR" -d "$DB" >/dev/null 2>&1 && break; sleep 2; done
+  printf "ALTER USER \"%s\" WITH PASSWORD '%s';\n" "$USR" "$PW" | docker compose exec -T db psql -U "$USR" -d "$DB" >/dev/null 2>&1 || true
+SYNC_PW
+
+echo "▶ Применяю инициализацию/миграции…"
+ssh "${SSH_TARGET}" "cd ${REMOTE_DIR} && docker compose up db-init"
 
 # 5. Проверяем наличие сертификата; если нет — выпускаем.
 echo "▶ Проверяю TLS-сертификат для ${DOMAIN}…"
