@@ -104,6 +104,11 @@ export async function duplicates(req: Request, res: Response): Promise<void> {
   res.json(ok(pairs));
 }
 
+export async function changes(req: Request, res: Response): Promise<void> {
+  const list = await service.getTreeChanges(Number(req.params.ownerId));
+  res.json(ok(list));
+}
+
 export async function merge(req: Request, res: Response): Promise<void> {
   const { keep_id, drop_id } = mergeSchema.parse(req.body);
   const result = await service.mergePersons(keep_id, drop_id, req.user!.userId);

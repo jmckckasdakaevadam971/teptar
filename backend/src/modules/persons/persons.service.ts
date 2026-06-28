@@ -251,11 +251,23 @@ export async function updatePerson(
 
   const fields: string[] = [];
   const args: unknown[] = [];
+  const diff: Record<string, { from: unknown; to: unknown }> = {};
   for (const [key, value] of Object.entries(input)) {
     args.push(value);
     fields.push(`${key} = $${args.length}`);
+    const before = (existing as unknown as Record<string, unknown>)[key];
+    if (before !== value) diff[key] = { from: before ?? null, to: value ?? null };
   }
   if (fields.length === 0) return getPerson(id);
+
+  // Если владелец правит уже опубликованную запись — она возвращается на
+  // модерацию, чтобы изменения проверил модератор. Админ правит сразу.
+  const wasPublic = existing.visibility === 'public' && existing.status === 'approved';
+  const sendToReview = wasPublic && !isAdmin(viewer);
+  if (sendToReview) {
+    args.push('pending');
+    fields.push(`status = $${args.length}`);
+  }
 
   args.push(id);
   const rows = await query<PersonRow>(
@@ -266,7 +278,7 @@ export async function updatePerson(
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES ($1, $2, 'update', $3)`,
-    [id, viewer.userId, JSON.stringify(input)],
+    [id, viewer.userId, JSON.stringify({ fields: diff, sent_to_review: sendToReview })],
   );
 
   return rows[0];
@@ -450,8 +462,32 @@ export async function rejectTree(ownerId: number, adminId: number): Promise<{ co
   return { count: rows.length };
 }
 
-// ============================================================================
-//  ПОХОЖЕСТЬ ПЕРСОН МЕЖДУ ДРЕВАМИ (общее ядро)
+/** Что изменилось в древе перед повторной модерацией (последние правки). */
+export interface TreeChange {
+  person_id: number;
+  full_name: string;
+  diff: Record<string, { from: unknown; to: unknown }>;
+  created_at: string;
+}
+
+export async function getTreeChanges(ownerId: number): Promise<TreeChange[]> {
+  const rows = await query<{ person_id: number; full_name: string; diff: any; created_at: string }>(
+    `SELECT cl.person_id, p.full_name, cl.diff, cl.created_at
+     FROM change_log cl
+     JOIN persons p ON p.id = cl.person_id
+     WHERE p.created_by = $1 AND p.visibility = 'public' AND p.status = 'pending'
+       AND cl.action = 'update'
+     ORDER BY cl.created_at DESC
+     LIMIT 100`,
+    [ownerId],
+  );
+  return rows.map((r) => ({
+    person_id: r.person_id,
+    full_name: r.full_name,
+    diff: r.diff?.fields ?? {},
+    created_at: r.created_at,
+  }));
+}
 //  Используется и для «примерного родства», и для поиска дублей.
 //  Правило: нечёткое совпадение ФИО (pg_trgm) + тот же тейп + год ±2.
 // ============================================================================

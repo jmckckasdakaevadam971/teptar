@@ -20,6 +20,7 @@ import type {
   PublicTree,
   RelatedTree,
   DuplicatePair,
+  TreeChange,
 } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
@@ -192,7 +193,9 @@ export const api = {
     /** Возможные дубли древа в других древах. */
     duplicates: (ownerId: number) =>
       request<DuplicatePair[]>(`/persons/moderation/${ownerId}/duplicates`),
-    /** Объединить две персоны (keep остаётся, drop удаляется). */
+    /** Что изменилось в древе перед повторной модерацией. */
+    changes: (ownerId: number) =>
+      request<TreeChange[]>(`/persons/moderation/${ownerId}/changes`),
     merge: (keep_id: number, drop_id: number) =>
       request<{ merged: boolean }>('/persons/moderation/merge', {
         method: 'POST',

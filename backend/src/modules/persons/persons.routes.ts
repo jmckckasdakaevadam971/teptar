@@ -51,6 +51,12 @@ personsRouter.get(
   requireRole('teip_admin', 'super_admin'),
   asyncHandler(controller.duplicates),
 );
+personsRouter.get(
+  '/moderation/:ownerId/changes',
+  requireAuth,
+  requireRole('teip_admin', 'super_admin'),
+  asyncHandler(controller.changes),
+);
 personsRouter.post(
   '/moderation/merge',
   requireAuth,

@@ -62,6 +62,11 @@ function EditPersonPageInner({ params }: { params: { id: string } }) {
   return (
     <div className={`${CARD} mx-auto max-w-[680px]`}>
       <h1 className="mb-3 text-3xl font-bold text-cream">Редактировать: {person.full_name}</h1>
+      {person.visibility === 'public' && person.status === 'approved' && (
+        <p className="mb-3 rounded-lg border border-gold-soft bg-gold/[0.06] p-3 text-[13px] text-sand">
+          Древо опубликовано: после сохранения изменения уйдут на проверку модератору.
+        </p>
+      )}
       <PersonForm
         mode="edit"
         initial={person}

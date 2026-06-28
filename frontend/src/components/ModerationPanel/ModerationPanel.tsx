@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, LINK_DANGER, TABLE, TABLE_WRAP } from '@/lib/ui';
-import type { PendingTree, Person, DuplicatePair } from '@/lib/types';
+import type { PendingTree, Person, DuplicatePair, TreeChange } from '@/lib/types';
 
 /** Описание диапазона лет древа. */
 function yearsLabel(min: number | null, max: number | null): string {
@@ -26,6 +26,20 @@ function rootOf(persons: Person[]): Person | null {
   return pool.reduce((a, b) => ((a.birth_year ?? 9999) <= (b.birth_year ?? 9999) ? a : b));
 }
 
+/** Человеко-читаемые названия полей для diff. */
+const FIELD_RU: Record<string, string> = {
+  full_name: 'ФИО',
+  gender: 'Пол',
+  birth_year: 'Год рождения',
+  death_year: 'Год смерти',
+  teip_id: 'Тейп',
+  gar_id: 'Гар',
+  village_id: 'Село',
+  note: 'Примечание',
+  father_id: 'Отец',
+  mother_id: 'Мать',
+};
+
 /**
  * Очередь модерации общей базы: древа, отправленные пользователями.
  * Модератор может развернуть древо и посмотреть персоны перед решением.
@@ -43,6 +57,8 @@ export function ModerationPanel() {
   const [previewLoading, setPreviewLoading] = useState(false);
   // Возможные дубли с другими древами (по владельцу).
   const [duplicates, setDuplicates] = useState<Record<number, DuplicatePair[]>>({});
+  // Правки, появившиеся после повторной отправки (что изменилось).
+  const [changes, setChanges] = useState<Record<number, TreeChange[]>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +91,10 @@ export function ModerationPanel() {
         ]);
         setPreview((prev) => ({ ...prev, [ownerId]: persons }));
         setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
+        api.moderation
+          .changes(ownerId)
+          .then((ch) => setChanges((prev) => ({ ...prev, [ownerId]: ch })))
+          .catch(() => undefined);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Не удалось загрузить древо');
         setOpenId(null);
@@ -228,6 +248,29 @@ export function ModerationPanel() {
                       </>
                     ) : (
                       <p className="m-0 text-sand">В этом древе нет персон на модерации.</p>
+                    )}
+
+                    {changes[t.owner_id] && changes[t.owner_id].length > 0 && (
+                      <div className="mt-3 rounded-lg border border-line bg-gold/[0.04] p-3">
+                        <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
+                          ✎ Что изменилось ({changes[t.owner_id].length})
+                        </p>
+                        <div className="flex flex-col gap-2">
+                          {changes[t.owner_id].map((c, i) => (
+                            <div key={`${c.person_id}-${i}`} className="text-[13px]">
+                              <span className="text-gold-light">{c.full_name}</span>
+                              <ul className="m-0 mt-1 list-disc pl-5 text-sand">
+                                {Object.entries(c.diff).map(([field, v]) => (
+                                  <li key={field}>
+                                    {FIELD_RU[field] ?? field}: <s>{String(v.from ?? '—')}</s> →{' '}
+                                    <span className="text-cream">{String(v.to ?? '—')}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
 
                     {duplicates[t.owner_id] && duplicates[t.owner_id].length > 0 && (

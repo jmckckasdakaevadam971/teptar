@@ -134,6 +134,14 @@ export interface DuplicatePair {
   candidate: SimilarPerson;
 }
 
+/** Правка персоны на повторной модерации (что изменилось). */
+export interface TreeChange {
+  person_id: number;
+  full_name: string;
+  diff: Record<string, { from: unknown; to: unknown }>;
+  created_at: string;
+}
+
 export interface TreeNode {
   id: number;
   full_name: string;
