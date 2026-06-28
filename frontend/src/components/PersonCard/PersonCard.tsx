@@ -18,7 +18,7 @@ export function PersonCard({ person, onOpenTree }: PersonCardProps) {
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between">
-        <h3 className="m-0 text-lg font-semibold text-cream">{person.full_name}</h3>
+        <h3 className="m-0 font-serif text-lg font-semibold text-foreground">{person.full_name}</h3>
         <div className="flex items-center gap-2">
           {person.visibility === 'public' && person.status === 'pending' && (
             <span className={VIS_PENDING}>⏳ На модерации</span>

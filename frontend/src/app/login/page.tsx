@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
+import { PageHeader } from '@/components/PageHeader/PageHeader';
+import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { BTN_PRIMARY, CARD, FIELD, FORM_GRID, INPUT, LABEL, TABS, tabBtn } from '@/lib/ui';
 
 type Tab = 'login' | 'register';
@@ -25,6 +27,14 @@ function nextUrl(): string {
 }
 
 export default function LoginPage() {
+  return (
+    <AppFrame>
+      <LoginPageInner />
+    </AppFrame>
+  );
+}
+
+function LoginPageInner() {
   const [tab, setTab] = useState<Tab>('login');
 
   // Поля входа
@@ -161,15 +171,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className={`${CARD} mx-auto max-w-[460px]`}>
-      <div className={TABS}>
-        <button className={tabBtn(tab === 'login')} onClick={() => setTab('login')}>
-          Вход
-        </button>
-        <button className={tabBtn(tab === 'register')} onClick={() => setTab('register')}>
-          Регистрация
-        </button>
-      </div>
+    <div className="mx-auto grid w-full max-w-md gap-6">
+      <PageHeader
+        eyebrow="Вход · Регистрация"
+        title="Личный кабинет"
+        description="Войдите или создайте аккаунт, чтобы вести своё родовое древо."
+      />
+      <div className={CARD}>
+        <div className={TABS}>
+          <button className={tabBtn(tab === 'login')} onClick={() => setTab('login')}>
+            Вход
+          </button>
+          <button className={tabBtn(tab === 'register')} onClick={() => setTab('register')}>
+            Регистрация
+          </button>
+        </div>
 
       <form className={FORM_GRID} onSubmit={submit}>
         {tab === 'register' && (
@@ -221,20 +237,21 @@ export default function LoginPage() {
         {/* Виджет проверки на бота — появляется, только если включён на сервере */}
         <div ref={widgetRef} />
         {siteKey && captchaState === 'loading' && (
-          <p className="m-0 text-sm text-sand">Загрузка проверки…</p>
+          <p className="m-0 text-sm text-muted-foreground">Загрузка проверки…</p>
         )}
         {siteKey && captchaState === 'error' && (
-          <p className="m-0 text-sm text-red-600">
+          <p className="m-0 text-sm text-[#f0a0a0]">
             Не удалось загрузить проверку. Обновите страницу (Ctrl+Shift+R).
           </p>
         )}
 
-        {error && <p className="m-0 text-red-600">{error}</p>}
+        {error && <p className="m-0 text-[#f0a0a0]">{error}</p>}
 
         <button type="submit" className={BTN_PRIMARY} disabled={busy}>
           {busy ? '…' : tab === 'login' ? 'Войти' : 'Зарегистрироваться'}
         </button>
       </form>
+      </div>
     </div>
   );
 }

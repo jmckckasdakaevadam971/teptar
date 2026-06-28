@@ -1,24 +1,24 @@
-'use client';
+'use client'
 
-import { useRef } from 'react';
-import { ArrowRight, TreeDeciduous, Link2 } from 'lucide-react';
-import { Reveal } from '@/components/Reveal/Reveal';
+import { useRef } from 'react'
+import { ArrowRight, TreeDeciduous, Link2 } from 'lucide-react'
+import { Reveal } from '@/components/Reveal/Reveal'
 
-export function HeroSection({ onSearch }: { onSearch: (q: string) => void }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+export function HeroSection({ onSearch }: { onSearch?: (q: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
 
   return (
     <section
       id="hero"
       className="grain relative isolate overflow-hidden pt-32 pb-20 md:pt-44 md:pb-28"
     >
-      {/* Силуэт башен на закате */}
+      {/* Tower silhouette background */}
       <div
         className="absolute inset-0 -z-10 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: "url('/images/towers-sunset.png')" }}
         aria-hidden="true"
       />
-      {/* Затемнение для читабельности */}
+      {/* Sunset gradient + dark wash for readability */}
       <div
         className="absolute inset-0 -z-10"
         aria-hidden="true"
@@ -58,13 +58,13 @@ export function HeroSection({ onSearch }: { onSearch: (q: string) => void }) {
           </p>
         </Reveal>
 
-        {/* Поиск */}
+        {/* Search bar */}
         <Reveal delay={240}>
           <form
             className="mx-auto mt-10 flex max-w-xl items-center gap-2 rounded-2xl border border-primary/40 bg-card/60 p-2 backdrop-blur-md transition-colors focus-within:border-primary"
             onSubmit={(e) => {
-              e.preventDefault();
-              onSearch((inputRef.current?.value ?? '').trim());
+              e.preventDefault()
+              onSearch?.((inputRef.current?.value ?? '').trim())
             }}
           >
             <input
@@ -84,18 +84,18 @@ export function HeroSection({ onSearch }: { onSearch: (q: string) => void }) {
           </form>
         </Reveal>
 
-        {/* Кнопки действий */}
+        {/* CTA buttons */}
         <Reveal delay={320}>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
-              href="/my"
+              href="#features"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground transition-all hover:-translate-y-0.5 hover:bg-accent sm:w-auto"
             >
               <TreeDeciduous className="h-5 w-5" />
               Моё древо
             </a>
             <a
-              href="/relatives"
+              href="#features"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary px-6 py-3 text-base font-semibold text-primary transition-all hover:-translate-y-0.5 hover:bg-primary/10 sm:w-auto"
             >
               <Link2 className="h-5 w-5" />
@@ -105,5 +105,5 @@ export function HeroSection({ onSearch }: { onSearch: (q: string) => void }) {
         </Reveal>
       </div>
     </section>
-  );
+  )
 }

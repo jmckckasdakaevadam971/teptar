@@ -1,14 +1,16 @@
+import Link from 'next/link'
+
 const SECTION_LINKS = [
   { label: 'Главная', href: '/' },
   { label: 'Моё древо', href: '/my' },
   { label: 'Родство', href: '/relatives' },
   { label: 'Справочник', href: '/reference' },
-];
+]
 
 export function SiteFooter() {
   return (
     <footer className="relative bg-background">
-      {/* Золотая орнаментальная линия */}
+      {/* Gold ornament line */}
       <div
         className="h-px w-full"
         aria-hidden="true"
@@ -33,12 +35,12 @@ export function SiteFooter() {
             <ul className="mt-4 space-y-3">
               {SECTION_LINKS.map((link) => (
                 <li key={link.label}>
-                  <a
+                  <Link
                     href={link.href}
                     className="text-sm text-muted-foreground transition-colors hover:text-primary"
                   >
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -68,5 +70,5 @@ export function SiteFooter() {
         </div>
       </div>
     </footer>
-  );
+  )
 }

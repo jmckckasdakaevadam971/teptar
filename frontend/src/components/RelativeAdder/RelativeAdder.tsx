@@ -129,8 +129,8 @@ export function RelativeAdder({ person, onAdded }: RelativeAdderProps) {
   return (
     <div className={ACCENT_CARD}>
       <div className="mb-3 flex flex-wrap items-baseline gap-2.5">
-        <h3 className="m-0 text-lg font-semibold text-cream">Добавить родственника</h3>
-        <span className="text-sm text-sand">к: {person.full_name}</span>
+        <h3 className="m-0 font-serif text-lg font-semibold text-foreground">Добавить родственника</h3>
+        <span className="text-sm text-muted-foreground">к: {person.full_name}</span>
       </div>
 
       <div className="flex flex-wrap gap-2.5">
@@ -138,8 +138,8 @@ export function RelativeAdder({ person, onAdded }: RelativeAdderProps) {
           <button
             key={o.kind}
             type="button"
-            className={`flex min-w-[78px] cursor-pointer flex-col items-center gap-1 rounded-xl border bg-stone-700 px-3.5 py-3 text-sm transition hover:-translate-y-0.5 hover:border-gold-soft ${
-              kind === o.kind ? 'border-gold bg-gold/15 text-gold-light' : 'border-line text-cream'
+            className={`flex min-w-[78px] cursor-pointer flex-col items-center gap-1 rounded-xl border bg-secondary px-3.5 py-3 text-sm transition hover:-translate-y-0.5 hover:border-primary ${
+              kind === o.kind ? 'border-primary bg-primary/15 text-primary' : 'border-border text-foreground'
             }`}
             onClick={() => pickKind(o.kind)}
           >

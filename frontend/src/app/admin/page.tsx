@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
+import { PageHeader } from '@/components/PageHeader/PageHeader';
+import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
 import type { AdminStats, AdminUser, UserRole } from '@/lib/types';
 
@@ -25,6 +27,14 @@ const STAT_LABELS: { key: keyof AdminStats; label: string }[] = [
 ];
 
 export default function AdminPage() {
+  return (
+    <AppFrame>
+      <AdminPageInner />
+    </AppFrame>
+  );
+}
+
+function AdminPageInner() {
   const { user, ready } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -86,9 +96,9 @@ export default function AdminPage() {
 
   if (!canModerate) {
     return (
-      <div className={CARD}>
-        <h1 className="mb-2 text-3xl font-bold text-cream">Админ-панель</h1>
-        <p className="text-sand">
+      <div className={`${CARD} mx-auto max-w-md text-center`}>
+        <h1 className="mb-2 font-serif text-2xl font-bold text-foreground">Админ-панель</h1>
+        <p className="text-muted-foreground">
           Доступ только для администраторов. Войдите под учётной записью с
           правами модерации.
         </p>
@@ -98,14 +108,15 @@ export default function AdminPage() {
 
   return (
     <div className="grid gap-6">
-      <div>
-        <h1 className="mb-2 text-3xl font-bold text-cream">Админ-панель</h1>
-        <p className="m-0 text-sand">
-          {isSuperAdmin
+      <PageHeader
+        eyebrow="Управление"
+        title="Админ-панель"
+        description={
+          isSuperAdmin
             ? 'Управление пользователями, модерация и обзор данных проекта.'
-            : 'Модерация древ, отправленных пользователями в общую базу.'}
-        </p>
-      </div>
+            : 'Модерация древ, отправленных пользователями в общую базу.'
+        }
+      />
 
       <ModerationPanel />
 
@@ -120,11 +131,11 @@ export default function AdminPage() {
           {/* Обзор */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4">
             {STAT_LABELS.map(({ key, label }) => (
-              <div key={key} className="rounded-[14px] border border-line bg-stone-800 p-5 text-center">
-                <div className="text-[32px] font-extrabold leading-[1.1] text-gold-light">
+              <div key={key} className="rounded-2xl border border-border bg-card p-5 text-center">
+                <div className="font-serif text-[32px] font-extrabold leading-[1.1] text-accent">
                   {stats ? stats[key] : '—'}
                 </div>
-                <div className="mt-1.5 text-sm text-sand">{label}</div>
+                <div className="mt-1.5 text-sm text-muted-foreground">{label}</div>
               </div>
             ))}
           </div>
@@ -132,16 +143,16 @@ export default function AdminPage() {
           {/* Пользователи */}
           <div className={CARD}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="m-0 text-xl font-semibold text-cream">Пользователи</h2>
+              <h2 className="m-0 font-serif text-xl font-semibold text-foreground">Пользователи</h2>
               <button type="button" className={BTN_SECONDARY} onClick={() => void load()} disabled={loading}>
                 Обновить
               </button>
             </div>
 
             {loading ? (
-              <p className="text-sand">Загрузка…</p>
+              <p className="text-muted-foreground">Загрузка…</p>
             ) : users.length === 0 ? (
-              <p className="text-sand">Пользователей пока нет.</p>
+              <p className="text-muted-foreground">Пользователей пока нет.</p>
             ) : (
               <div className={TABLE_WRAP}>
                 <table className={TABLE}>
@@ -161,8 +172,8 @@ export default function AdminPage() {
                       return (
                         <tr key={u.id}>
                           <td className="whitespace-nowrap">
-                            <span className="font-semibold text-gold-light">{u.display_name}</span>
-                            {isSelf && <span className="text-xs text-sand"> (вы)</span>}
+                            <span className="font-semibold text-accent">{u.display_name}</span>
+                            {isSelf && <span className="text-xs text-muted-foreground"> (вы)</span>}
                           </td>
                           <td className="whitespace-nowrap">{u.phone ?? '—'}</td>
                           <td className="whitespace-nowrap">{u.email ?? '—'}</td>
@@ -181,7 +192,7 @@ export default function AdminPage() {
                               ))}
                             </select>
                           </td>
-                          <td className="whitespace-nowrap text-sand">
+                          <td className="whitespace-nowrap text-muted-foreground">
                             {new Date(u.created_at).toLocaleDateString('ru-RU', {
                               year: 'numeric',
                               month: '2-digit',

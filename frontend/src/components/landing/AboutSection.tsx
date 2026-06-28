@@ -1,4 +1,4 @@
-import { Reveal } from '@/components/Reveal/Reveal';
+import { Reveal } from '@/components/Reveal/Reveal'
 
 export function AboutSection() {
   return (
@@ -31,5 +31,5 @@ export function AboutSection() {
         </Reveal>
       </div>
     </section>
-  );
+  )
 }

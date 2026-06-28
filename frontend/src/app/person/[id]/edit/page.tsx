@@ -2,13 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { PersonForm } from '@/components/PersonForm/PersonForm';
+import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Person } from '@/lib/types';
 import { BTN_PRIMARY, CARD } from '@/lib/ui';
 
 /** Редактирование существующей персоны. */
-export default function EditPersonPage({ params }: { params: { id: string } }) {
+export default function EditPersonPage(props: { params: { id: string } }) {
+  return (
+    <AppFrame>
+      <EditPersonPageInner {...props} />
+    </AppFrame>
+  );
+}
+
+function EditPersonPageInner({ params }: { params: { id: string } }) {
   const personId = Number(params.id);
   const { user, ready } = useAuth();
   const [person, setPerson] = useState<Person | null>(null);

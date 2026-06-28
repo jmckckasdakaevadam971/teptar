@@ -1,36 +1,65 @@
-'use client';
+'use client'
 
-import { CommonAncestorWidget } from '@/features/commonAncestor/CommonAncestorWidget';
-import { CARD } from '@/lib/ui';
+import { useEffect, useState } from 'react'
+import { PageShell } from '@/components/PageShell/PageShell'
+import { RelationsView } from '@/components/RelationsView/RelationsView'
+import { useAuth } from '@/lib/auth'
+import { api } from '@/lib/api'
 
-/**
- * Страница «Родство» — узнать, кем приходятся друг другу два человека.
- * Люди выбираются по имени, ID вводить не нужно.
- */
+type State = 'loading' | 'guest' | 'empty' | 'ready'
+
 export default function RelativesPage() {
+  const { user, ready } = useAuth()
+  const [rootId, setRootId] = useState<number | null>(null)
+  const [rootName, setRootName] = useState('Вы')
+  const [state, setState] = useState<State>('loading')
+
+  useEffect(() => {
+    if (!ready) return
+    if (!user) {
+      setState('guest')
+      return
+    }
+    setRootName(user.display_name)
+    setState('loading')
+    api.auth
+      .profile()
+      .then((p) => {
+        if (p.root_person_id) {
+          setRootId(p.root_person_id)
+          setState('ready')
+        } else {
+          setState('empty')
+        }
+      })
+      .catch(() => setState('empty'))
+  }, [ready, user])
+
   return (
-    <div className="mx-auto grid max-w-[720px] gap-5">
-      <div>
-        <h1 className="mb-2 text-3xl font-bold text-cream">Кем мы родственники?</h1>
-        <p className="mt-0 text-sand">
-          Выберите двух человек из общей базы — Vorhda найдёт их ближайшего общего
-          предка и определит степень родства.
+    <PageShell
+      eyebrow="Гергарло · Степени родства"
+      title="Родство"
+      description="Кем приходятся вам люди из вашего древа. Степени отсчитываются от вас как от точки отсчёта."
+    >
+      {state === 'loading' ? (
+        <p className="py-12 text-center text-muted-foreground">Загрузка…</p>
+      ) : state === 'guest' ? (
+        <p className="py-12 text-center text-muted-foreground">
+          Войдите, чтобы увидеть степени родства.{' '}
+          <a href="/login" className="text-primary hover:underline">
+            Войти
+          </a>
         </p>
-      </div>
-
-      <CommonAncestorWidget title="Найти общего предка" />
-
-      <div className={`${CARD} mt-[18px]`}>
-        <h3 className="mt-0 text-lg font-semibold text-cream">Как это работает</h3>
-        <ul className="mt-3 list-disc pl-5 leading-[1.9] text-cream marker:text-gold">
-          <li>Найдите и выберите первого человека по фамилии и имени.</li>
-          <li>То же для второго.</li>
-          <li>Нажмите «Узнать родство» — увидите общего предка и степень.</li>
-        </ul>
-        <p className="m-0 text-sm text-sand">
-          В поиске доступны люди из общей базы и из вашего личного древа.
+      ) : state === 'empty' ? (
+        <p className="py-12 text-center text-muted-foreground">
+          Сначала добавьте людей в своё древо.{' '}
+          <a href="/persons/new" className="text-primary hover:underline">
+            Добавить человека
+          </a>
         </p>
-      </div>
-    </div>
-  );
+      ) : rootId != null ? (
+        <RelationsView rootId={rootId} rootName={rootName} />
+      ) : null}
+    </PageShell>
+  )
 }

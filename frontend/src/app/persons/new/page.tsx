@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { PersonForm } from '@/components/PersonForm/PersonForm';
+import { PageHeader } from '@/components/PageHeader/PageHeader';
+import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Person } from '@/lib/types';
@@ -15,6 +17,14 @@ import { BTN_PRIMARY, CARD } from '@/lib/ui';
  *  • ?child=<id>           — создать отца и привязать к указанному ребёнку.
  */
 export default function NewPersonPage() {
+  return (
+    <AppFrame>
+      <NewPersonPageInner />
+    </AppFrame>
+  );
+}
+
+function NewPersonPageInner() {
   const { user, ready } = useAuth();
   const [father, setFather] = useState<PersonRef | null>(null);
   const [childId, setChildId] = useState<number | null>(null);
@@ -68,17 +78,17 @@ export default function NewPersonPage() {
 
   if (ready && !user) {
     return (
-      <div className={`${CARD} mx-auto max-w-[460px]`}>
-        <h1 className="mb-2 text-3xl font-bold text-cream">Нужен вход</h1>
-        <p className="text-sand">Чтобы добавлять людей в древо, войдите в систему.</p>
-        <a className={`${BTN_PRIMARY} mt-3`} href="/login?next=/persons/new">
+      <div className={`${CARD} mx-auto max-w-md text-center`}>
+        <h1 className="mb-2 font-serif text-2xl font-bold text-foreground">Нужен вход</h1>
+        <p className="text-muted-foreground">Чтобы добавлять людей в древо, войдите в систему.</p>
+        <a className={`${BTN_PRIMARY} mt-4`} href="/login?next=/persons/new">
           Войти
         </a>
       </div>
     );
   }
 
-  if (!ready || !loaded) return <p className="text-sand">Загрузка…</p>;
+  if (!ready || !loaded) return <p className="text-muted-foreground">Загрузка…</p>;
 
   const title = childId
     ? `Добавить отца для: ${childName || '…'}`
@@ -93,15 +103,16 @@ export default function NewPersonPage() {
       : 'Создайте родоначальника. Затем добавляйте к нему детей и стройте древо.';
 
   return (
-    <div className={`${CARD} mx-auto max-w-[680px]`}>
-      <h1 className="mb-2 text-3xl font-bold text-cream">{title}</h1>
-      <p className="mt-0 text-sand">{hint}</p>
-      <PersonForm
-        mode="create"
-        lockedFather={childId ? null : father}
-        onSaved={handleSaved}
-        submitLabel="Создать"
-      />
+    <div className="mx-auto grid w-full max-w-2xl gap-6">
+      <PageHeader eyebrow="Дезал · Новый человек" title={title} description={hint} />
+      <div className={CARD}>
+        <PersonForm
+          mode="create"
+          lockedFather={childId ? null : father}
+          onSaved={handleSaved}
+          submitLabel="Создать"
+        />
+      </div>
     </div>
   );
 }

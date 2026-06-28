@@ -39,8 +39,8 @@ export function CommonAncestorWidget({ title = '🔗 Найти общего п�
 
   return (
     <div className={CARD}>
-      <h3 className="mt-0 text-lg font-semibold text-cream">{title}</h3>
-      <p className="mb-[18px] text-[15px] text-sand">Выберите двух людей — покажем, как они связаны.</p>
+      <h3 className="mt-0 font-serif text-lg font-semibold text-foreground">{title}</h3>
+      <p className="mb-[18px] text-[15px] text-muted-foreground">Выберите двух людей — покажем, как они связаны.</p>
 
       <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2">
         <PersonPicker
@@ -70,22 +70,22 @@ export function CommonAncestorWidget({ title = '🔗 Найти общего п�
       {error && <p className={ERR_TEXT}>{error}</p>}
 
       {result && (
-        <div className="mt-[22px] rounded-xl border border-gold-soft bg-gradient-to-b from-gold/10 to-stone-900/60 p-5 text-center">
+        <div className="mt-[22px] rounded-2xl border border-primary/40 bg-card p-5 text-center">
           {result.ancestor ? (
             <>
-              <p className="text-cream">
+              <p className="text-foreground">
                 Общий предок:{' '}
                 <a
-                  className="my-1.5 inline-block text-[22px] font-bold text-gold-light hover:underline"
+                  className="my-1.5 inline-block font-serif text-[22px] font-bold text-primary hover:underline"
                   href={`/person/${result.ancestor.id}`}
                 >
                   {result.ancestor.full_name}
                 </a>
               </p>
-              <p className="mt-1 text-sm text-sand">Степень родства: {result.relation}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Степень родства: {result.relation}</p>
             </>
           ) : (
-            <p className="text-cream">{result.relation}</p>
+            <p className="text-foreground">{result.relation}</p>
           )}
         </div>
       )}

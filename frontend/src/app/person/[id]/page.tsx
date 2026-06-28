@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { TreeView } from '@/components/TreeView/TreeView';
+import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { PersonCard } from '@/components/PersonCard/PersonCard';
 import { PublishControl } from '@/components/PublishControl/PublishControl';
 import { RelativeAdder } from '@/components/RelativeAdder/RelativeAdder';
@@ -9,7 +10,7 @@ import { ExportButtons } from '@/features/export/ExportButtons';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { BTN_SECONDARY, CARD, TOGGLE, toggleBtn } from '@/lib/ui';
-import type { Person, TreeNode, Family } from '@/lib/types';
+import type { Person, Family } from '@/lib/types';
 
 /** Краткая подпись с годами жизни. */
 function years(p: { birth_year: number | null; death_year: number | null }): string {
@@ -22,14 +23,14 @@ function RelativeChip({ p, role }: { p: Person; role: string }) {
   const y = years(p);
   return (
     <a
-      className={`inline-flex flex-col gap-0.5 rounded-[10px] border border-l-[3px] border-line bg-stone-700 px-3.5 py-2.5 no-underline transition hover:-translate-y-0.5 hover:border-gold-soft ${
+      className={`inline-flex flex-col gap-0.5 rounded-xl border border-l-[3px] border-border bg-secondary px-3.5 py-2.5 no-underline transition hover:-translate-y-0.5 hover:border-primary ${
         p.gender === 'f' ? 'border-l-[#c77dad]' : 'border-l-[#5a8fd6]'
       }`}
       href={`/person/${p.id}`}
     >
-      <span className="text-[11px] uppercase tracking-[0.04em] text-sand">{role}</span>
-      <span className="text-[15px] font-semibold text-cream">{p.full_name}</span>
-      {y && <span className="text-xs text-sand">{y}</span>}
+      <span className="text-[11px] uppercase tracking-[0.04em] text-muted-foreground">{role}</span>
+      <span className="text-[15px] font-semibold text-foreground">{p.full_name}</span>
+      {y && <span className="text-xs text-muted-foreground">{y}</span>}
     </a>
   );
 }
@@ -39,33 +40,38 @@ export default function PersonPage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
   const [person, setPerson] = useState<Person | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
-  const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [direction, setDirection] = useState<'down' | 'up'>('down');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [p, fam, tree] = await Promise.all([
+      const [p, fam] = await Promise.all([
         api.persons.get(personId),
         api.persons.family(personId).catch(() => null),
-        direction === 'down'
-          ? api.tree.descendants(personId)
-          : api.tree.ancestors(personId),
       ]);
       setPerson(p);
       setFamily(fam);
-      setNodes(tree);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка загрузки');
     }
-  }, [personId, direction]);
+  }, [personId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (error) return <p className="text-[#e08a7a]">{error}</p>;
-  if (!person) return <p className="text-sand">Загрузка…</p>;
+  if (error)
+    return (
+      <AppFrame>
+        <p className="text-[#e08a7a]">{error}</p>
+      </AppFrame>
+    );
+  if (!person)
+    return (
+      <AppFrame>
+        <p className="text-muted-foreground">Загрузка…</p>
+      </AppFrame>
+    );
 
   const isOwner = !!user && person.created_by === user.id;
   const canEdit = !!user && (isOwner || user.role === 'teip_admin' || user.role === 'super_admin');
@@ -75,7 +81,8 @@ export default function PersonPage({ params }: { params: { id: string } }) {
     (family.father || family.mother || family.spouses.length > 0 || family.children.length > 0);
 
   return (
-    <div className="grid gap-5">
+    <AppFrame>
+      <div className="grid gap-5">
       <PersonCard person={person} />
 
       {isOwner && <PublishControl />}
@@ -86,11 +93,11 @@ export default function PersonPage({ params }: { params: { id: string } }) {
       {/* Семья: родители, супруги, дети */}
       {hasFamily && (
         <div className={CARD}>
-          <h3 className="mb-3.5 mt-0 text-lg font-semibold text-cream">Семья</h3>
+          <h3 className="mb-3.5 mt-0 font-serif text-lg font-semibold text-foreground">Семья</h3>
           <div className="grid gap-4">
             {(family!.father || family!.mother) && (
               <div>
-                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-sand">Родители</div>
+                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-muted-foreground">Родители</div>
                 <div className="flex flex-wrap gap-2.5">
                   {family!.father && <RelativeChip p={family!.father} role="отец" />}
                   {family!.mother && <RelativeChip p={family!.mother} role="мать" />}
@@ -99,7 +106,7 @@ export default function PersonPage({ params }: { params: { id: string } }) {
             )}
             {family!.spouses.length > 0 && (
               <div>
-                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-sand">
+                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-muted-foreground">
                   {person.gender === 'm' ? 'Жёны' : 'Мужья'}
                 </div>
                 <div className="flex flex-wrap gap-2.5">
@@ -115,7 +122,7 @@ export default function PersonPage({ params }: { params: { id: string } }) {
             )}
             {family!.children.length > 0 && (
               <div>
-                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-sand">Дети ({family!.children.length})</div>
+                <div className="mb-2 text-xs uppercase tracking-[0.06em] text-muted-foreground">Дети ({family!.children.length})</div>
                 <div className="flex flex-wrap gap-2.5">
                   {family!.children.map((c) => (
                     <RelativeChip
@@ -152,12 +159,9 @@ export default function PersonPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className={CARD}>
-        <TreeView
-          nodes={nodes}
-          rootId={personId}
-          onSelect={(id) => (window.location.href = `/person/${id}`)}
-        />
+        <TreeView rootId={personId} direction={direction} />
       </div>
-    </div>
+      </div>
+    </AppFrame>
   );
 }

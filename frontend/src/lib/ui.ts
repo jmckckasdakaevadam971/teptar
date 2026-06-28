@@ -5,38 +5,38 @@
 
 // Ссылка в шапке
 export const NAV_LINK =
-  'ml-[18px] text-[15px] tracking-[0.3px] text-cream/80 transition-colors hover:text-gold-light';
+  'text-sm font-medium text-muted-foreground transition-colors hover:text-foreground';
 
 // Кнопка-ссылка (текстовая, золотая)
 export const LINK_BTN =
-  'cursor-pointer border-0 bg-transparent p-0 text-left text-[13px] text-gold transition-colors hover:text-gold-light hover:underline';
+  'cursor-pointer border-0 bg-transparent p-0 text-left text-sm font-medium text-primary transition-colors hover:text-accent hover:underline';
 
-// Основная золотая кнопка
+// Основная кнопка
 export const BTN_PRIMARY =
-  'inline-flex items-center justify-center gap-2 rounded-sm bg-gradient-to-b from-gold-light to-gold px-5 py-2.5 font-sans text-[15px] font-bold text-stone-900 shadow-gold transition hover:-translate-y-px hover:shadow-gold-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:translate-y-0';
+  'inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-all hover:-translate-y-0.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:translate-y-0';
 
 // Вторичная (контурная) кнопка
 export const BTN_SECONDARY =
-  'inline-flex items-center justify-center gap-2 rounded-sm border border-line-strong bg-gold/10 px-5 py-2.5 font-sans text-[15px] font-semibold text-gold-light transition hover:border-gold-soft hover:bg-gold/20';
+  'inline-flex items-center justify-center gap-2 rounded-xl border border-border px-5 py-3 font-sans text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-primary';
 
 // Неактивная кнопка-заглушка
 export const BTN_DISABLED =
-  'inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-sm bg-[#221b12] px-5 py-2.5 font-sans text-[15px] font-semibold text-[#6b6149]';
+  'inline-flex cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-secondary px-5 py-3 font-sans text-sm font-semibold text-muted-foreground';
 
-// Карточка с золотым акцентом (рамка + градиент)
+// Карточка с золотым акцентом (рамка + лёгкая заливка)
 export const ACCENT_CARD =
-  'rounded border border-gold-soft bg-gradient-to-b from-gold/10 to-stone-900/90 p-[18px]';
+  'rounded-2xl border border-primary/40 bg-card p-6';
 
 // Поле ввода
 export const INPUT =
-  'w-full min-w-0 rounded-sm border border-line bg-stone-800 px-3.5 py-2.5 text-[15px] text-cream outline-none transition focus:border-gold-soft focus:ring-2 focus:ring-gold/30 placeholder:text-sand/70';
+  'w-full min-w-0 rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary';
 
 // Базовая карточка
 export const CARD =
-  'rounded border border-line bg-gradient-to-b from-stone-600/50 to-stone-800/85 p-[18px]';
+  'rounded-2xl border border-border bg-card p-6';
 
 // Подпись поля
-export const LABEL = 'text-[13px] font-semibold text-sand';
+export const LABEL = 'text-xs font-medium uppercase tracking-wide text-muted-foreground';
 
 // Поле формы (label + control)
 export const FIELD = 'grid gap-1.5';
@@ -49,56 +49,56 @@ export const FORM_ROW =
   'grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3.5';
 
 // Бейдж пола
-const BADGE = 'rounded-full px-2.5 py-0.5 text-xs';
-export const BADGE_M = `${BADGE} bg-blue-100 text-blue-800`;
-export const BADGE_F = `${BADGE} bg-pink-100 text-pink-800`;
+const BADGE = 'rounded-full px-2.5 py-0.5 text-xs font-medium';
+export const BADGE_M = `${BADGE} bg-[#16304d] text-[#9ec5ff]`;
+export const BADGE_F = `${BADGE} bg-[#3f1730] text-[#ff9ed4]`;
 
 // Бейдж статуса видимости
 const VIS_BADGE =
-  'inline-block whitespace-nowrap rounded-full px-2.5 py-[5px] text-[13px] font-semibold';
-export const VIS_PENDING = `${VIS_BADGE} bg-amber-100 text-amber-800`;
-export const VIS_PUBLIC = `${VIS_BADGE} bg-green-100 text-green-800`;
-export const VIS_REJECTED = `${VIS_BADGE} bg-red-100 text-red-800`;
-export const VIS_PRIVATE = `${VIS_BADGE} bg-slate-100 text-slate-600`;
+  'inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium';
+export const VIS_PENDING = `${VIS_BADGE} bg-primary/15 text-primary`;
+export const VIS_PUBLIC = `${VIS_BADGE} bg-[#14321f] text-[#7ee0a6]`;
+export const VIS_REJECTED = `${VIS_BADGE} bg-[#341818] text-[#f0a0a0]`;
+export const VIS_PRIVATE = `${VIS_BADGE} bg-secondary text-muted-foreground`;
 
 // Сегментированные вкладки
-export const TABS = 'mb-[18px] inline-flex overflow-hidden rounded-[10px] border border-line';
+export const TABS = 'mb-5 inline-flex gap-1 rounded-xl border border-border bg-card p-1';
 export function tabBtn(active: boolean) {
-  return `cursor-pointer border-0 px-5 py-2.5 text-[15px] transition-colors ${
+  return `cursor-pointer rounded-lg border-0 px-5 py-2 text-sm font-medium transition-colors ${
     active
-      ? 'bg-gradient-to-b from-gold-light to-gold font-bold text-stone-900'
-      : 'bg-stone-800 text-cream hover:text-gold-light'
+      ? 'bg-primary text-primary-foreground'
+      : 'bg-transparent text-muted-foreground hover:text-foreground'
   }`;
 }
 
 // Компактный переключатель (фильтры)
-export const TOGGLE = 'inline-flex overflow-hidden rounded-[10px] border border-line';
+export const TOGGLE = 'inline-flex gap-1 rounded-xl border border-border bg-card p-1';
 export function toggleBtn(active: boolean) {
-  return `cursor-pointer border-0 px-4 py-2 text-sm transition-colors ${
+  return `cursor-pointer rounded-lg border-0 px-4 py-1.5 text-sm font-medium transition-colors ${
     active
-      ? 'bg-gradient-to-b from-gold-light to-gold font-bold text-stone-900'
-      : 'bg-stone-800 text-cream hover:text-gold-light'
+      ? 'bg-primary text-primary-foreground'
+      : 'bg-transparent text-muted-foreground hover:text-foreground'
   }`;
 }
 
 // Чип справочника (тейп/село)
-export const CHIP = 'rounded-lg border border-line bg-stone-700 px-3 py-2 text-sm text-cream';
+export const CHIP = 'rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground';
 export const CHIP_EXTINCT =
   'rounded-lg border border-[#5b2c25] bg-[#2a1714] px-3 py-2 text-sm text-[#e6c9c2]';
 
 // Текст ошибки / успеха под формой
-export const ERR_TEXT = 'mt-3 text-sm text-[#dc2626]';
-export const OK_TEXT = 'mt-3 text-sm text-[#16a34a]';
+export const ERR_TEXT = 'mt-3 text-sm text-[#f0a0a0]';
+export const OK_TEXT = 'mt-3 text-sm text-[#7ee0a6]';
 
 // Таблица данных (admin / модерация)
-export const TABLE_WRAP = 'overflow-x-auto';
+export const TABLE_WRAP = 'overflow-x-auto rounded-2xl border border-border';
 export const TABLE =
-  'w-full border-collapse text-sm [&_th]:border-b [&_th]:border-line [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-left [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-[0.04em] [&_th]:text-sand [&_td]:border-b [&_td]:border-line [&_td]:px-3 [&_td]:py-2.5 [&_td]:text-left [&_td]:text-cream [&_tbody_tr:hover]:bg-gold/[0.07]';
+  'w-full border-collapse text-sm [&_th]:border-b [&_th]:border-border [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-muted-foreground [&_td]:border-b [&_td]:border-border [&_td]:px-4 [&_td]:py-3 [&_td]:text-left [&_td]:text-foreground [&_tbody_tr:last-child_td]:border-b-0 [&_tbody_tr:hover]:bg-primary/[0.06]';
 
 // Текстовая кнопка-ссылка (опасное действие)
 export const LINK_DANGER =
-  'cursor-pointer border-0 bg-transparent p-0 text-[13px] text-[#dc2626] transition hover:underline disabled:opacity-50';
+  'cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-[#f0a0a0] transition hover:underline disabled:opacity-50';
 
 // Выпадающий список роли
 export const ROLE_SELECT =
-  'cursor-pointer rounded-lg border border-line bg-stone-800 px-2.5 py-1.5 text-sm text-cream disabled:cursor-not-allowed disabled:opacity-60';
+  'cursor-pointer rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:border-primary disabled:cursor-not-allowed disabled:opacity-60';

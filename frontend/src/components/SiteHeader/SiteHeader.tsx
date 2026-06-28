@@ -1,39 +1,41 @@
-'use client';
+'use client'
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { clearAuth, useAuth } from '@/lib/auth';
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Menu, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useAuth, clearAuth, canModerate } from '@/lib/auth'
+
+const BASE_LINKS = [
+  { label: 'Главная', href: '/' },
+  { label: 'Моё древо', href: '/my' },
+  { label: 'Родство', href: '/relatives' },
+  { label: 'Справочник', href: '/reference' },
+]
 
 export function SiteHeader() {
-  const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
-  const pathname = usePathname();
-  const { user, ready } = useAuth();
+  const [scrolled, setScrolled] = useState(false)
+  const [open, setOpen] = useState(false)
+  const pathname = usePathname()
+  const { user, ready } = useAuth()
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 16);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+    const onScroll = () => setScrolled(window.scrollY > 16)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const navLinks = canModerate(user?.role)
+    ? [...BASE_LINKS, { label: 'Админ', href: '/admin' }]
+    : BASE_LINKS
 
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
+    href === '/' ? pathname === '/' : pathname.startsWith(href)
 
-  // Ссылки с учётом прав (логика под капотом)
-  const links: { label: string; href: string }[] = [{ label: 'Главная', href: '/' }];
-  if (ready && user) links.push({ label: 'Моё древо', href: '/my' });
-  links.push({ label: 'Родство', href: '/relatives' });
-  links.push({ label: 'Справочник', href: '/reference' });
-  if (user?.role === 'super_admin' || user?.role === 'teip_admin') {
-    links.push({
-      label: user.role === 'super_admin' ? 'Админ' : 'Модерация',
-      href: '/admin',
-    });
-  }
+  const accountHref = ready && user ? '/profile' : '/login'
+  const accountLabel = ready && user ? 'Профиль' : 'Войти'
 
   return (
     <header
@@ -53,13 +55,15 @@ export function SiteHeader() {
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
-          {links.map((link) => (
+          {navLinks.map((link) => (
             <Link
-              key={link.href}
+              key={link.label}
               href={link.href}
               className={cn(
                 'text-sm font-medium transition-colors hover:text-foreground',
-                isActive(link.href) ? 'text-primary' : 'text-muted-foreground',
+                isActive(link.href)
+                  ? 'text-primary'
+                  : 'text-muted-foreground',
               )}
             >
               {link.label}
@@ -67,39 +71,27 @@ export function SiteHeader() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-4 md:flex">
+        <div className="hidden items-center gap-3 md:flex">
+          <Link
+            href={accountHref}
+            className={cn(
+              'rounded-xl border px-5 py-2 text-sm font-medium transition-colors',
+              isActive('/profile')
+                ? 'border-primary text-primary'
+                : 'border-border text-foreground hover:border-primary hover:text-primary',
+            )}
+          >
+            {accountLabel}
+          </Link>
           {ready && user ? (
-            <>
-              <Link
-                href="/profile"
-                className={cn(
-                  'rounded-xl border px-5 py-2 text-sm font-medium transition-colors',
-                  isActive('/profile')
-                    ? 'border-primary text-primary'
-                    : 'border-border text-foreground hover:border-primary hover:text-primary',
-                )}
-              >
-                {user.display_name}
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  clearAuth();
-                  window.location.href = '/';
-                }}
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-              >
-                Выйти
-              </button>
-            </>
-          ) : (
-            <Link
-              href="/login"
-              className="rounded-xl border border-border px-5 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
+            <button
+              type="button"
+              onClick={clearAuth}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
-              Войти
-            </Link>
-          )}
+              Выйти
+            </button>
+          ) : null}
         </div>
 
         <button
@@ -113,7 +105,7 @@ export function SiteHeader() {
         </button>
       </div>
 
-      {/* Мобильное меню */}
+      {/* Mobile menu */}
       <div
         className={cn(
           'overflow-hidden border-t border-border bg-background/95 backdrop-blur-xl transition-[max-height] duration-300 md:hidden',
@@ -121,9 +113,9 @@ export function SiteHeader() {
         )}
       >
         <nav className="flex flex-col gap-1 px-5 py-4">
-          {links.map((link) => (
+          {navLinks.map((link) => (
             <Link
-              key={link.href}
+              key={link.label}
               href={link.href}
               onClick={() => setOpen(false)}
               className={cn(
@@ -134,38 +126,27 @@ export function SiteHeader() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href={accountHref}
+            onClick={() => setOpen(false)}
+            className="mt-2 rounded-xl border border-primary px-3 py-3 text-center text-base font-medium text-primary"
+          >
+            {accountLabel}
+          </Link>
           {ready && user ? (
-            <>
-              <Link
-                href="/profile"
-                onClick={() => setOpen(false)}
-                className="mt-2 rounded-xl border border-primary px-3 py-3 text-center text-base font-medium text-primary"
-              >
-                {user.display_name}
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  clearAuth();
-                  window.location.href = '/';
-                }}
-                className="rounded-lg px-3 py-3 text-center text-base font-medium text-muted-foreground"
-              >
-                Выйти
-              </button>
-            </>
-          ) : (
-            <Link
-              href="/login"
-              onClick={() => setOpen(false)}
-              className="mt-2 rounded-xl border border-primary px-3 py-3 text-center text-base font-medium text-primary"
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                clearAuth()
+              }}
+              className="rounded-lg px-3 py-3 text-center text-base font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
-              Войти
-            </Link>
-          )}
+              Выйти
+            </button>
+          ) : null}
         </nav>
       </div>
     </header>
-  );
+  )
 }

@@ -2,9 +2,6 @@ import type { ReactNode } from 'react';
 import type { Metadata, Viewport } from 'next';
 import { Manrope, Playfair_Display } from 'next/font/google';
 import './globals.css';
-import { SiteHeader } from '@/components/SiteHeader/SiteHeader';
-import { SiteFooter } from '@/components/SiteFooter/SiteFooter';
-import { AppMain } from '@/components/AppMain/AppMain';
 
 // Современная двухшрифтовая система (обе с кириллицей)
 const sans = Manrope({
@@ -38,12 +35,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" className={`${sans.variable} ${display.variable}`}>
-      <body className="font-sans antialiased">
-        <SiteHeader />
-        <AppMain>{children}</AppMain>
-        <SiteFooter />
-      </body>
+    <html lang="ru" className={`${sans.variable} ${display.variable} bg-background`}>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }
