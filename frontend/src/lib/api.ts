@@ -21,8 +21,6 @@ import type {
   RelatedTree,
   DuplicatePair,
   TreeChange,
-  RelativeKind,
-  AddRelativeResult,
 } from './types';
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
@@ -63,22 +61,6 @@ export const api = {
       request<Person>('/persons', { method: 'POST', body: JSON.stringify(input) }),
     update: (id: number, input: Partial<Person>) =>
       request<Person>(`/persons/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
-
-    /** Построитель древа: добавить родственника к якорной персоне. */
-    addRelative: (
-      anchorId: number,
-      input: {
-        kind: RelativeKind;
-        full_name: string;
-        birth_year?: number | null;
-        death_year?: number | null;
-        note?: string | null;
-      },
-    ) =>
-      request<AddRelativeResult>(`/persons/${anchorId}/relatives`, {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
 
     /** Состояние своего древа (приватное / на модерации / опубликовано). */
     treeStatus: () => request<TreeStatus>('/persons/tree/status'),

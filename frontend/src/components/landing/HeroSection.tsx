@@ -1,12 +1,8 @@
 'use client'
 
-import { useRef } from 'react'
-import { ArrowRight, TreeDeciduous, Link2 } from 'lucide-react'
 import { Reveal } from '@/components/Reveal/Reveal'
 
-export function HeroSection({ onSearch }: { onSearch?: (q: string) => void }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-
+export function HeroSection() {
   return (
     <section
       id="hero"
@@ -53,53 +49,19 @@ export function HeroSection({ onSearch }: { onSearch?: (q: string) => void }) {
 
         <Reveal delay={160}>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
-            Найдите человека, постройте древо и узнайте общих предков — всё в
-            одном месте.
+            Справочник тейпов, гаров и сёл чеченского народа — в одном
+            месте.
           </p>
         </Reveal>
 
-        {/* Search bar */}
+        {/* CTA */}
         <Reveal delay={240}>
-          <form
-            className="mx-auto mt-10 flex max-w-xl items-center gap-2 rounded-2xl border border-primary/40 bg-card/60 p-2 backdrop-blur-md transition-colors focus-within:border-primary"
-            onSubmit={(e) => {
-              e.preventDefault()
-              onSearch?.((inputRef.current?.value ?? '').trim())
-            }}
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Поиск по ФИО…"
-              aria-label="Поиск по ФИО"
-              className="flex-1 bg-transparent px-4 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-            <button
-              type="submit"
-              aria-label="Искать"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-transform hover:-translate-y-0.5 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            >
-              <ArrowRight className="h-5 w-5" />
-            </button>
-          </form>
-        </Reveal>
-
-        {/* CTA buttons */}
-        <Reveal delay={320}>
-          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="mt-10 flex justify-center">
             <a
-              href="#features"
+              href="/reference"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground transition-all hover:-translate-y-0.5 hover:bg-accent sm:w-auto"
             >
-              <TreeDeciduous className="h-5 w-5" />
-              Моё древо
-            </a>
-            <a
-              href="#features"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary px-6 py-3 text-base font-semibold text-primary transition-all hover:-translate-y-0.5 hover:bg-primary/10 sm:w-auto"
-            >
-              <Link2 className="h-5 w-5" />
-              Кем мы родственники
+              Открыть справочник
             </a>
           </div>
         </Reveal>

@@ -153,21 +153,6 @@ export interface TreeNode {
   depth: number;
 }
 
-/** Тип добавляемого родственника в построителе древа. */
-export type RelativeKind =
-  | 'father'
-  | 'mother'
-  | 'son'
-  | 'daughter'
-  | 'brother'
-  | 'sister';
-
-/** Результат добавления родственника: новая персона и актуальный корень. */
-export interface AddRelativeResult {
-  person: Person;
-  root_person_id: number | null;
-}
-
 export interface Teip {
   id: number;
   name: string;

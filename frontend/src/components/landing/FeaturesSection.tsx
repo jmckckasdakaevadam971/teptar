@@ -4,13 +4,13 @@ import { Reveal } from '@/components/Reveal/Reveal'
 const FEATURES = [
   {
     icon: TreeDeciduous,
-    title: 'Моё древо',
-    text: 'Постройте родословную своей семьи и сохраните её для потомков.',
+    title: 'Тейпы и гары',
+    text: 'Структура чеченских родов: тукхумы, тейпы и входящие в них гары.',
   },
   {
     icon: Link2,
-    title: 'Родство',
-    text: 'Узнайте, кем приходятся друг другу два человека и кто их общий предок.',
+    title: 'Связи родов',
+    text: 'Как устроены родственные и территориальные связи тейпов и сёл.',
   },
   {
     icon: BookOpen,
@@ -24,7 +24,7 @@ export function FeaturesSection() {
     <section id="features" className="mx-auto max-w-6xl px-5 py-24 md:px-8 md:py-32">
       <Reveal className="mx-auto max-w-2xl text-center">
         <h2 className="font-serif text-3xl font-bold text-balance text-foreground md:text-4xl lg:text-5xl">
-          Что можно сделать
+          Что внутри
         </h2>
         <div className="mt-5 flex items-center justify-center gap-3" aria-hidden="true">
           <span className="h-px w-12 bg-gradient-to-r from-transparent to-primary/60" />

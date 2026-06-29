@@ -2,9 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
-  TreePine,
-  Users,
-  BookOpen,
   Mail,
   Phone,
   Calendar,
@@ -49,7 +46,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState({ people: 0, relatives: 0, generations: 0 })
 
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ display_name: '', phone: '', email: '' })
@@ -74,24 +70,6 @@ export default function ProfilePage() {
         phone: p.phone ?? '',
         email: p.email ?? '',
       })
-      if (p.root_person_id) {
-        try {
-          const [anc, desc] = await Promise.all([
-            api.tree.ancestors(p.root_person_id),
-            api.tree.descendants(p.root_person_id),
-          ])
-          const depths = desc.map((d) => d.depth)
-          const generations = depths.length ? Math.max(...depths) + 1 : 1
-          const relatives =
-            anc.filter((a) => a.depth > 0).length +
-            desc.filter((d) => d.depth > 0).length
-          setStats({ people: p.persons_count, relatives, generations })
-        } catch {
-          setStats({ people: p.persons_count, relatives: 0, generations: 0 })
-        }
-      } else {
-        setStats({ people: p.persons_count, relatives: 0, generations: 0 })
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить профиль')
     } finally {
@@ -158,7 +136,7 @@ export default function ProfilePage() {
       <PageShell
         eyebrow="Профиль"
         title="Личный кабинет"
-        description="Войдите, чтобы увидеть свой профиль и древо."
+        description="Войдите, чтобы увидеть свой профиль."
       >
         <a href="/login" className={BTN_PRIMARY}>
           Войти
@@ -190,11 +168,6 @@ export default function ProfilePage() {
     )
   }
 
-  const STAT_ITEMS = [
-    { icon: TreePine, label: 'Людей в древе', value: String(stats.people) },
-    { icon: Users, label: 'Родственников', value: String(stats.relatives) },
-    { icon: BookOpen, label: 'Поколений', value: String(stats.generations) },
-  ]
   const INFO = [
     { icon: Mail, label: 'Эл. почта', value: profile.email ?? '—' },
     { icon: Phone, label: 'Телефон', value: profile.phone ?? '—' },
@@ -273,22 +246,6 @@ export default function ProfilePage() {
 
         {/* Правая колонка */}
         <div className="flex flex-col gap-6 lg:col-span-2">
-          {/* Статистика */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {STAT_ITEMS.map((stat) => (
-              <div
-                key={stat.label}
-                className="rounded-2xl border border-border bg-card p-6"
-              >
-                <stat.icon className="h-6 w-6 text-primary" />
-                <p className="mt-4 font-serif text-3xl font-bold text-foreground">
-                  {stat.value}
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-
           {/* Управление учётной записью */}
           <div className="rounded-3xl border border-border bg-card p-6 md:p-8">
             <h3 className="font-serif text-xl font-semibold text-foreground">
@@ -360,15 +317,11 @@ export default function ProfilePage() {
               </div>
             ) : (
               <p className="mt-3 leading-relaxed text-muted-foreground">
-                Измените свои данные или пароль. Перейдите к своему древу, чтобы
-                добавлять родственников.
+                Измените свои данные или пароль.
               </p>
             )}
 
             <div className="mt-6 flex flex-wrap gap-3 border-t border-border pt-6">
-              <a href="/my" className={BTN_PRIMARY}>
-                Моё древо
-              </a>
               <button
                 type="button"
                 className={BTN_SECONDARY}

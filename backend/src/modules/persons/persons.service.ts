@@ -6,8 +6,6 @@ import type {
   CreatePersonInput,
   UpdatePersonInput,
   ListPersonsQuery,
-  AddRelativeInput,
-  RelativeKind,
 } from './persons.types.js';
 
 /** Кто запрашивает данные — для контроля видимости. */
@@ -221,17 +219,6 @@ export async function createPerson(
 
     const created = result.rows[0];
 
-    // Первый человек без родителей становится корнем личного древа,
-    // если корень ещё не назначен. Так «Моё древо» строится от него.
-    const isRoot = !input.father_id && !input.mother_id;
-    if (userId && isRoot) {
-      await client.query(
-        `UPDATE users SET root_person_id = $2
-         WHERE id = $1 AND root_person_id IS NULL`,
-        [userId, created.id],
-      );
-    }
-
     await client.query(
       `INSERT INTO change_log (person_id, user_id, action, diff)
        VALUES ($1, $2, 'create', $3)`,
@@ -239,133 +226,6 @@ export async function createPerson(
     );
 
     return created;
-  });
-}
-
-/**
- * Добавить родственника к якорной персоне (ядро построителя древа).
- *  • father/mother — создаёт родителя и привязывает к якорю; если якорь был
- *    корнем дерева — корень «поднимается» к новому родителю;
- *  • son/daughter  — создаёт ребёнка с привязкой к якорю по его полу;
- *  • brother/sister — создаёт ещё одного ребёнка тех же родителей, что у якоря.
- * Тейп и село наследуются от якоря (одна семья). Всё в одной транзакции.
- */
-export async function addRelative(
-  anchorId: number,
-  input: AddRelativeInput,
-  viewer: Viewer,
-): Promise<{ person: PersonRow; root_person_id: number | null }> {
-  const userId = viewer.userId;
-  if (!userId) throw new ApiError(401, 'Требуется вход');
-
-  const anchor = await getPerson(anchorId); // 404 если нет
-  if (!isAdmin(viewer) && anchor.created_by !== userId) {
-    throw new ApiError(403, 'Можно строить только своё древо');
-  }
-
-  // Пол нового человека определяется типом связи.
-  const gender: 'm' | 'f' =
-    input.kind === 'father' || input.kind === 'son' || input.kind === 'brother'
-      ? 'm'
-      : 'f';
-
-  // Куда привязать нового человека и какие связи проверить заранее.
-  let fatherId: number | null = null;
-  let motherId: number | null = null;
-
-  if (input.kind === 'son' || input.kind === 'daughter') {
-    // Ребёнок: якорь становится отцом или матерью — по полу якоря.
-    if (anchor.gender === 'm') fatherId = anchor.id;
-    else motherId = anchor.id;
-  } else if (input.kind === 'brother' || input.kind === 'sister') {
-    // Брат/сестра: те же родители, что у якоря.
-    if (anchor.father_id == null && anchor.mother_id == null) {
-      throw new ApiError(
-        409,
-        'Сначала добавьте отца или мать этому человеку — тогда можно добавить брата или сестру',
-      );
-    }
-    fatherId = anchor.father_id;
-    motherId = anchor.mother_id;
-  } else if (input.kind === 'father') {
-    if (anchor.father_id != null) throw new ApiError(409, 'Отец уже указан');
-  } else if (input.kind === 'mother') {
-    if (anchor.mother_id != null) throw new ApiError(409, 'Мать уже указана');
-  }
-
-  return withTransaction(async (client) => {
-    // Создаём родственника. Тейп и село наследуем от якоря (одна семья).
-    const ins = await client.query<PersonRow>(
-      `
-      INSERT INTO persons
-        (full_name, gender, birth_year, death_year,
-         father_id, mother_id, teip_id, gar_id, village_id,
-         note, visibility, status, created_by, approved_by, is_alive)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private','approved',$11,NULL,$12)
-      RETURNING *
-      `,
-      [
-        input.full_name,
-        gender,
-        input.birth_year ?? null,
-        input.death_year ?? null,
-        fatherId,
-        motherId,
-        anchor.teip_id,
-        anchor.gar_id,
-        anchor.village_id,
-        input.note ?? null,
-        userId,
-        input.death_year == null,
-      ],
-    );
-    const person = ins.rows[0];
-
-    // Отец/мать: привязываем к якорю и при необходимости поднимаем корень.
-    if (input.kind === 'father') {
-      await client.query('UPDATE persons SET father_id = $2 WHERE id = $1', [
-        anchor.id,
-        person.id,
-      ]);
-    } else if (input.kind === 'mother') {
-      await client.query('UPDATE persons SET mother_id = $2 WHERE id = $1', [
-        anchor.id,
-        person.id,
-      ]);
-    }
-
-    // Если у якоря-корня появился родитель — корень дерева поднимается к нему.
-    let rootPersonId: number | null = null;
-    const userRows = await client.query<{ root_person_id: number | null }>(
-      'SELECT root_person_id FROM users WHERE id = $1',
-      [userId],
-    );
-    rootPersonId = userRows.rows[0]?.root_person_id ?? null;
-    if (
-      (input.kind === 'father' || input.kind === 'mother') &&
-      rootPersonId === anchor.id
-    ) {
-      await client.query('UPDATE users SET root_person_id = $2 WHERE id = $1', [
-        userId,
-        person.id,
-      ]);
-      rootPersonId = person.id;
-    } else if (rootPersonId == null) {
-      // Корень ещё не назначен (старый аккаунт) — назначим текущий якорь-предок.
-      await client.query(
-        'UPDATE users SET root_person_id = $2 WHERE id = $1 AND root_person_id IS NULL',
-        [userId, anchor.id],
-      );
-      rootPersonId = anchor.id;
-    }
-
-    await client.query(
-      `INSERT INTO change_log (person_id, user_id, action, diff)
-       VALUES ($1, $2, 'create', $3)`,
-      [person.id, userId, JSON.stringify({ relative_of: anchor.id, kind: input.kind })],
-    );
-
-    return { person, root_person_id: rootPersonId };
   });
 }
 

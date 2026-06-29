@@ -9,9 +9,6 @@ import { useAuth, clearAuth, canModerate } from '@/lib/auth'
 
 const BASE_LINKS = [
   { label: 'Главная', href: '/' },
-  { label: 'Древа', href: '/trees' },
-  { label: 'Моё древо', href: '/my' },
-  { label: 'Родство', href: '/relatives' },
   { label: 'Справочник', href: '/reference' },
 ]
 

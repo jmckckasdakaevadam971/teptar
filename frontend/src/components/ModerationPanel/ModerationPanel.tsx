@@ -18,14 +18,6 @@ function personYears(p: Person): string {
   return `${p.birth_year ?? '?'} – ${p.death_year ?? (p.is_alive ? 'н.в.' : '?')}`;
 }
 
-/** Корень древа для ссылки «открыть»: персона без отца (или самая ранняя). */
-function rootOf(persons: Person[]): Person | null {
-  if (persons.length === 0) return null;
-  const roots = persons.filter((p) => !p.father_id);
-  const pool = roots.length ? roots : persons;
-  return pool.reduce((a, b) => ((a.birth_year ?? 9999) <= (b.birth_year ?? 9999) ? a : b));
-}
-
 /** Человеко-читаемые названия полей для diff. */
 const FIELD_RU: Record<string, string> = {
   full_name: 'ФИО',
@@ -155,7 +147,6 @@ export function ModerationPanel() {
           {trees.map((t) => {
             const open = openId === t.owner_id;
             const persons = preview[t.owner_id];
-            const root = persons ? rootOf(persons) : null;
             return (
               <div
                 key={t.owner_id}
@@ -206,16 +197,6 @@ export function ModerationPanel() {
                           <span className="text-[13px] text-sand">
                             Персоны древа ({persons.length})
                           </span>
-                          {root && (
-                            <a
-                              className={`${BTN_SECONDARY} !px-3 !py-[5px] !text-[13px]`}
-                              href={`/person/${root.id}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Открыть древо ↗
-                            </a>
-                          )}
                         </div>
                         <div className={TABLE_WRAP}>
                           <table className={TABLE}>

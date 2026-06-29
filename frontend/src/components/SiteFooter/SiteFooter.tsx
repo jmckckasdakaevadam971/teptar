@@ -2,8 +2,6 @@ import Link from 'next/link'
 
 const SECTION_LINKS = [
   { label: 'Главная', href: '/' },
-  { label: 'Моё древо', href: '/my' },
-  { label: 'Родство', href: '/relatives' },
   { label: 'Справочник', href: '/reference' },
 ]
 
