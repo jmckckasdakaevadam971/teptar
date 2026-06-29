@@ -82,7 +82,8 @@ ssh "${SSH_TARGET}" bash -s <<'SYNC_PW' || true
   cd /opt/teptar
   set -a; . ./.env; set +a
   USR="${POSTGRES_USER:-teptar}"; DB="${POSTGRES_DB:-teptar}"; PW="${POSTGRES_PASSWORD}"
-  for i in $(seq 1 20); do docker compose exec -T db pg_isready -U "$USR" -d "$DB" >/dev/null 2>&1 && break; sleep 2; done
+  # ВАЖНО: </dev/null у exec, иначе он «съест» поток heredoc и ALTER не выполнится.
+  for i in $(seq 1 20); do docker compose exec -T db pg_isready -U "$USR" -d "$DB" </dev/null >/dev/null 2>&1 && break; sleep 2; done
   printf "ALTER USER \"%s\" WITH PASSWORD '%s';\n" "$USR" "$PW" | docker compose exec -T db psql -U "$USR" -d "$DB" >/dev/null 2>&1 || true
 SYNC_PW
 
