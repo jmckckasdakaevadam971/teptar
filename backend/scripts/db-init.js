@@ -79,7 +79,17 @@ async function run() {
     await client.query(
       `ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_diff JSONB;
        ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_by BIGINT;
-       ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_at TIMESTAMPTZ;`,
+       ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_at TIMESTAMPTZ;
+       ALTER TABLE users   ADD COLUMN IF NOT EXISTS root_person_id BIGINT;
+       DO $$ BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_root_person'
+         ) THEN
+           ALTER TABLE users
+             ADD CONSTRAINT fk_users_root_person
+             FOREIGN KEY (root_person_id) REFERENCES persons(id) ON DELETE SET NULL;
+         END IF;
+       END $$;`,
     );
   } catch (err) {
     console.error('❌ Ошибка инициализации:', err);

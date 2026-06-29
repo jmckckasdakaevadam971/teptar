@@ -112,10 +112,14 @@ export async function getProfile(userId: number): Promise<UserProfile> {
   const rows = await query<UserProfile>(
     `SELECT u.id, u.display_name, u.phone, u.email, u.role, u.created_at,
             (SELECT COUNT(*)::int FROM persons WHERE created_by = u.id) AS persons_count,
-            (SELECT id FROM persons
-               WHERE created_by = u.id
-               ORDER BY (father_id IS NOT NULL), COALESCE(birth_year, 9999), id
-               LIMIT 1) AS root_person_id
+            COALESCE(
+              u.root_person_id,
+              (SELECT id FROM persons
+                 WHERE created_by = u.id
+                 ORDER BY (father_id IS NOT NULL), (mother_id IS NOT NULL),
+                          COALESCE(birth_year, 9999), id
+                 LIMIT 1)
+            ) AS root_person_id
      FROM users u WHERE u.id = $1`,
     [userId],
   );

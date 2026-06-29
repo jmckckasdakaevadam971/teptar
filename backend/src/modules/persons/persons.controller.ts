@@ -7,6 +7,7 @@ import {
   publishTreeSchema,
   publicTreesSchema,
   mergeSchema,
+  addRelativeSchema,
 } from './persons.types.js';
 import * as service from './persons.service.js';
 import type { Viewer } from './persons.service.js';
@@ -42,6 +43,12 @@ export async function update(req: Request, res: Response): Promise<void> {
   const input = updatePersonSchema.parse(req.body);
   const person = await service.updatePerson(Number(req.params.id), input, viewerOf(req));
   res.json(ok(person));
+}
+
+export async function addRelative(req: Request, res: Response): Promise<void> {
+  const input = addRelativeSchema.parse(req.body);
+  const result = await service.addRelative(Number(req.params.id), input, viewerOf(req));
+  res.status(201).json(ok(result));
 }
 
 export async function remove(req: Request, res: Response): Promise<void> {

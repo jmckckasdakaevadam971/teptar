@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, MapPin, Calendar, Users } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { TreeNode, Family } from '@/lib/types'
+import type { TreeNode, Family, RelativeKind } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 type Line = { x1: number; y1: number; x2: number; y2: number }
@@ -16,9 +16,18 @@ function lifespan(n: { birth_year: number | null; death_year: number | null }) {
 export function TreeView({
   rootId,
   direction = 'down',
+  buildable = false,
+  reloadToken = 0,
+  onChanged,
 }: {
   rootId: number
   direction?: 'down' | 'up'
+  /** Режим построения: в панели узла показываются кнопки добавления родни. */
+  buildable?: boolean
+  /** Внешний триггер перезагрузки древа (меняется родителем после правок). */
+  reloadToken?: number
+  /** Вызывается после добавления родственника (родитель обновляет корень). */
+  onChanged?: () => void
 }) {
   const [nodes, setNodes] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -46,7 +55,7 @@ export function TreeView({
         setError(e instanceof Error ? e.message : 'Ошибка загрузки древа'),
       )
       .finally(() => setLoading(false))
-  }, [rootId, direction])
+  }, [rootId, direction, reloadToken])
 
   useEffect(() => {
     api.teips
@@ -319,6 +328,17 @@ export function TreeView({
               </div>
             ) : null}
 
+            {buildable ? (
+              <RelativeQuickAdd
+                anchorId={selected.id}
+                anchorName={selected.full_name}
+                onAdded={() => {
+                  setSelectedId(null)
+                  onChanged?.()
+                }}
+              />
+            ) : null}
+
             <a
               href={`/person/${selected.id}`}
               className="mt-6 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
@@ -352,6 +372,169 @@ function DetailRow({
         </dt>
         <dd className="font-medium text-foreground">{value}</dd>
       </div>
+    </div>
+  )
+}
+
+const RELATIVE_KINDS: { kind: RelativeKind; label: string; icon: string }[] = [
+  { kind: 'father', label: 'Отец', icon: '👨' },
+  { kind: 'mother', label: 'Мать', icon: '👩' },
+  { kind: 'brother', label: 'Брат', icon: '🧑' },
+  { kind: 'sister', label: 'Сестра', icon: '👧' },
+  { kind: 'son', label: 'Сын', icon: '👦' },
+  { kind: 'daughter', label: 'Дочь', icon: '👧' },
+]
+
+/**
+ * Быстрое добавление родственника к выбранному узлу прямо в панели древа.
+ * Кнопка типа связи → мини-форма (ФИО + годы) → создание с привязкой.
+ */
+function RelativeQuickAdd({
+  anchorId,
+  anchorName,
+  onAdded,
+}: {
+  anchorId: number
+  anchorName: string
+  onAdded: () => void
+}) {
+  const [kind, setKind] = useState<RelativeKind | null>(null)
+  const [name, setName] = useState('')
+  const [birth, setBirth] = useState('')
+  const [death, setDeath] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() {
+    setKind(null)
+    setName('')
+    setBirth('')
+    setDeath('')
+    setError(null)
+  }
+
+  async function submit() {
+    if (!kind) return
+    const full_name = name.trim()
+    if (full_name.length < 2) {
+      setError('Укажите имя (минимум 2 символа).')
+      return
+    }
+    const by = birth ? Number(birth) : null
+    const dy = death ? Number(death) : null
+    if (by !== null && dy !== null && dy < by) {
+      setError('Год смерти не может быть раньше года рождения.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await api.persons.addRelative(anchorId, {
+        kind,
+        full_name,
+        birth_year: by,
+        death_year: dy,
+      })
+      reset()
+      onAdded()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось добавить родственника')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const activeLabel = RELATIVE_KINDS.find((o) => o.kind === kind)?.label ?? ''
+
+  return (
+    <div className="mt-6 rounded-2xl border border-primary/30 bg-secondary/30 p-4">
+      <p className="m-0 text-xs uppercase tracking-wide text-muted-foreground">
+        Добавить родственника
+      </p>
+      <p className="mb-3 mt-0.5 font-serif text-sm font-semibold text-foreground">
+        к: {anchorName}
+      </p>
+
+      <div className="grid grid-cols-3 gap-2">
+        {RELATIVE_KINDS.map((o) => (
+          <button
+            key={o.kind}
+            type="button"
+            onClick={() => {
+              setKind(o.kind)
+              setName('')
+              setBirth('')
+              setDeath('')
+              setError(null)
+            }}
+            className={cn(
+              'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-medium transition-colors',
+              kind === o.kind
+                ? 'border-primary bg-primary/15 text-primary'
+                : 'border-border bg-card text-foreground hover:border-primary/40',
+            )}
+          >
+            <span className="text-lg leading-none">{o.icon}</span>
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {kind ? (
+        <div className="mt-3 grid gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={`Имя (${activeLabel.toLowerCase()})`}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit()
+            }}
+            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+          />
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={birth}
+              onChange={(e) => setBirth(e.target.value)}
+              placeholder="г.р."
+              className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <input
+              type="number"
+              value={death}
+              onChange={(e) => setDeath(e.target.value)}
+              placeholder="г.с."
+              className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+            />
+          </div>
+
+          {error ? <p className="m-0 text-sm text-[#f08a7a]">{error}</p> : null}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={busy || name.trim().length < 2}
+              className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {busy ? 'Добавляю…' : `Добавить: ${activeLabel}`}
+            </button>
+            <button
+              type="button"
+              onClick={reset}
+              disabled={busy}
+              className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Выберите, кого добавить к этому человеку.
+        </p>
+      )}
     </div>
   )
 }

@@ -54,6 +54,29 @@ export type UpdatePersonInput = z.infer<typeof updatePersonSchema>;
 export type ListPersonsQuery = z.infer<typeof listPersonsSchema>;
 
 /**
+ * Добавление родственника к якорной персоне (построитель древа).
+ * Тип связи определяет пол и способ привязки; ФИО и годы — минимум.
+ */
+export const relativeKinds = [
+  'father',
+  'mother',
+  'son',
+  'daughter',
+  'brother',
+  'sister',
+] as const;
+
+export const addRelativeSchema = z.object({
+  kind: z.enum(relativeKinds),
+  full_name: z.string().min(2, 'ФИО слишком короткое').max(200),
+  birth_year: z.number().int().min(0).max(2100).nullable().optional(),
+  death_year: z.number().int().min(0).max(2100).nullable().optional(),
+  note: z.string().max(5000).nullable().optional(),
+});
+export type RelativeKind = (typeof relativeKinds)[number];
+export type AddRelativeInput = z.infer<typeof addRelativeSchema>;
+
+/**
  * Публикация древа в общую базу.
  *  • all         — показать всех (до сегодняшнего дня);
  *  • hide_recent — скрыть родившихся с cutoff_year (по умолчанию 1970),

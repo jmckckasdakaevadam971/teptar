@@ -90,6 +90,9 @@ personsRouter.get('/:id/family', asyncHandler(controller.family));
 personsRouter.post('/', requireAuth, asyncHandler(controller.create));
 personsRouter.patch('/:id', requireAuth, asyncHandler(controller.update));
 
+// Построитель древа: добавить родственника к якорной персоне
+personsRouter.post('/:id/relatives', requireAuth, asyncHandler(controller.addRelative));
+
 // Удаление — только админам
 personsRouter.delete(
   '/:id',

@@ -82,6 +82,9 @@ CREATE TABLE users (
     password_hash TEXT,
     role          TEXT NOT NULL DEFAULT 'viewer'
                   CHECK (role IN ('viewer','editor','teip_admin','super_admin')),
+    -- Явный корень личного древа (самый старший добавленный предок).
+    -- FK на persons добавляется ALTER-ом ниже (persons создаётся позже).
+    root_person_id BIGINT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -137,6 +140,11 @@ CREATE TABLE persons (
         id IS DISTINCT FROM father_id AND id IS DISTINCT FROM mother_id
     )
 );
+
+-- Корень личного древа ссылается на persons (объявлен в users выше).
+ALTER TABLE users
+    ADD CONSTRAINT fk_users_root_person
+    FOREIGN KEY (root_person_id) REFERENCES persons(id) ON DELETE SET NULL;
 
 -- ============================================================================
 --  БРАКИ (отдельная связь «многие-ко-многим»)
