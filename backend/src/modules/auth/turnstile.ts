@@ -23,7 +23,10 @@ export interface TurnstileResult {
 export async function verifyTurnstile(token: string | undefined): Promise<TurnstileResult> {
   const secret = env.turnstileSecret;
   if (!secret) return { ok: true, skipped: true };
-  if (!token) return { ok: false, errors: ['missing-token'] };
+  if (!token) {
+    console.warn('[turnstile] missing token (фронт не прислал turnstile_token)');
+    return { ok: false, errors: ['missing-token'] };
+  }
 
   try {
     const res = await fetch(VERIFY_URL, {
@@ -33,10 +36,23 @@ export async function verifyTurnstile(token: string | undefined): Promise<Turnst
     });
     const data = (await res.json()) as {
       success: boolean;
+      hostname?: string;
+      challenge_ts?: string;
       'error-codes'?: string[];
     };
+    if (data.success !== true) {
+      console.warn(
+        '[turnstile] verify FAILED',
+        JSON.stringify({
+          errors: data['error-codes'] ?? [],
+          hostname: data.hostname ?? null,
+          tokenLen: token.length,
+        }),
+      );
+    }
     return { ok: data.success === true, errors: data['error-codes'] };
-  } catch {
+  } catch (e) {
+    console.warn('[turnstile] verify request error:', e);
     return { ok: false, errors: ['verify-request-failed'] };
   }
 }
