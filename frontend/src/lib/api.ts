@@ -25,6 +25,20 @@ import type {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
+/** Собрать читаемое сообщение из деталей валидации Zod. */
+function formatDetails(details?: ApiEnvelope<unknown>['details']): string | null {
+  if (!details) return null;
+  const msgs: string[] = [];
+  if (Array.isArray(details.formErrors)) msgs.push(...details.formErrors);
+  if (details.fieldErrors) {
+    for (const arr of Object.values(details.fieldErrors)) {
+      if (Array.isArray(arr)) msgs.push(...arr);
+    }
+  }
+  const unique = [...new Set(msgs.filter(Boolean))];
+  return unique.length ? unique.join('. ') : null;
+}
+
 /** Низкоуровневый fetch с разбором конверта и токеном. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('teptar_token') : null;
@@ -39,7 +53,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = (await res.json()) as ApiEnvelope<T>;
   if (!res.ok || !body.success) {
-    throw new Error(body.error ?? `Ошибка запроса (${res.status})`);
+    // Для ошибок валидации показываем конкретную причину (какое поле неверно).
+    const detail = formatDetails(body.details);
+    throw new Error(detail ?? body.error ?? `Ошибка запроса (${res.status})`);
   }
   return body.data;
 }

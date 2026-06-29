@@ -6,13 +6,14 @@ import { verifyTurnstile } from './turnstile.js';
 import * as service from './auth.service.js';
 
 const registerSchema = z.object({
-  display_name: z.string().min(2).max(120),
-  phone: z.string().min(5).max(20).optional(),
-  email: z.string().email().optional(),
+  display_name: z.string().min(2, 'Имя не короче 2 символов').max(120, 'Имя слишком длинное'),
+  phone: z.string().min(5, 'Некорректный телефон').max(20, 'Некорректный телефон').optional(),
+  email: z.string().email('Некорректный e-mail').optional(),
   password: z.string().min(8, 'Пароль не короче 8 символов'),
   turnstile_token: z.string().optional(),
 }).refine((d) => d.phone || d.email, {
   message: 'Укажите телефон или e-mail',
+  path: ['phone'],
 });
 
 export async function register(req: Request, res: Response): Promise<void> {
@@ -26,8 +27,8 @@ export async function register(req: Request, res: Response): Promise<void> {
 }
 
 const loginSchema = z.object({
-  login: z.string().min(3),
-  password: z.string().min(1),
+  login: z.string().min(3, 'Введите телефон или e-mail'),
+  password: z.string().min(1, 'Введите пароль'),
   turnstile_token: z.string().optional(),
 });
 

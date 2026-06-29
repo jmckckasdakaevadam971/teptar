@@ -141,6 +141,26 @@ function LoginPageInner() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // Клиентская валидация — мгновенная подсказка до обращения к серверу.
+    if (!login.trim()) {
+      setError('Введите телефон или e-mail.');
+      return;
+    }
+    if (tab === 'register') {
+      if (displayName.trim().length < 2) {
+        setError('Введите имя — минимум 2 символа.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Пароль должен быть не короче 8 символов.');
+        return;
+      }
+    } else if (!password) {
+      setError('Введите пароль.');
+      return;
+    }
+
     if (siteKey && !token) {
       setError('Подтвердите, что вы не робот.');
       return;

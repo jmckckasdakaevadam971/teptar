@@ -216,5 +216,10 @@ export interface ApiEnvelope<T> {
   success: boolean;
   data: T;
   error?: string;
+  /** Детали ошибки валидации (Zod flatten). */
+  details?: {
+    formErrors?: string[];
+    fieldErrors?: Record<string, string[] | undefined>;
+  };
   meta?: Record<string, unknown>;
 }
