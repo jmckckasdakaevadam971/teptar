@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   Plus,
   TreePine,
@@ -15,8 +16,10 @@ import {
   Trash2,
   Save,
   Check,
+  LogIn,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
+import { useAuth } from "@/lib/auth";
 import { TEIPS, GARS_BY_TEIP } from "@/lib/teips";
 import { VILLAGES } from "@/lib/villages";
 import { TreeView } from "@/components/TreeView/TreeView";
@@ -71,6 +74,7 @@ const RELATION_LABEL: Record<Relation, string> = {
 };
 
 export function MyTreeClient() {
+  const { user, ready } = useAuth();
   const [started, setStarted] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -306,6 +310,40 @@ export function MyTreeClient() {
       return next;
     });
     closeForm();
+  }
+
+  // 0. Создавать древо могут только зарегистрированные пользователи.
+  if (!ready) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center rounded-3xl border border-border bg-card/40 px-6 py-20 text-muted-foreground">
+        Загрузка…
+      </div>
+    );
+  }
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card/40 px-6 py-20 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary text-primary">
+          <LogIn className="h-8 w-8" />
+        </span>
+        <h2 className="mt-6 font-serif text-2xl font-bold text-foreground">
+          Нужен вход в аккаунт
+        </h2>
+        <p className="mt-2 max-w-md text-pretty leading-relaxed text-muted-foreground">
+          Создавать родовое древо могут только зарегистрированные пользователи.
+          Войдите или зарегистрируйтесь, чтобы начать.
+        </p>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link href="/login?next=/my" className={BTN_PRIMARY}>
+            <LogIn className="h-4 w-4" />
+            Войти
+          </Link>
+          <Link href="/login?next=/my" className={BTN_SECONDARY}>
+            Зарегистрироваться
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // 1. Древо ещё не создано — экран с кнопкой «Создать древо».
