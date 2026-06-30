@@ -158,15 +158,16 @@ export function MyTreeClient() {
       saveTree();
 
       // Справочники для сопоставления названий → id.
+      // id в БД — bigint, и pg отдаёт их строками, поэтому приводим к Number.
       const [teipList, villageList] = await Promise.all([
         api.teips.list().catch(() => []),
         api.villages.list().catch(() => []),
       ]);
       const teipMap = new Map(
-        teipList.map((t) => [t.name.trim().toLowerCase(), t.id]),
+        teipList.map((t) => [t.name.trim().toLowerCase(), Number(t.id)]),
       );
       const villageMap = new Map(
-        villageList.map((v) => [v.name.trim().toLowerCase(), v.id]),
+        villageList.map((v) => [v.name.trim().toLowerCase(), Number(v.id)]),
       );
 
       // Гары рода (одного тейпа) — подгружаем по выбранному тейпу.
@@ -176,7 +177,9 @@ export function MyTreeClient() {
         : undefined;
       if (rootTeipId) {
         const gars = await api.teips.gars(rootTeipId).catch(() => []);
-        garMap = new Map(gars.map((g) => [g.name.trim().toLowerCase(), g.id]));
+        garMap = new Map(
+          gars.map((g) => [g.name.trim().toLowerCase(), Number(g.id)]),
+        );
       }
 
       // Создаём персоны от старших поколений к младшим, чтобы отец уже
@@ -206,7 +209,7 @@ export function MyTreeClient() {
               : undefined) ?? null,
           note: noteParts.join(". ") || null,
         });
-        idMap.set(p.id, created.id);
+        idMap.set(p.id, Number(created.id));
       }
 
       // Переводим всё древо в общую базу (на модерацию).
