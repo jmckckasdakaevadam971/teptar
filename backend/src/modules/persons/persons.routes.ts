@@ -31,6 +31,11 @@ personsRouter.post(
   requireAuth,
   asyncHandler(controller.unpublish),
 );
+personsRouter.post(
+  "/tree/reset",
+  requireAuth,
+  asyncHandler(controller.resetTree),
+);
 
 // Модерация общей базы (админы тейпа и супер-админ)
 personsRouter.get(

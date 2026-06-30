@@ -123,10 +123,11 @@ export function MyTreeClient() {
     }
   }, []);
 
-  // Отмечаем несохранённые изменения.
+  // Отмечаем несохранённые изменения. Любая правка снова разрешает отправку.
   useEffect(() => {
     if (!mounted) return;
     setDirty(JSON.stringify(people) !== lastSavedRef.current);
+    setSubmitted(false);
   }, [people, mounted]);
 
   function saveTree() {
@@ -156,6 +157,10 @@ export function MyTreeClient() {
     setPublishError(null);
     try {
       saveTree();
+
+      // Древо заменяем целиком: сначала удаляем прежние свои персоны,
+      // чтобы повторная отправка не плодила дубли, затем создаём заново.
+      await api.persons.reset();
 
       // Справочники для сопоставления названий → id.
       // id в БД — bigint, и pg отдаёт их строками, поэтому приводим к Number.

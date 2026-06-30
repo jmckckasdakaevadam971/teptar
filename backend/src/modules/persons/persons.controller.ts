@@ -1,5 +1,5 @@
-import type { Request, Response } from 'express';
-import { ok } from '../../utils/http.js';
+import type { Request, Response } from "express";
+import { ok } from "../../utils/http.js";
 import {
   createPersonSchema,
   updatePersonSchema,
@@ -7,9 +7,9 @@ import {
   publishTreeSchema,
   publicTreesSchema,
   mergeSchema,
-} from './persons.types.js';
-import * as service from './persons.service.js';
-import type { Viewer } from './persons.service.js';
+} from "./persons.types.js";
+import * as service from "./persons.service.js";
+import type { Viewer } from "./persons.service.js";
 
 /** Извлечь зрителя из запроса (для контроля видимости). */
 function viewerOf(req: Request): Viewer {
@@ -40,7 +40,11 @@ export async function create(req: Request, res: Response): Promise<void> {
 
 export async function update(req: Request, res: Response): Promise<void> {
   const input = updatePersonSchema.parse(req.body);
-  const person = await service.updatePerson(Number(req.params.id), input, viewerOf(req));
+  const person = await service.updatePerson(
+    Number(req.params.id),
+    input,
+    viewerOf(req),
+  );
   res.json(ok(person));
 }
 
@@ -67,6 +71,11 @@ export async function unpublish(req: Request, res: Response): Promise<void> {
   res.json(ok(result));
 }
 
+export async function resetTree(req: Request, res: Response): Promise<void> {
+  const result = await service.clearMyTree(req.user!.userId);
+  res.json(ok(result));
+}
+
 // ── Модерация (teip_admin / super_admin) ─────────────────────────────────
 
 export async function pending(_req: Request, res: Response): Promise<void> {
@@ -79,18 +88,27 @@ export async function editOwners(_req: Request, res: Response): Promise<void> {
   res.json(ok(owners));
 }
 
-export async function pendingPersons(req: Request, res: Response): Promise<void> {
+export async function pendingPersons(
+  req: Request,
+  res: Response,
+): Promise<void> {
   const persons = await service.getPendingPersons(Number(req.params.ownerId));
   res.json(ok(persons));
 }
 
 export async function approve(req: Request, res: Response): Promise<void> {
-  const result = await service.approveTree(Number(req.params.ownerId), req.user!.userId);
+  const result = await service.approveTree(
+    Number(req.params.ownerId),
+    req.user!.userId,
+  );
   res.json(ok(result));
 }
 
 export async function reject(req: Request, res: Response): Promise<void> {
-  const result = await service.rejectTree(Number(req.params.ownerId), req.user!.userId);
+  const result = await service.rejectTree(
+    Number(req.params.ownerId),
+    req.user!.userId,
+  );
   res.json(ok(result));
 }
 
@@ -115,12 +133,18 @@ export async function changes(req: Request, res: Response): Promise<void> {
 }
 
 export async function approveEdit(req: Request, res: Response): Promise<void> {
-  const person = await service.approveEdit(Number(req.params.id), req.user!.userId);
+  const person = await service.approveEdit(
+    Number(req.params.id),
+    req.user!.userId,
+  );
   res.json(ok(person));
 }
 
 export async function rejectEdit(req: Request, res: Response): Promise<void> {
-  const result = await service.rejectEdit(Number(req.params.id), req.user!.userId);
+  const result = await service.rejectEdit(
+    Number(req.params.id),
+    req.user!.userId,
+  );
   res.json(ok(result));
 }
 

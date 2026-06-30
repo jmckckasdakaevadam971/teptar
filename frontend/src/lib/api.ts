@@ -101,6 +101,10 @@ export const api = {
     unpublish: () =>
       request<{ count: number }>("/persons/tree/unpublish", { method: "POST" }),
 
+    /** Удалить всё своё древо (перед повторной отправкой). */
+    reset: () =>
+      request<{ count: number }>("/persons/tree/reset", { method: "POST" }),
+
     /** Общий каталог опубликованных древ. */
     publicTrees: (
       params: { q?: string; teip_id?: number; village_id?: number } = {},

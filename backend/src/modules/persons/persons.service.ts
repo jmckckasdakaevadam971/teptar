@@ -1,12 +1,12 @@
-import { query, withTransaction } from '../../db/pool.js';
-import { ApiError } from '../../utils/http.js';
-import type { UserRole } from '../../middleware/auth.js';
+import { query, withTransaction } from "../../db/pool.js";
+import { ApiError } from "../../utils/http.js";
+import type { UserRole } from "../../middleware/auth.js";
 import type {
   PersonRow,
   CreatePersonInput,
   UpdatePersonInput,
   ListPersonsQuery,
-} from './persons.types.js';
+} from "./persons.types.js";
 
 /** Кто запрашивает данные — для контроля видимости. */
 export interface Viewer {
@@ -18,14 +18,14 @@ export const ANON: Viewer = { userId: null, role: null };
 
 /** Админы (тейпа и супер) видят всё, включая чужие приватные древа. */
 export function isAdmin(viewer: Viewer): boolean {
-  return viewer.role === 'teip_admin' || viewer.role === 'super_admin';
+  return viewer.role === "teip_admin" || viewer.role === "super_admin";
 }
 
 /** Может ли зритель видеть конкретную персону. */
 function canView(p: PersonRow, viewer: Viewer): boolean {
   if (isAdmin(viewer)) return true;
   if (viewer.userId && p.created_by === viewer.userId) return true;
-  return p.visibility === 'public' && p.status === 'approved';
+  return p.visibility === "public" && p.status === "approved";
 }
 
 /** Поиск и листинг персон с фильтрами и контролем видимости. */
@@ -69,7 +69,7 @@ export async function listPersons(
   args.push(params.limit, params.offset);
   const sql = `
     SELECT * FROM persons
-    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY full_name
     LIMIT $${args.length - 1} OFFSET $${args.length}
   `;
@@ -77,10 +77,16 @@ export async function listPersons(
 }
 
 /** Получить персону по id (с проверкой доступа). */
-export async function getPerson(id: number, viewer?: Viewer): Promise<PersonRow> {
-  const rows = await query<PersonRow>('SELECT * FROM persons WHERE id = $1', [id]);
-  if (rows.length === 0) throw new ApiError(404, 'Человек не найден');
-  if (viewer && !canView(rows[0], viewer)) throw new ApiError(404, 'Человек не найден');
+export async function getPerson(
+  id: number,
+  viewer?: Viewer,
+): Promise<PersonRow> {
+  const rows = await query<PersonRow>("SELECT * FROM persons WHERE id = $1", [
+    id,
+  ]);
+  if (rows.length === 0) throw new ApiError(404, "Человек не найден");
+  if (viewer && !canView(rows[0], viewer))
+    throw new ApiError(404, "Человек не найден");
   return rows[0];
 }
 
@@ -97,14 +103,19 @@ export interface Family {
  * Семья человека для быстрого обзора рядом с древом.
  * Дети — по отцу или матери; супруги — из браков. Всё с учётом видимости.
  */
-export async function getFamily(id: number, viewer: Viewer = ANON): Promise<Family> {
+export async function getFamily(
+  id: number,
+  viewer: Viewer = ANON,
+): Promise<Family> {
   const person = await getPerson(id, viewer);
 
   const parentIds = [person.father_id, person.mother_id].filter(
     (x): x is number => x != null,
   );
   const parents = parentIds.length
-    ? await query<PersonRow>('SELECT * FROM persons WHERE id = ANY($1)', [parentIds])
+    ? await query<PersonRow>("SELECT * FROM persons WHERE id = ANY($1)", [
+        parentIds,
+      ])
     : [];
 
   const children = await query<PersonRow>(
@@ -152,7 +163,10 @@ async function assertNoCycle(childId: number, parentId: number): Promise<void> {
     [childId, parentId],
   );
   if (rows.length > 0) {
-    throw new ApiError(409, 'Нельзя назначить потомка родителем (цикл в родстве)');
+    throw new ApiError(
+      409,
+      "Нельзя назначить потомка родителем (цикл в родстве)",
+    );
   }
 }
 
@@ -173,12 +187,12 @@ async function assertOwnsParents(
   const ids = [fatherId, motherId].filter((x): x is number => !!x);
   if (ids.length === 0) return;
   const rows = await query<{ id: number; created_by: number | null }>(
-    'SELECT id, created_by FROM persons WHERE id = ANY($1)',
+    "SELECT id, created_by FROM persons WHERE id = ANY($1)",
     [ids],
   );
   for (const r of rows) {
     if (r.created_by !== viewer.userId) {
-      throw new ApiError(403, 'Нельзя добавлять людей в чужое древо');
+      throw new ApiError(403, "Нельзя добавлять людей в чужое древо");
     }
   }
 }
@@ -189,7 +203,11 @@ export async function createPerson(
 ): Promise<PersonRow> {
   const userId = viewer.userId;
   // Нельзя добавлять людей в чужое древо: родитель должен быть своим (или вы админ).
-  await assertOwnsParents(input.father_id ?? null, input.mother_id ?? null, viewer);
+  await assertOwnsParents(
+    input.father_id ?? null,
+    input.mother_id ?? null,
+    viewer,
+  );
 
   return withTransaction(async (client) => {
     const result = await client.query<PersonRow>(
@@ -203,7 +221,7 @@ export async function createPerson(
       `,
       [
         input.full_name,
-        input.gender ?? 'm',
+        input.gender ?? "m",
         input.birth_year ?? null,
         input.death_year ?? null,
         input.father_id ?? null,
@@ -237,10 +255,14 @@ export async function updatePerson(
 ): Promise<PersonRow> {
   const existing = await getPerson(id); // проверка существования
   if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
-    throw new ApiError(403, 'Можно редактировать только своё древо');
+    throw new ApiError(403, "Можно редактировать только своё древо");
   }
   // Нельзя привязать свою персону к родителю из чужого древа.
-  await assertOwnsParents(input.father_id ?? null, input.mother_id ?? null, viewer);
+  await assertOwnsParents(
+    input.father_id ?? null,
+    input.mother_id ?? null,
+    viewer,
+  );
 
   if (input.father_id) await assertNoCycle(id, input.father_id);
   if (input.mother_id) await assertNoCycle(id, input.mother_id);
@@ -248,13 +270,15 @@ export async function updatePerson(
   const diff: Record<string, { from: unknown; to: unknown }> = {};
   for (const [key, value] of Object.entries(input)) {
     const before = (existing as unknown as Record<string, unknown>)[key];
-    if (before !== value) diff[key] = { from: before ?? null, to: value ?? null };
+    if (before !== value)
+      diff[key] = { from: before ?? null, to: value ?? null };
   }
   if (Object.keys(diff).length === 0) return existing;
 
   // Если владелец правит уже опубликованную запись — старые данные остаются
   // публичными, а новые значения складываем в pending_diff до одобрения модератором.
-  const wasPublic = existing.visibility === 'public' && existing.status === 'approved';
+  const wasPublic =
+    existing.visibility === "public" && existing.status === "approved";
   if (wasPublic && !isAdmin(viewer)) {
     await query(
       `UPDATE persons SET pending_diff = $2, pending_by = $3, pending_at = now() WHERE id = $1`,
@@ -263,7 +287,11 @@ export async function updatePerson(
     await query(
       `INSERT INTO change_log (person_id, user_id, action, diff)
        VALUES ($1, $2, 'update', $3)`,
-      [id, viewer.userId, JSON.stringify({ fields: diff, sent_to_review: true })],
+      [
+        id,
+        viewer.userId,
+        JSON.stringify({ fields: diff, sent_to_review: true }),
+      ],
     );
     return existing; // публике по-прежнему видны прежние данные
   }
@@ -276,14 +304,18 @@ export async function updatePerson(
   }
   args.push(id);
   const rows = await query<PersonRow>(
-    `UPDATE persons SET ${fields.join(', ')} WHERE id = $${args.length} RETURNING *`,
+    `UPDATE persons SET ${fields.join(", ")} WHERE id = $${args.length} RETURNING *`,
     args,
   );
 
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES ($1, $2, 'update', $3)`,
-    [id, viewer.userId, JSON.stringify({ fields: diff, sent_to_review: false })],
+    [
+      id,
+      viewer.userId,
+      JSON.stringify({ fields: diff, sent_to_review: false }),
+    ],
   );
 
   return rows[0];
@@ -293,10 +325,12 @@ export async function updatePerson(
 export async function deletePerson(id: number, viewer: Viewer): Promise<void> {
   const existing = await getPerson(id);
   if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
-    throw new ApiError(403, 'Удалять можно только своё древо');
+    throw new ApiError(403, "Удалять можно только своё древо");
   }
-  const rows = await query('DELETE FROM persons WHERE id = $1 RETURNING id', [id]);
-  if (rows.length === 0) throw new ApiError(404, 'Человек не найден');
+  const rows = await query("DELETE FROM persons WHERE id = $1 RETURNING id", [
+    id,
+  ]);
+  if (rows.length === 0) throw new ApiError(404, "Человек не найден");
 }
 
 // ============================================================================
@@ -309,7 +343,7 @@ export interface TreeStatus {
   pending: number;
   published: number;
   rejected: number;
-  state: 'empty' | 'private' | 'pending' | 'published' | 'mixed';
+  state: "empty" | "private" | "pending" | "published" | "mixed";
 }
 
 /** Текущее состояние своего древа (для ползунка видимости). */
@@ -331,11 +365,11 @@ export async function getTreeStatus(userId: number): Promise<TreeStatus> {
     [userId],
   );
   const r = rows[0];
-  let state: TreeStatus['state'];
-  if (r.total === 0) state = 'empty';
-  else if (r.pending > 0) state = 'pending';
-  else if (r.published > 0) state = r.private > 0 ? 'mixed' : 'published';
-  else state = 'private';
+  let state: TreeStatus["state"];
+  if (r.total === 0) state = "empty";
+  else if (r.pending > 0) state = "pending";
+  else if (r.published > 0) state = r.private > 0 ? "mixed" : "published";
+  else state = "private";
   return { ...r, state };
 }
 
@@ -346,15 +380,15 @@ export async function getTreeStatus(userId: number): Promise<TreeStatus> {
  */
 export async function publishTree(
   userId: number,
-  mode: 'all' | 'hide_recent',
+  mode: "all" | "hide_recent",
   cutoffYear: number,
 ): Promise<{ published: number; hidden: number }> {
   return withTransaction(async (client) => {
     const pubArgs: unknown[] = [userId];
-    let pubWhere = 'created_by = $1';
-    if (mode === 'hide_recent') {
+    let pubWhere = "created_by = $1";
+    if (mode === "hide_recent") {
       pubArgs.push(cutoffYear);
-      pubWhere += ' AND (birth_year IS NULL OR birth_year < $2)';
+      pubWhere += " AND (birth_year IS NULL OR birth_year < $2)";
     }
     const pub = await client.query(
       `UPDATE persons SET visibility = 'public', status = 'pending', updated_at = now()
@@ -363,7 +397,7 @@ export async function publishTree(
     );
 
     let hiddenCount = 0;
-    if (mode === 'hide_recent') {
+    if (mode === "hide_recent") {
       const hid = await client.query(
         `UPDATE persons SET visibility = 'private', updated_at = now()
          WHERE created_by = $1 AND birth_year IS NOT NULL AND birth_year >= $2 RETURNING id`,
@@ -375,7 +409,15 @@ export async function publishTree(
     await client.query(
       `INSERT INTO change_log (person_id, user_id, action, diff)
        VALUES (NULL, $1, 'publish', $2)`,
-      [userId, JSON.stringify({ mode, cutoffYear, published: pub.rowCount, hidden: hiddenCount })],
+      [
+        userId,
+        JSON.stringify({
+          mode,
+          cutoffYear,
+          published: pub.rowCount,
+          hidden: hiddenCount,
+        }),
+      ],
     );
 
     return { published: pub.rowCount ?? 0, hidden: hiddenCount };
@@ -383,7 +425,9 @@ export async function publishTree(
 }
 
 /** Скрыть своё древо обратно в личное (убрать из общей базы). */
-export async function unpublishTree(userId: number): Promise<{ count: number }> {
+export async function unpublishTree(
+  userId: number,
+): Promise<{ count: number }> {
   const rows = await query(
     `UPDATE persons SET visibility = 'private', updated_at = now()
      WHERE created_by = $1 RETURNING id`,
@@ -393,6 +437,19 @@ export async function unpublishTree(userId: number): Promise<{ count: number }> 
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES (NULL, $1, 'unpublish', $2)`,
     [userId, JSON.stringify({ count: rows.length })],
+  );
+  return { count: rows.length };
+}
+
+/**
+ * Полностью удалить своё древо из базы. Используется перед повторной
+ * отправкой из редактора `/my`: древо заменяется целиком, а не дополняется,
+ * чтобы не плодить дубли. Связанные браки/журнал удаляются по CASCADE.
+ */
+export async function clearMyTree(userId: number): Promise<{ count: number }> {
+  const rows = await query(
+    `DELETE FROM persons WHERE created_by = $1 RETURNING id`,
+    [userId],
   );
   return { count: rows.length };
 }
@@ -448,13 +505,17 @@ export async function getPendingPersons(ownerId: number): Promise<PersonRow[]> {
 }
 
 /** Одобрить древо пользователя целиком. */
-export async function approveTree(ownerId: number, adminId: number): Promise<{ count: number }> {
+export async function approveTree(
+  ownerId: number,
+  adminId: number,
+): Promise<{ count: number }> {
   const rows = await query(
     `UPDATE persons SET status = 'approved', approved_by = $2, updated_at = now()
      WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
     [ownerId, adminId],
   );
-  if (rows.length === 0) throw new ApiError(404, 'Нет древа на модерации у этого пользователя');
+  if (rows.length === 0)
+    throw new ApiError(404, "Нет древа на модерации у этого пользователя");
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES (NULL, $1, 'approve', $2)`,
@@ -464,13 +525,17 @@ export async function approveTree(ownerId: number, adminId: number): Promise<{ c
 }
 
 /** Отклонить древо пользователя — вернуть в личное. */
-export async function rejectTree(ownerId: number, adminId: number): Promise<{ count: number }> {
+export async function rejectTree(
+  ownerId: number,
+  adminId: number,
+): Promise<{ count: number }> {
   const rows = await query(
     `UPDATE persons SET status = 'rejected', visibility = 'private', updated_at = now()
      WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
     [ownerId, adminId],
   );
-  if (rows.length === 0) throw new ApiError(404, 'Нет древа на модерации у этого пользователя');
+  if (rows.length === 0)
+    throw new ApiError(404, "Нет древа на модерации у этого пользователя");
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES (NULL, $1, 'reject', $2)`,
@@ -489,7 +554,9 @@ export interface TreeChange {
 
 /** Список ожидающих правок (pending_diff) — старые данные остаются публичными. */
 export async function getTreeChanges(ownerId: number): Promise<TreeChange[]> {
-  const rows = await query<PersonRow & { pending_diff: any; pending_at: string }>(
+  const rows = await query<
+    PersonRow & { pending_diff: any; pending_at: string }
+  >(
     `SELECT * FROM persons
      WHERE created_by = $1 AND pending_diff IS NOT NULL
      ORDER BY pending_at DESC LIMIT 100`,
@@ -501,17 +568,26 @@ export async function getTreeChanges(ownerId: number): Promise<TreeChange[]> {
       const before = (p as unknown as Record<string, unknown>)[k];
       if (before !== v) diff[k] = { from: before ?? null, to: v ?? null };
     }
-    return { person_id: p.id, full_name: p.full_name, diff, created_at: p.pending_at };
+    return {
+      person_id: p.id,
+      full_name: p.full_name,
+      diff,
+      created_at: p.pending_at,
+    };
   });
 }
 
 /** Применить ожидающие правки персоны (модератор). */
-export async function approveEdit(personId: number, adminId: number): Promise<PersonRow> {
+export async function approveEdit(
+  personId: number,
+  adminId: number,
+): Promise<PersonRow> {
   const rows = await query<PersonRow & { pending_diff: any }>(
-    'SELECT * FROM persons WHERE id = $1',
+    "SELECT * FROM persons WHERE id = $1",
     [personId],
   );
-  if (rows.length === 0 || !rows[0].pending_diff) throw new ApiError(404, 'Нет ожидающих правок');
+  if (rows.length === 0 || !rows[0].pending_diff)
+    throw new ApiError(404, "Нет ожидающих правок");
   const input = rows[0].pending_diff as Record<string, unknown>;
   const fields: string[] = [];
   const args: unknown[] = [];
@@ -521,7 +597,7 @@ export async function approveEdit(personId: number, adminId: number): Promise<Pe
   }
   args.push(personId);
   const updated = await query<PersonRow>(
-    `UPDATE persons SET ${fields.join(', ')}, pending_diff = NULL, pending_by = NULL,
+    `UPDATE persons SET ${fields.join(", ")}, pending_diff = NULL, pending_by = NULL,
        pending_at = NULL, updated_at = now() WHERE id = $${args.length} RETURNING *`,
     args,
   );
@@ -534,13 +610,16 @@ export async function approveEdit(personId: number, adminId: number): Promise<Pe
 }
 
 /** Отклонить ожидающие правки персоны — оставить публичными старые данные. */
-export async function rejectEdit(personId: number, adminId: number): Promise<{ rejected: boolean }> {
+export async function rejectEdit(
+  personId: number,
+  adminId: number,
+): Promise<{ rejected: boolean }> {
   const rows = await query(
     `UPDATE persons SET pending_diff = NULL, pending_by = NULL, pending_at = NULL
      WHERE id = $1 AND pending_diff IS NOT NULL RETURNING id`,
     [personId],
   );
-  if (rows.length === 0) throw new ApiError(404, 'Нет ожидающих правок');
+  if (rows.length === 0) throw new ApiError(404, "Нет ожидающих правок");
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES ($1, $2, 'reject', '{}')`,
@@ -579,7 +658,7 @@ export interface MatchSeed {
  */
 export async function findSimilar(
   seed: MatchSeed,
-  statuses: Array<'approved' | 'pending'>,
+  statuses: Array<"approved" | "pending">,
 ): Promise<SimilarPerson[]> {
   if (!seed.teip_id || !seed.full_name) return [];
   return query<SimilarPerson>(
@@ -600,13 +679,20 @@ export async function findSimilar(
     ORDER BY similarity DESC
     LIMIT 8
     `,
-    [seed.id, seed.full_name, seed.teip_id, seed.birth_year, seed.created_by, statuses],
+    [
+      seed.id,
+      seed.full_name,
+      seed.teip_id,
+      seed.birth_year,
+      seed.created_by,
+      statuses,
+    ],
   );
 }
 
 /** Похожие только среди одобренных (для кросс-древо родства). */
 export function findSimilarApproved(seed: MatchSeed): Promise<SimilarPerson[]> {
-  return findSimilar(seed, ['approved']);
+  return findSimilar(seed, ["approved"]);
 }
 
 // ============================================================================
@@ -659,7 +745,7 @@ export async function listPublicTrees(filters: {
     WITH matched_owners AS (
       SELECT DISTINCT p.created_by AS owner_id
       FROM persons p
-      WHERE ${match.join(' AND ')}
+      WHERE ${match.join(" AND ")}
     ),
     pub AS (
       SELECT p.created_by, p.teip_id, p.birth_year, u.display_name AS owner_name
@@ -715,7 +801,9 @@ export interface DuplicatePair {
  * Возможные дубли для древа на модерации: каждая pending-персона владельца
  * сверяется с персонами из чужих древ (approved или pending).
  */
-export async function findOwnerDuplicates(ownerId: number): Promise<DuplicatePair[]> {
+export async function findOwnerDuplicates(
+  ownerId: number,
+): Promise<DuplicatePair[]> {
   const persons = await query<PersonRow>(
     `SELECT * FROM persons
      WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'`,
@@ -724,8 +812,14 @@ export async function findOwnerDuplicates(ownerId: number): Promise<DuplicatePai
   const pairs: DuplicatePair[] = [];
   for (const p of persons) {
     const candidates = await findSimilar(
-      { id: p.id, full_name: p.full_name, birth_year: p.birth_year, teip_id: p.teip_id, created_by: ownerId },
-      ['approved', 'pending'],
+      {
+        id: p.id,
+        full_name: p.full_name,
+        birth_year: p.birth_year,
+        teip_id: p.teip_id,
+        created_by: ownerId,
+      },
+      ["approved", "pending"],
     );
     for (const candidate of candidates) {
       pairs.push({
@@ -752,22 +846,23 @@ export async function mergePersons(
   adminId: number,
 ): Promise<{ merged: boolean }> {
   if (keepId === dropId) {
-    throw new ApiError(400, 'Нельзя объединить запись саму с собой');
+    throw new ApiError(400, "Нельзя объединить запись саму с собой");
   }
   return withTransaction(async (client) => {
     const both = await client.query<{ id: number }>(
-      'SELECT id FROM persons WHERE id = ANY($1)',
+      "SELECT id FROM persons WHERE id = ANY($1)",
       [[keepId, dropId]],
     );
-    if (both.rows.length < 2) throw new ApiError(404, 'Одна из записей не найдена');
+    if (both.rows.length < 2)
+      throw new ApiError(404, "Одна из записей не найдена");
 
     // Перепривязать детей с drop на keep (но не сделать keep своим родителем).
     await client.query(
-      'UPDATE persons SET father_id = $1 WHERE father_id = $2 AND id <> $1',
+      "UPDATE persons SET father_id = $1 WHERE father_id = $2 AND id <> $1",
       [keepId, dropId],
     );
     await client.query(
-      'UPDATE persons SET mother_id = $1 WHERE mother_id = $2 AND id <> $1',
+      "UPDATE persons SET mother_id = $1 WHERE mother_id = $2 AND id <> $1",
       [keepId, dropId],
     );
 
@@ -786,7 +881,7 @@ export async function mergePersons(
     );
 
     // Удалить дубль (оставшиеся его браки уйдут каскадом).
-    await client.query('DELETE FROM persons WHERE id = $1', [dropId]);
+    await client.query("DELETE FROM persons WHERE id = $1", [dropId]);
 
     await client.query(
       `INSERT INTO change_log (person_id, user_id, action, diff)
