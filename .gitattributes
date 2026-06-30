@@ -1,0 +1,10 @@
+# Normalize line endings: detect text automatically, store LF in the repo.
+* text=auto eol=lf
+
+# Shell scripts MUST stay LF (CRLF breaks the shebang on Linux containers).
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+
+# Windows batch files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
