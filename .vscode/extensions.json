@@ -1,0 +1,35 @@
+{
+  "recommendations": [
+    // --- Качество кода / TypeScript ---
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "usernamehw.errorlens",
+    "yoavbls.pretty-ts-errors",
+
+    // --- Frontend: Next.js / React / Tailwind ---
+    "bradlc.vscode-tailwindcss",
+    "csstools.postcss",
+    "formulahendry.auto-rename-tag",
+    "steoates.autoimport",
+
+    // --- Backend: база данных / окружение ---
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "mikestead.dotenv",
+
+    // --- Docker / деплой / Nginx / shell ---
+    "ms-azuretools.vscode-containers",
+    "ms-azuretools.vscode-docker",
+    "timonwong.shellcheck",
+    "raynigon.nginx-formatter",
+
+    // --- Git ---
+    "eamodio.gitlens",
+
+    // --- Утилиты / навигация ---
+    "christian-kohler.path-intellisense",
+    "christian-kohler.npm-intellisense",
+    "streetsidesoftware.code-spell-checker",
+    "streetsidesoftware.code-spell-checker-russian"
+  ]
+}

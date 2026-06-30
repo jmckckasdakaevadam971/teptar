@@ -34,6 +34,7 @@ exports/
 
 # OS / IDE
 .DS_Store
+._*
 Thumbs.db
 .idea/
 .vscode/*

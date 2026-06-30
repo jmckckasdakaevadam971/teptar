@@ -1,0 +1,21 @@
+import type { Metadata } from "next";
+import { PageShell } from "@/components/PageShell/PageShell";
+import { MyTreeClient } from "@/components/MyTreeClient/MyTreeClient";
+
+export const metadata: Metadata = {
+  title: "Моё древо — Vorhda",
+  description:
+    "Интерактивная схема родового древа: поколения, связи и сведения о каждом предке.",
+};
+
+export default function MyTreePage() {
+  return (
+    <PageShell
+      eyebrow="Дезал · Родовое древо"
+      title="Моё древо"
+      description="Создайте родовое древо и начните с самого старшего предка, о котором у вас есть сведения."
+    >
+      <MyTreeClient />
+    </PageShell>
+  );
+}
