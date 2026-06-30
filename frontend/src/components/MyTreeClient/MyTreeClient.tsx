@@ -20,7 +20,8 @@ import {
   Globe,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
-import { useAuth } from "@/lib/auth";
+import { useAuth, getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { TEIPS, GARS_BY_TEIP } from "@/lib/teips";
 import { VILLAGES } from "@/lib/villages";
 import { TreeView } from "@/components/TreeView/TreeView";
@@ -74,6 +75,15 @@ const RELATION_LABEL: Record<Relation, string> = {
   wife: "Жена",
 };
 
+/** Извлечь год (число) из произвольной строки вида «1920», «1920 г.». */
+function parseYear(value?: string): number | null {
+  if (!value) return null;
+  const m = value.match(/\d{1,4}/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function MyTreeClient() {
   const { user, ready } = useAuth();
   const [started, setStarted] = useState(false);
@@ -90,6 +100,9 @@ export function MyTreeClient() {
   const [villageFocused, setVillageFocused] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [publishedOpen, setPublishedOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const lastSavedRef = useRef("[]");
 
   // При первом открытии подгружаем ранее сохранённое древо из localStorage.
@@ -127,15 +140,87 @@ export function MyTreeClient() {
     }
   }
 
-  // Отправить древо в общий доступ → на модерацию.
-  // Назначенный модератор (по тейпу/селу) проверяет древо целиком; после
-  // одобрения оно становится публичным.
-  // ⚠️ ВРЕМЕННО: пока древо хранится в localStorage и не связано с бэкендом,
-  // поэтому здесь только подтверждение. Реальная отправка появится после
-  // подключения к API (visibility='public', status='pending').
-  function publishTree() {
-    saveTree();
-    setPublishedOpen(true);
+  // Отправить древо в общую базу → на модерацию.
+  // Создаём персоны в бэкенде (от предков к потомкам, со связями
+  // отец→ребёнок и сопоставлением тейпа/гара/села по названию), затем
+  // переводим всё древо в visibility='public', status='pending'. После
+  // одобрения модератором оно становится публичным и попадаёт в /trees.
+  async function publishTree() {
+    if (people.length === 0 || publishing) return;
+    const token = getToken();
+    if (!token) {
+      setPublishError("Чтобы отправить древо на модерацию, войдите в аккаунт.");
+      return;
+    }
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      saveTree();
+
+      // Справочники для сопоставления названий → id.
+      const [teipList, villageList] = await Promise.all([
+        api.teips.list().catch(() => []),
+        api.villages.list().catch(() => []),
+      ]);
+      const teipMap = new Map(
+        teipList.map((t) => [t.name.trim().toLowerCase(), t.id]),
+      );
+      const villageMap = new Map(
+        villageList.map((v) => [v.name.trim().toLowerCase(), v.id]),
+      );
+
+      // Гары рода (одного тейпа) — подгружаем по выбранному тейпу.
+      let garMap = new Map<string, number>();
+      const rootTeipId = lockedTeip
+        ? teipMap.get(lockedTeip.trim().toLowerCase())
+        : undefined;
+      if (rootTeipId) {
+        const gars = await api.teips.gars(rootTeipId).catch(() => []);
+        garMap = new Map(gars.map((g) => [g.name.trim().toLowerCase(), g.id]));
+      }
+
+      // Создаём персоны от старших поколений к младшим, чтобы отец уже
+      // существовал к моменту создания ребёнка.
+      const ordered = [...people].sort((a, b) => a.generation - b.generation);
+      const idMap = new Map<string, number>();
+      for (const p of ordered) {
+        const fatherId = p.parentId ? (idMap.get(p.parentId) ?? null) : null;
+        const noteParts: string[] = [];
+        if (p.bio) noteParts.push(p.bio);
+        if (p.spouseName) noteParts.push(`Супруга: ${p.spouseName}`);
+        const created = await api.persons.create({
+          full_name: p.name,
+          gender: p.role?.trim().toLowerCase() === "дочь" ? "f" : "m",
+          birth_year: parseYear(p.birth),
+          death_year: parseYear(p.death),
+          father_id: fatherId,
+          teip_id:
+            (p.teip ? teipMap.get(p.teip.trim().toLowerCase()) : undefined) ??
+            null,
+          gar_id:
+            (p.gar ? garMap.get(p.gar.trim().toLowerCase()) : undefined) ??
+            null,
+          village_id:
+            (p.village
+              ? villageMap.get(p.village.trim().toLowerCase())
+              : undefined) ?? null,
+          note: noteParts.join(". ") || null,
+        });
+        idMap.set(p.id, created.id);
+      }
+
+      // Переводим всё древо в общую базу (на модерацию).
+      await api.persons.publish("all");
+
+      setSubmitted(true);
+      setPublishedOpen(true);
+    } catch (e) {
+      setPublishError(
+        e instanceof Error ? e.message : "Не удалось отправить древо.",
+      );
+    } finally {
+      setPublishing(false);
+    }
   }
 
   const isFirst = people.length === 0;
@@ -422,11 +507,15 @@ export function MyTreeClient() {
           <button
             type="button"
             onClick={publishTree}
-            disabled={people.length === 0}
+            disabled={people.length === 0 || publishing || submitted}
             className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-50`}
           >
             <Globe className="h-4 w-4" />
-            Отправить в общий доступ
+            {publishing
+              ? "Отправка…"
+              : submitted
+                ? "Отправлено"
+                : "Отправить в общий доступ"}
           </button>
           {isFirst ? (
             <button
@@ -440,6 +529,8 @@ export function MyTreeClient() {
           ) : null}
         </div>
       </div>
+
+      {publishError ? <p className={ERR_TEXT}>{publishError}</p> : null}
 
       {isFirst ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 py-16 text-center">
