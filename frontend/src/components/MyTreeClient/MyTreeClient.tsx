@@ -17,6 +17,7 @@ import {
   Save,
   Check,
   LogIn,
+  Globe,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { useAuth } from "@/lib/auth";
@@ -125,6 +126,20 @@ export function MyTreeClient() {
     }
   }
 
+  // Отправить древо в общий доступ → на модерацию.
+  // Назначенный модератор (по тейпу/селу) проверяет древо целиком; после
+  // одобрения оно становится публичным.
+  // ⚠️ ВРЕМЕННО: пока древо хранится в localStorage и не связано с бэкендом,
+  // поэтому здесь только подтверждение. Реальная отправка появится после
+  // подключения к API (visibility='public', status='pending').
+  function publishTree() {
+    saveTree();
+    alert(
+      "Древо отправлено на модерацию. Назначенный модератор проверит его, " +
+        "и после одобрения оно появится в общем доступе.",
+    );
+  }
+
   const isFirst = people.length === 0;
   const selected = people.find((p) => p.id === selectedId) ?? null;
   const minGen = people.length
@@ -132,8 +147,7 @@ export function MyTreeClient() {
     : 0;
 
   // Тейп рода задаётся один раз (для первого предка) и дальше не меняется.
-  const lockedTeip =
-    people.find((p) => p.teip && p.teip !== "—")?.teip ?? null;
+  const lockedTeip = people.find((p) => p.teip && p.teip !== "—")?.teip ?? null;
 
   // Подсказки по тейпу: показываем похожие, пока пользователь печатает.
   const teipQuery = draft.teip.trim().toLowerCase();
@@ -158,7 +172,7 @@ export function MyTreeClient() {
             g.toLowerCase() !== garQuery,
         )
         .slice(0, 6)
-      : [];
+    : [];
 
   // Подсказки по населённому пункту.
   const villageQuery = draft.village.trim().toLowerCase();
@@ -212,7 +226,11 @@ export function MyTreeClient() {
         .map((p) => {
           if (p.parentId === id) {
             // Прямые дети — к деду и на поколение выше.
-            return { ...p, parentId: newParentId, generation: p.generation - 1 };
+            return {
+              ...p,
+              parentId: newParentId,
+              generation: p.generation - 1,
+            };
           }
           if (descendants.has(p.id)) {
             // Более дальние потомки — просто поднимаем на поколение.
@@ -320,7 +338,9 @@ export function MyTreeClient() {
       </div>
     );
   }
-  if (!user) {
+  // В dev-режиме (локально) разрешаем строить древо без входа — чтобы проверять
+  // изменения. В проде гейт обязателен.
+  if (!user && process.env.NODE_ENV !== "development") {
     return (
       <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card/40 px-6 py-20 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary text-primary">
@@ -400,6 +420,15 @@ export function MyTreeClient() {
               <Check className="h-4 w-4" />
             )}
             {dirty ? "Сохранить" : "Сохранено"}
+          </button>
+          <button
+            type="button"
+            onClick={publishTree}
+            disabled={people.length === 0}
+            className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            <Globe className="h-4 w-4" />
+            Отправить в общий доступ
           </button>
           {isFirst ? (
             <button
@@ -920,4 +949,3 @@ function DetailRow({
     </div>
   );
 }
-
