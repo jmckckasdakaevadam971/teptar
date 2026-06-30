@@ -89,6 +89,7 @@ export function MyTreeClient() {
   const [garFocused, setGarFocused] = useState(false);
   const [villageFocused, setVillageFocused] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [publishedOpen, setPublishedOpen] = useState(false);
   const lastSavedRef = useRef("[]");
 
   // При первом открытии подгружаем ранее сохранённое древо из localStorage.
@@ -134,10 +135,7 @@ export function MyTreeClient() {
   // подключения к API (visibility='public', status='pending').
   function publishTree() {
     saveTree();
-    alert(
-      "Древо отправлено на модерацию. Назначенный модератор проверит его, " +
-        "и после одобрения оно появится в общем доступе.",
-    );
+    setPublishedOpen(true);
   }
 
   const isFirst = people.length === 0;
@@ -867,6 +865,40 @@ export function MyTreeClient() {
                     Добавить
                   </button>
                 </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {/* Окно подтверждения отправки древа на модерацию. */}
+      {publishedOpen && mounted
+        ? createPortal(
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-8">
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                onClick={() => setPublishedOpen(false)}
+              />
+              <div className="relative flex w-full max-w-md flex-col items-center overflow-hidden rounded-3xl border border-border bg-card p-8 text-center shadow-2xl">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary text-primary">
+                  <Check className="h-8 w-8" />
+                </span>
+                <h2 className="mt-6 font-serif text-2xl font-bold text-foreground">
+                  Древо отправлено на модерацию
+                </h2>
+                <p className="mt-2 text-pretty leading-relaxed text-muted-foreground">
+                  Древо проверят модераторы и супер-админ. После одобрения оно
+                  появится в общем доступе.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPublishedOpen(false)}
+                  className={`mt-8 ${BTN_PRIMARY}`}
+                >
+                  Понятно
+                </button>
               </div>
             </div>,
             document.body,
