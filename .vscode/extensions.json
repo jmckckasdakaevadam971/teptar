@@ -20,6 +20,7 @@
     // --- Docker / деплой / Nginx / shell ---
     "ms-azuretools.vscode-containers",
     "ms-azuretools.vscode-docker",
+    "ms-vscode-remote.remote-ssh",
     "timonwong.shellcheck",
     "raynigon.nginx-formatter",
 
