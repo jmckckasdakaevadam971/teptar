@@ -36,10 +36,17 @@ import {
 } from "@/lib/ui";
 
 // ⚠️ ВРЕМЕННО: всё состояние держим локально, без бэкенда.
-// Сохранение пока идёт в localStorage браузера — переживает перезагрузку
-// и выход с сайта, но привязано к этому устройству.
+// Сохранение идёт в localStorage браузера и привязано к конкретному аккаунту,
+// чтобы черновик одного пользователя не показывался в другом аккаунте на том же устройстве.
 // Когда заработают вход и API — заменить на api.persons.* и загрузку древа.
-const STORAGE_KEY = "vorhda:my-tree";
+const STORAGE_PREFIX = "vorhda:my-tree";
+// Старый общий ключ (без привязки к аккаунту) — удаляем его, он «протекал» между аккаунтами.
+const LEGACY_STORAGE_KEY = "vorhda:my-tree";
+
+/** Ключ хранилища черновика для конкретного аккаунта (или гостя). */
+function storageKeyFor(userId?: number | null): string {
+  return userId ? `${STORAGE_PREFIX}:${userId}` : `${STORAGE_PREFIX}:guest`;
+}
 
 type Relation = "founder" | "son" | "daughter" | "father" | "wife";
 
@@ -105,23 +112,49 @@ export function MyTreeClient() {
   const [publishError, setPublishError] = useState<string | null>(null);
   const lastSavedRef = useRef("[]");
 
-  // При первом открытии подгружаем ранее сохранённое древо из localStorage.
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Загружаем черновик конкретного аккаунта. При смене аккаунта — перезагружаем.
+  useEffect(() => {
+    if (!ready) return;
+    const key = storageKeyFor(user?.id);
+    // Разовая очистка старого общего ключа, который «протекал» между аккаунтами.
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // хранилище недоступно
+    }
+    try {
+      let raw = localStorage.getItem(key);
+      // Перенос гостевого черновика в аккаунт при первом входе (без утечки между аккаунтами).
+      if (user?.id && !raw) {
+        const guestRaw = localStorage.getItem(storageKeyFor(null));
+        if (guestRaw) {
+          localStorage.setItem(key, guestRaw);
+          localStorage.removeItem(storageKeyFor(null));
+          raw = guestRaw;
+        }
+      }
       if (raw) {
         const parsed = JSON.parse(raw) as Person[];
         if (Array.isArray(parsed) && parsed.length) {
           setPeople(parsed);
           setStarted(true);
           lastSavedRef.current = raw;
+          return;
         }
       }
+      // У этого аккаунта нет сохранённого древа — начинаем с чистого листа.
+      setPeople([]);
+      setStarted(false);
+      setSelectedId(null);
+      lastSavedRef.current = "[]";
     } catch {
       // Повреждённые данные просто игнорируем.
     }
-  }, []);
+  }, [ready, user?.id]);
 
   // Отмечаем несохранённые изменения. Любая правка снова разрешает отправку.
   useEffect(() => {
@@ -133,7 +166,7 @@ export function MyTreeClient() {
   function saveTree() {
     try {
       const serialized = JSON.stringify(people);
-      localStorage.setItem(STORAGE_KEY, serialized);
+      localStorage.setItem(storageKeyFor(user?.id), serialized);
       lastSavedRef.current = serialized;
       setDirty(false);
     } catch {
