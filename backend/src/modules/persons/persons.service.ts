@@ -532,7 +532,7 @@ export async function rejectTree(
   const rows = await query(
     `UPDATE persons SET status = 'rejected', visibility = 'private', updated_at = now()
      WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
-    [ownerId, adminId],
+    [ownerId],
   );
   if (rows.length === 0)
     throw new ApiError(404, "Нет древа на модерации у этого пользователя");
