@@ -1,17 +1,20 @@
-'use client'
+"use client";
 
-import { Reveal } from '@/components/Reveal/Reveal'
+import { Reveal } from "@/components/Reveal/Reveal";
 
 export function HeroSection() {
   return (
     <section
       id="hero"
-      className="grain relative isolate overflow-hidden pt-32 pb-20 md:pt-44 md:pb-28"
+      className="grain relative isolate overflow-hidden pt-32 pb-32 md:pt-44 md:pb-44"
     >
       {/* Tower silhouette background */}
       <div
-        className="absolute inset-0 -z-10 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/images/towers-sunset.png')" }}
+        className="absolute inset-0 -z-10 bg-cover bg-no-repeat"
+        style={{
+          backgroundImage: "url('/images/towers-sunset.png')",
+          backgroundPosition: "center 8%",
+        }}
         aria-hidden="true"
       />
       {/* Sunset gradient + dark wash for readability */}
@@ -20,7 +23,7 @@ export function HeroSection() {
         aria-hidden="true"
         style={{
           background:
-            'linear-gradient(180deg, rgba(12,10,7,0.55) 0%, rgba(12,10,7,0.7) 45%, rgba(12,10,7,0.95) 100%)',
+            "linear-gradient(180deg, rgba(12,10,7,0.55) 0%, rgba(12,10,7,0.7) 45%, rgba(12,10,7,0.95) 100%)",
         }}
       />
       <div
@@ -28,7 +31,7 @@ export function HeroSection() {
         aria-hidden="true"
         style={{
           background:
-            'radial-gradient(80% 60% at 50% 18%, rgba(236,205,99,0.18) 0%, rgba(201,162,39,0.06) 40%, transparent 72%)',
+            "radial-gradient(80% 60% at 50% 18%, rgba(236,205,99,0.18) 0%, rgba(201,162,39,0.06) 40%, transparent 72%)",
         }}
       />
 
@@ -49,8 +52,7 @@ export function HeroSection() {
 
         <Reveal delay={160}>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
-            Справочник тейпов, гаров и сёл чеченского народа — в одном
-            месте.
+            Справочник тейпов, гаров и сёл чеченского народа — в одном месте.
           </p>
         </Reveal>
 
@@ -67,5 +69,5 @@ export function HeroSection() {
         </Reveal>
       </div>
     </section>
-  )
+  );
 }
