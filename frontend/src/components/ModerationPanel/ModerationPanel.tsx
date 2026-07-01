@@ -1,9 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
+import { TreeView } from '@/components/TreeView/TreeView';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, LINK_DANGER, TABLE, TABLE_WRAP } from '@/lib/ui';
 import type { PendingTree, Person, DuplicatePair, TreeChange } from '@/lib/types';
+import type { Person as TreePerson } from '@/lib/demo-data';
 
 /** Описание диапазона лет древа. */
 function yearsLabel(min: number | null, max: number | null): string {
@@ -16,6 +19,33 @@ function yearsLabel(min: number | null, max: number | null): string {
 function personYears(p: Person): string {
   if (!p.birth_year && !p.death_year) return '—';
   return `${p.birth_year ?? '?'} – ${p.death_year ?? (p.is_alive ? 'н.в.' : '?')}`;
+}
+
+/** Преобразовать персоны из бэкенда в формат визуального древа TreeView. */
+function toTreePeople(persons: Person[]): TreePerson[] {
+  const byId = new Map(persons.map((p) => [p.id, p]));
+  const genCache = new Map<number, number>();
+  const genOf = (p: Person, seen = new Set<number>()): number => {
+    const cached = genCache.get(p.id);
+    if (cached != null) return cached;
+    if (seen.has(p.id)) return 0;
+    seen.add(p.id);
+    const father = p.father_id != null ? byId.get(p.father_id) : undefined;
+    const g = father ? genOf(father, seen) + 1 : 0;
+    genCache.set(p.id, g);
+    return g;
+  };
+  return persons.map((p) => ({
+    id: String(p.id),
+    name: p.full_name,
+    birth: p.birth_year != null ? String(p.birth_year) : undefined,
+    death: p.death_year != null ? String(p.death_year) : undefined,
+    role: p.gender === 'f' ? 'дочь' : 'сын',
+    teip: '',
+    bio: p.note ?? undefined,
+    generation: genOf(p),
+    parentId: p.father_id != null && byId.has(p.father_id) ? String(p.father_id) : undefined,
+  }));
 }
 
 /** Человеко-читаемые названия полей для diff. */
@@ -43,8 +73,10 @@ export function ModerationPanel() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Предпросмотр: какое древо раскрыто и кэш загруженных персон.
-  const [openId, setOpenId] = useState<number | null>(null);
+  // Просмотр: какое древо открыто в модальном окне и кэш загруженных персон.
+  const [viewerId, setViewerId] = useState<number | null>(null);
+  const [viewerSelected, setViewerSelected] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const [preview, setPreview] = useState<Record<number, Person[]>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
   // Возможные дубли с другими древами (по владельцу).
@@ -66,12 +98,11 @@ export function ModerationPanel() {
     void load();
   }, [load]);
 
-  async function toggle(ownerId: number) {
-    if (openId === ownerId) {
-      setOpenId(null);
-      return;
-    }
-    setOpenId(ownerId);
+  useEffect(() => setMounted(true), []);
+
+  async function openViewer(ownerId: number) {
+    setViewerId(ownerId);
+    setViewerSelected(null);
     if (!preview[ownerId]) {
       setPreviewLoading(true);
       try {
@@ -83,7 +114,7 @@ export function ModerationPanel() {
         setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Не удалось загрузить древо');
-        setOpenId(null);
+        setViewerId(null);
       } finally {
         setPreviewLoading(false);
       }
@@ -99,7 +130,7 @@ export function ModerationPanel() {
     try {
       await api.moderation[action](ownerId);
       setTrees((prev) => prev.filter((t) => t.owner_id !== ownerId));
-      if (openId === ownerId) setOpenId(null);
+      if (viewerId === ownerId) setViewerId(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось выполнить действие');
     } finally {
@@ -144,94 +175,114 @@ export function ModerationPanel() {
         <p className="text-sand">Нет древ, ожидающих модерации.</p>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {trees.map((t) => {
-            const open = openId === t.owner_id;
-            const persons = preview[t.owner_id];
-            return (
-              <div
-                key={t.owner_id}
-                className={`overflow-hidden rounded-xl border transition-colors ${
-                  open ? 'border-gold-soft' : 'border-line'
-                }`}
+          {trees.map((t) => (
+            <div
+              key={t.owner_id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-2.5"
+            >
+              <div className="flex min-w-[200px] flex-1 items-center gap-2.5 text-cream">
+                <span className="text-[15px] font-bold text-gold-light">{t.owner_name}</span>
+                <span className="text-[13px] text-sand">
+                  {t.count} {t.count === 1 ? 'персона' : 'персон'} · {yearsLabel(t.min_year, t.max_year)}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={BTN_PRIMARY}
+                disabled={busyId === t.owner_id}
+                onClick={() => void openViewer(t.owner_id)}
               >
-                <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
+                Просмотреть древо
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mounted && viewerId != null && createPortal(
+        (() => {
+          const t = trees.find((x) => x.owner_id === viewerId);
+          if (!t) return null;
+          const persons = preview[viewerId];
+          const dups = duplicates[viewerId] ?? [];
+          return (
+            <div className="fixed inset-0 z-[70] flex flex-col bg-background">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+                <div className="flex min-w-[200px] items-center gap-2.5">
+                  <button type="button" className={BTN_SECONDARY} onClick={() => setViewerId(null)}>
+                    ← Назад
+                  </button>
+                  <span className="text-[16px] font-bold text-gold-light">{t.owner_name}</span>
+                  <span className="text-[13px] text-sand">
+                    {t.count} {t.count === 1 ? 'персона' : 'персон'} · {yearsLabel(t.min_year, t.max_year)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    className="flex min-w-[200px] flex-1 cursor-pointer items-center gap-2.5 border-0 bg-transparent p-0 text-left text-cream"
-                    onClick={() => void toggle(t.owner_id)}
-                    aria-expanded={open}
+                    className={BTN_PRIMARY}
+                    disabled={busyId === t.owner_id}
+                    onClick={() => void decide(t.owner_id, 'approve', t.owner_name)}
                   >
-                    <span className={`inline-block text-[13px] text-gold transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
-                    <span className="text-[15px] font-bold text-gold-light">{t.owner_name}</span>
-                    <span className="text-[13px] text-sand">
-                      {t.count} {t.count === 1 ? 'персона' : 'персон'} · {yearsLabel(t.min_year, t.max_year)}
-                    </span>
+                    ✓ Одобрить
                   </button>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={BTN_PRIMARY}
-                      disabled={busyId === t.owner_id}
-                      onClick={() => void decide(t.owner_id, 'approve', t.owner_name)}
-                    >
-                      ✓ Одобрить
-                    </button>
-                    <button
-                      type="button"
-                      className={LINK_DANGER}
-                      disabled={busyId === t.owner_id}
-                      onClick={() => void decide(t.owner_id, 'reject', t.owner_name)}
-                    >
-                      ✖ Отклонить
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className={LINK_DANGER}
+                    disabled={busyId === t.owner_id}
+                    onClick={() => void decide(t.owner_id, 'reject', t.owner_name)}
+                  >
+                    ✖ Отклонить
+                  </button>
                 </div>
+              </div>
 
-                {open && (
-                  <div className="border-t border-dashed border-line bg-gold/[0.04] px-3.5 pb-3.5 pt-3">
-                    {previewLoading && !persons ? (
-                      <p className="m-0 text-sand">Загрузка древа…</p>
-                    ) : persons && persons.length > 0 ? (
-                      <>
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2.5">
-                          <span className="text-[13px] text-sand">
-                            Персоны древа ({persons.length})
-                          </span>
-                        </div>
-                        <div className={TABLE_WRAP}>
-                          <table className={TABLE}>
-                            <thead>
-                              <tr>
-                                <th>ФИО</th>
-                                <th>Пол</th>
-                                <th>Годы</th>
-                                <th>Примечание</th>
+              <div className="flex-1 overflow-auto p-4">
+                {previewLoading && !persons ? (
+                  <p className="text-sand">Загрузка древа…</p>
+                ) : persons && persons.length > 0 ? (
+                  <>
+                    <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
+                      <TreeView
+                        people={toTreePeople(persons)}
+                        selectedId={viewerSelected}
+                        onSelect={setViewerSelected}
+                      />
+                    </div>
+
+                    <div className="mt-4">
+                      <span className="text-[13px] text-sand">Персоны древа ({persons.length})</span>
+                      <div className={`${TABLE_WRAP} mt-2`}>
+                        <table className={TABLE}>
+                          <thead>
+                            <tr>
+                              <th>ФИО</th>
+                              <th>Пол</th>
+                              <th>Годы</th>
+                              <th>Примечание</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {persons.map((p) => (
+                              <tr key={p.id}>
+                                <td>{p.full_name}</td>
+                                <td>{p.gender === 'f' ? 'жен.' : 'муж.'}</td>
+                                <td className="whitespace-nowrap">{personYears(p)}</td>
+                                <td className="whitespace-normal text-sand">{p.note ?? '—'}</td>
                               </tr>
-                            </thead>
-                            <tbody>
-                              {persons.map((p) => (
-                                <tr key={p.id}>
-                                  <td>{p.full_name}</td>
-                                  <td>{p.gender === 'f' ? 'жен.' : 'муж.'}</td>
-                                  <td className="whitespace-nowrap">{personYears(p)}</td>
-                                  <td className="whitespace-normal text-sand">{p.note ?? '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="m-0 text-sand">В этом древе нет персон на модерации.</p>
-                    )}
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
-                    {duplicates[t.owner_id] && duplicates[t.owner_id].length > 0 && (
-                      <div className="mt-3 rounded-lg border border-gold-soft bg-gold/[0.06] p-3">
+                    {dups.length > 0 && (
+                      <div className="mt-4 rounded-lg border border-gold-soft bg-gold/[0.06] p-3">
                         <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
-                          ⚠ Возможные совпадения с другими древами ({duplicates[t.owner_id].length})
+                          ⚠ Возможные совпадения с другими древами ({dups.length})
                         </p>
                         <div className="flex flex-col gap-2">
-                          {duplicates[t.owner_id].map((d, i) => (
+                          {dups.map((d, i) => (
                             <div
                               key={`${d.person.id}-${d.candidate.id}-${i}`}
                               className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-2.5 py-2"
@@ -270,12 +321,15 @@ export function ModerationPanel() {
                         </div>
                       </div>
                     )}
-                  </div>
+                  </>
+                ) : (
+                  <p className="text-sand">В этом древе нет персон на модерации.</p>
                 )}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })(),
+        document.body,
       )}
 
       <EditQueue />
