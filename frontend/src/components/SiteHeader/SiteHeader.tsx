@@ -49,77 +49,61 @@ export function SiteHeader() {
           : "border-b border-transparent bg-transparent",
       )}
     >
-      {/* Верхняя строка: relative-обёртка на всю ширину — лого привязано к ней,
-          а не ко всему хедеру, поэтому не смещается при открытии мобильного меню. */}
-      <div className="relative">
-        {/* Логотип в самом левом углу экрана, вне центрированного контейнера */}
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-8">
         <Link
           href="/"
-          className="absolute left-4 top-1/2 -translate-y-1/2 font-serif text-2xl font-bold tracking-tight text-primary md:left-6"
+          className="font-serif text-2xl font-bold tracking-tight text-primary"
         >
           Vorhda
         </Link>
 
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-8">
-          {/* Невидимая заглушка сохраняет место лого в flex-раскладке,
-              чтобы навигация и кнопки остались на прежних местах. */}
-          <span
-            aria-hidden="true"
-            className="invisible select-none font-serif text-2xl font-bold tracking-tight"
-          >
-            Vorhda
-          </span>
-
-          <nav className="hidden items-center gap-8 md:flex">
-            {navLinks.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-foreground",
-                  isActive(link.href)
-                    ? "text-primary"
-                    : "text-muted-foreground",
-                )}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="hidden items-center gap-3 md:flex">
+        <nav className="hidden items-center gap-8 md:flex">
+          {navLinks.map((link) => (
             <Link
-              href={accountHref}
+              key={link.label}
+              href={link.href}
               className={cn(
-                "rounded-xl border px-5 py-2 text-sm font-medium transition-colors",
-                isActive("/profile")
-                  ? "border-primary text-primary"
-                  : "border-border text-foreground hover:border-primary hover:text-primary",
+                "text-sm font-medium transition-colors hover:text-foreground",
+                isActive(link.href) ? "text-primary" : "text-muted-foreground",
               )}
             >
-              {accountLabel}
+              {link.label}
             </Link>
-            {ready && user ? (
-              <button
-                type="button"
-                onClick={clearAuth}
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Выйти
-              </button>
-            ) : null}
-          </div>
+          ))}
+        </nav>
 
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground md:hidden"
-            aria-label="Меню"
-            aria-expanded={open}
+        <div className="hidden items-center gap-3 md:flex">
+          <Link
+            href={accountHref}
+            className={cn(
+              "rounded-xl border px-5 py-2 text-sm font-medium transition-colors",
+              isActive("/profile")
+                ? "border-primary text-primary"
+                : "border-border text-foreground hover:border-primary hover:text-primary",
+            )}
           >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+            {accountLabel}
+          </Link>
+          {ready && user ? (
+            <button
+              type="button"
+              onClick={clearAuth}
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Выйти
+            </button>
+          ) : null}
         </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground md:hidden"
+          aria-label="Меню"
+          aria-expanded={open}
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
 
       {/* Mobile menu */}

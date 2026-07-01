@@ -1,19 +1,20 @@
 "use client";
 
 import { Reveal } from "@/components/Reveal/Reveal";
+import { StatsStrip } from "@/components/landing/StatsStrip";
 
 export function HeroSection() {
   return (
     <section
       id="hero"
-      className="grain relative isolate overflow-hidden pt-32 pb-32 md:pt-44 md:pb-44"
+      className="grain relative isolate flex min-h-[100svh] flex-col overflow-hidden pt-28 md:pt-32"
     >
       {/* Tower silhouette background */}
       <div
         className="absolute inset-0 -z-10 bg-cover bg-no-repeat"
         style={{
           backgroundImage: "url('/images/towers-sunset.png')",
-          backgroundPosition: "center 8%",
+          backgroundPosition: "center 26%",
         }}
         aria-hidden="true"
       />
@@ -35,7 +36,8 @@ export function HeroSection() {
         }}
       />
 
-      <div className="mx-auto max-w-4xl px-5 text-center md:px-8">
+      {/* Контент центрируется в свободном пространстве первого экрана */}
+      <div className="mx-auto flex max-w-4xl flex-1 flex-col justify-center px-5 text-center md:px-8">
         <Reveal>
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-primary md:text-sm">
             Ворх Да · Семь Отцов
@@ -67,6 +69,11 @@ export function HeroSection() {
             </a>
           </div>
         </Reveal>
+      </div>
+
+      {/* Панель статистики прижата к низу первого экрана, фон общий */}
+      <div className="w-full pb-8 pt-14 md:pb-10">
+        <StatsStrip />
       </div>
     </section>
   );
