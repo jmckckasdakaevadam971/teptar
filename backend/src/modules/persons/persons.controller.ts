@@ -7,6 +7,7 @@ import {
   publishTreeSchema,
   publicTreesSchema,
   mergeSchema,
+  bulkTreeSchema,
 } from "./persons.types.js";
 import * as service from "./persons.service.js";
 import type { Viewer } from "./persons.service.js";
@@ -73,6 +74,15 @@ export async function unpublish(req: Request, res: Response): Promise<void> {
 
 export async function resetTree(req: Request, res: Response): Promise<void> {
   const result = await service.clearMyTree(req.user!.userId);
+  res.json(ok(result));
+}
+
+export async function bulkReplaceTree(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { persons } = bulkTreeSchema.parse(req.body);
+  const result = await service.replaceTree(req.user!.userId, persons);
   res.json(ok(result));
 }
 

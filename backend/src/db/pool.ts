@@ -1,5 +1,5 @@
-import pg from 'pg';
-import { env } from '../config/env.js';
+import pg from "pg";
+import { env } from "../config/env.js";
 
 /**
  * Единый пул соединений PostgreSQL на всё приложение.
@@ -7,14 +7,14 @@ import { env } from '../config/env.js';
  */
 export const pool = new pg.Pool({
   connectionString: env.databaseUrl,
-  max: 10,
+  max: 15,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
 
-pool.on('error', (err) => {
+pool.on("error", (err) => {
   // Ошибка простаивающего клиента — логируем, но не роняем процесс.
-  console.error('[db] неожиданная ошибка пула:', err);
+  console.error("[db] неожиданная ошибка пула:", err);
 });
 
 /**
@@ -37,12 +37,12 @@ export async function withTransaction<T>(
 ): Promise<T> {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
     const result = await fn(client);
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     throw err;
   } finally {
     client.release();

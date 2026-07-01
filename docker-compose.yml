@@ -8,14 +8,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-teptar}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # Тюнинг под сервер 8 ГБ RAM / 4 vCPU. При другом объёме памяти
-    # скорректируйте shared_buffers (≈25% RAM) и effective_cache_size (≈75%).
+    # Тюнинг под сервер ~6 ГБ RAM / 4 vCPU. При другом объёме памяти
+    # скорректируйте shared_buffers (≈25% RAM) и effective_cache_size (≈70%).
     command:
       - "postgres"
       - "-c"
-      - "shared_buffers=2GB"
+      - "shared_buffers=1536MB"
       - "-c"
-      - "effective_cache_size=6GB"
+      - "effective_cache_size=4GB"
       - "-c"
       - "work_mem=32MB"
       - "-c"
@@ -28,7 +28,11 @@ services:
       - "effective_io_concurrency=200"
     shm_size: "1gb"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-teptar} -d ${POSTGRES_DB:-teptar}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-teptar} -d ${POSTGRES_DB:-teptar}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10

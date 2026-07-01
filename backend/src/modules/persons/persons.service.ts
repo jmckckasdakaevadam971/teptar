@@ -6,6 +6,7 @@ import type {
   CreatePersonInput,
   UpdatePersonInput,
   ListPersonsQuery,
+  BulkPersonInput,
 } from "./persons.types.js";
 
 /** Кто запрашивает данные — для контроля видимости. */
@@ -452,6 +453,81 @@ export async function clearMyTree(userId: number): Promise<{ count: number }> {
     [userId],
   );
   return { count: rows.length };
+}
+
+/**
+ * Пакетная замена всего своего древа за одну транзакцию: удаляем прежние
+ * персоны и создаём новые, разрешая родителя по temp_id из этого же пакета.
+ * Всё сразу помечается visibility='public', status='pending' (на модерацию).
+ * Это заменяет сотни отдельных HTTP-запросов create + reset + publish.
+ */
+export async function replaceTree(
+  userId: number,
+  persons: BulkPersonInput[],
+): Promise<{ count: number }> {
+  return withTransaction(async (client) => {
+    // Древо заменяем целиком — прежние записи удаляем (CASCADE чистит связи).
+    await client.query(`DELETE FROM persons WHERE created_by = $1`, [userId]);
+
+    const byTemp = new Map(persons.map((p) => [p.temp_id, p]));
+    const idMap = new Map<string, number>();
+    const visiting = new Set<string>();
+
+    // Вставляем персону, предварительно (рекурсивно) создав её родителя,
+    // чтобы father_id ссылался на уже существующую запись. visiting ловит
+    // случайные циклы во входных данных и обрывает их (родитель → null).
+    const insertOne = async (p: BulkPersonInput): Promise<number> => {
+      const existing = idMap.get(p.temp_id);
+      if (existing != null) return existing;
+
+      let fatherId: number | null = null;
+      if (p.parent_temp_id && !visiting.has(p.parent_temp_id)) {
+        const parent = byTemp.get(p.parent_temp_id);
+        if (parent) {
+          visiting.add(p.temp_id);
+          fatherId = await insertOne(parent);
+          visiting.delete(p.temp_id);
+        }
+      }
+
+      const res = await client.query<{ id: number }>(
+        `
+        INSERT INTO persons
+          (full_name, gender, birth_year, death_year,
+           father_id, mother_id, teip_id, gar_id, village_id,
+           note, visibility, status, created_by, approved_by, is_alive)
+        VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,'public','pending',$10,NULL,$11)
+        RETURNING id
+        `,
+        [
+          p.full_name,
+          p.gender ?? "m",
+          p.birth_year ?? null,
+          p.death_year ?? null,
+          fatherId,
+          p.teip_id ?? null,
+          p.gar_id ?? null,
+          p.village_id ?? null,
+          p.note ?? null,
+          userId,
+          p.death_year == null,
+        ],
+      );
+      const id = Number(res.rows[0].id);
+      idMap.set(p.temp_id, id);
+      return id;
+    };
+
+    for (const p of persons) await insertOne(p);
+
+    await client.query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES (NULL, $1, 'publish', $2)`,
+      [userId, JSON.stringify({ mode: "bulk_replace", count: persons.length })],
+    );
+
+    return { count: persons.length };
+  });
 }
 
 export interface PendingTree {

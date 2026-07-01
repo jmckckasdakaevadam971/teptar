@@ -105,6 +105,29 @@ export const api = {
     reset: () =>
       request<{ count: number }>("/persons/tree/reset", { method: "POST" }),
 
+    /**
+     * Заменить всё своё древо одним запросом и отправить на модерацию.
+     * Родитель указывается по temp_id из этого же пакета.
+     */
+    bulkReplace: (
+      persons: Array<{
+        temp_id: string;
+        full_name: string;
+        gender: "m" | "f";
+        birth_year: number | null;
+        death_year: number | null;
+        parent_temp_id: string | null;
+        teip_id: number | null;
+        gar_id: number | null;
+        village_id: number | null;
+        note: string | null;
+      }>,
+    ) =>
+      request<{ count: number }>("/persons/tree/bulk", {
+        method: "POST",
+        body: JSON.stringify({ persons }),
+      }),
+
     /** Общий каталог опубликованных древ. */
     publicTrees: (
       params: { q?: string; teip_id?: number; village_id?: number } = {},

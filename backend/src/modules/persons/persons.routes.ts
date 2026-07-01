@@ -36,6 +36,11 @@ personsRouter.post(
   requireAuth,
   asyncHandler(controller.resetTree),
 );
+personsRouter.post(
+  "/tree/bulk",
+  requireAuth,
+  asyncHandler(controller.bulkReplaceTree),
+);
 
 // Модерация общей базы (админы тейпа и супер-админ)
 personsRouter.get(

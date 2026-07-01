@@ -191,10 +191,6 @@ export function MyTreeClient() {
     try {
       saveTree();
 
-      // Древо заменяем целиком: сначала удаляем прежние свои персоны,
-      // чтобы повторная отправка не плодила дубли, затем создаём заново.
-      await api.persons.reset();
-
       // Справочники для сопоставления названий → id.
       // id в БД — bigint, и pg отдаёт их строками, поэтому приводим к Number.
       const [teipList, villageList] = await Promise.all([
@@ -220,21 +216,22 @@ export function MyTreeClient() {
         );
       }
 
-      // Создаём персоны от старших поколений к младшим, чтобы отец уже
-      // существовал к моменту создания ребёнка.
-      const ordered = [...people].sort((a, b) => a.generation - b.generation);
-      const idMap = new Map<string, number>();
-      for (const p of ordered) {
-        const fatherId = p.parentId ? (idMap.get(p.parentId) ?? null) : null;
+      // Формируем весь пакет и отправляем одним запросом: бэкенд в одной
+      // транзакции удалит прежнее древо и создаст новое (родитель — по temp_id).
+      const payload = people.map((p) => {
         const noteParts: string[] = [];
         if (p.bio) noteParts.push(p.bio);
         if (p.spouseName) noteParts.push(`Супруга: ${p.spouseName}`);
-        const created = await api.persons.create({
+        return {
+          temp_id: p.id,
           full_name: p.name,
-          gender: p.role?.trim().toLowerCase() === "дочь" ? "f" : "m",
+          gender:
+            p.role?.trim().toLowerCase() === "дочь"
+              ? ("f" as const)
+              : ("m" as const),
           birth_year: parseYear(p.birth),
           death_year: parseYear(p.death),
-          father_id: fatherId,
+          parent_temp_id: p.parentId ?? null,
           teip_id:
             (p.teip ? teipMap.get(p.teip.trim().toLowerCase()) : undefined) ??
             null,
@@ -246,12 +243,10 @@ export function MyTreeClient() {
               ? villageMap.get(p.village.trim().toLowerCase())
               : undefined) ?? null,
           note: noteParts.join(". ") || null,
-        });
-        idMap.set(p.id, Number(created.id));
-      }
+        };
+      });
 
-      // Переводим всё древо в общую базу (на модерацию).
-      await api.persons.publish("all");
+      await api.persons.bulkReplace(payload);
 
       setSubmitted(true);
       setPublishedOpen(true);
