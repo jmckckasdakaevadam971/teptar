@@ -1,9 +1,14 @@
-import Link from 'next/link'
+import Link from "next/link";
 
 const SECTION_LINKS = [
-  { label: 'Главная', href: '/' },
-  { label: 'Справочник', href: '/reference' },
-]
+  { label: "Главная", href: "/" },
+  { label: "Справочник", href: "/reference" },
+];
+
+const LEGAL_LINKS = [
+  { label: "Пользовательское соглашение", href: "/terms" },
+  { label: "Политика конфиденциальности", href: "/privacy" },
+];
 
 export function SiteFooter() {
   return (
@@ -14,7 +19,7 @@ export function SiteFooter() {
         aria-hidden="true"
         style={{
           background:
-            'linear-gradient(90deg, transparent 0%, rgba(201,162,39,0.6) 50%, transparent 100%)',
+            "linear-gradient(90deg, transparent 0%, rgba(201,162,39,0.6) 50%, transparent 100%)",
         }}
       />
       <div className="mx-auto max-w-6xl px-5 py-16 md:px-8">
@@ -58,6 +63,22 @@ export function SiteFooter() {
                 </a>
               </li>
             </ul>
+
+            <h3 className="mt-8 text-sm font-semibold uppercase tracking-[0.18em] text-foreground">
+              Документы
+            </h3>
+            <ul className="mt-4 space-y-3">
+              {LEGAL_LINKS.map((link) => (
+                <li key={link.label}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
@@ -68,5 +89,5 @@ export function SiteFooter() {
         </div>
       </div>
     </footer>
-  )
+  );
 }
