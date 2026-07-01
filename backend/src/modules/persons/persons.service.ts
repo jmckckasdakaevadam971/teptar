@@ -456,18 +456,23 @@ export async function clearMyTree(userId: number): Promise<{ count: number }> {
 }
 
 /**
- * Пакетная замена всего своего древа за одну транзакцию: удаляем прежние
- * персоны и создаём новые, разрешая родителя по temp_id из этого же пакета.
- * Всё сразу помечается visibility='public', status='pending' (на модерацию).
- * Это заменяет сотни отдельных HTTP-запросов create + reset + publish.
+ * Пакетная замена своего древа за одну транзакцию, разрешая родителя по
+ * temp_id из этого же пакета. Новая версия помечается visibility='public',
+ * status='pending' (на модерацию). ВАЖНО: уже одобренное публичное древо
+ * НЕ удаляется — оно остаётся видимым в общей базе, пока модератор не
+ * одобрит новую версию (тогда approveTree заменит старую на новую).
  */
 export async function replaceTree(
   userId: number,
   persons: BulkPersonInput[],
 ): Promise<{ count: number }> {
   return withTransaction(async (client) => {
-    // Древо заменяем целиком — прежние записи удаляем (CASCADE чистит связи).
-    await client.query(`DELETE FROM persons WHERE created_by = $1`, [userId]);
+    // Удаляем ТОЛЬКО прежнюю неодобренную версию (pending/rejected),
+    // чтобы не плодить дубли. Одобренное (approved) остаётся публичным.
+    await client.query(
+      `DELETE FROM persons WHERE created_by = $1 AND status <> 'approved'`,
+      [userId],
+    );
 
     const byTemp = new Map(persons.map((p) => [p.temp_id, p]));
     const idMap = new Map<string, number>();
@@ -580,24 +585,45 @@ export async function getPendingPersons(ownerId: number): Promise<PersonRow[]> {
   );
 }
 
-/** Одобрить древо пользователя целиком. */
+/**
+ * Одобрить древо пользователя целиком. Если у него уже была одобренная
+ * версия — она заменяется новой (старая удаляется в той же транзакции).
+ */
 export async function approveTree(
   ownerId: number,
   adminId: number,
 ): Promise<{ count: number }> {
-  const rows = await query(
-    `UPDATE persons SET status = 'approved', approved_by = $2, updated_at = now()
-     WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
-    [ownerId, adminId],
-  );
-  if (rows.length === 0)
-    throw new ApiError(404, "Нет древа на модерации у этого пользователя");
-  await query(
-    `INSERT INTO change_log (person_id, user_id, action, diff)
-     VALUES (NULL, $1, 'approve', $2)`,
-    [adminId, JSON.stringify({ owner: ownerId, count: rows.length })],
-  );
-  return { count: rows.length };
+  return withTransaction(async (client) => {
+    // Есть ли новая версия на модерации?
+    const pending = await client.query<{ id: number }>(
+      `SELECT id FROM persons
+       WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'`,
+      [ownerId],
+    );
+    if (pending.rowCount === 0)
+      throw new ApiError(404, "Нет древа на модерации у этого пользователя");
+
+    // Убираем прежнюю одобренную версию — её заменяет новая.
+    await client.query(
+      `DELETE FROM persons WHERE created_by = $1 AND status = 'approved'`,
+      [ownerId],
+    );
+
+    // Новую версию делаем одобренной (публичной).
+    const rows = await client.query(
+      `UPDATE persons SET status = 'approved', approved_by = $2, updated_at = now()
+       WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
+      [ownerId, adminId],
+    );
+
+    await client.query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES (NULL, $1, 'approve', $2)`,
+      [adminId, JSON.stringify({ owner: ownerId, count: rows.rowCount })],
+    );
+
+    return { count: rows.rowCount ?? 0 };
+  });
 }
 
 /** Отклонить древо пользователя — вернуть в личное. */
