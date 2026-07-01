@@ -52,7 +52,7 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-8">
         <Link
           href="/"
-          className="font-serif text-2xl font-bold tracking-tight text-primary"
+          className="font-serif text-3xl font-bold tracking-tight text-primary md:text-4xl"
         >
           Vorhda
         </Link>
@@ -72,11 +72,11 @@ export function SiteHeader() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden items-center gap-4 md:flex">
           <Link
             href={accountHref}
             className={cn(
-              "rounded-xl border px-5 py-2 text-sm font-medium transition-colors",
+              "rounded-xl border px-6 py-2.5 text-base font-medium transition-colors",
               isActive("/profile")
                 ? "border-primary text-primary"
                 : "border-border text-foreground hover:border-primary hover:text-primary",
@@ -88,7 +88,7 @@ export function SiteHeader() {
             <button
               type="button"
               onClick={clearAuth}
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className="text-base font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               Выйти
             </button>
