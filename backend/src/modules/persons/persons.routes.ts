@@ -15,6 +15,9 @@ personsRouter.get("/", asyncHandler(controller.list));
 // Публичный каталог опубликованных древ
 personsRouter.get("/trees/public", asyncHandler(controller.publicTrees));
 
+// Публичный каталог одобренных объединённых (общих) древ
+personsRouter.get("/trees/merged", asyncHandler(controller.publicMerges));
+
 // Своё древо: статус и публикация в общую базу
 personsRouter.get(
   "/tree/status",
@@ -102,6 +105,46 @@ personsRouter.post(
   requireAuth,
   requireRole("teip_admin", "super_admin"),
   asyncHandler(controller.merge),
+);
+
+// Очередь предложений объединения древ
+personsRouter.get(
+  "/moderation/merge-suggestions",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.mergeSuggestions),
+);
+personsRouter.post(
+  "/moderation/merge-suggestions/:id/merge",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.resolveMergeSuggestion),
+);
+personsRouter.post(
+  "/moderation/merge-suggestions/:id/dismiss",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.dismissMergeSuggestion),
+);
+
+// Объединённые древа: очередь повторной модерации
+personsRouter.get(
+  "/moderation/tree-merges",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.pendingMerges),
+);
+personsRouter.post(
+  "/moderation/tree-merges/:id/approve",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.approveMerge),
+);
+personsRouter.post(
+  "/moderation/tree-merges/:id/reject",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.rejectMerge),
 );
 
 // Одна персона

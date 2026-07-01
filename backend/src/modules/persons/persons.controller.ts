@@ -7,6 +7,7 @@ import {
   publishTreeSchema,
   publicTreesSchema,
   mergeSchema,
+  resolveMergeSchema,
   bulkTreeSchema,
 } from "./persons.types.js";
 import * as service from "./persons.service.js";
@@ -83,6 +84,10 @@ export async function bulkReplaceTree(
 ): Promise<void> {
   const { persons } = bulkTreeSchema.parse(req.body);
   const result = await service.replaceTree(req.user!.userId, persons);
+  // Автопоиск совпадений с чужими древами — фоново, не блокируем ответ.
+  service
+    .generateMergeSuggestionsForOwner(req.user!.userId)
+    .catch(() => undefined);
   res.json(ok(result));
 }
 
@@ -111,6 +116,10 @@ export async function approve(req: Request, res: Response): Promise<void> {
     Number(req.params.ownerId),
     req.user!.userId,
   );
+  // После одобрения сверяем древо с уже одобренными — фоново.
+  service
+    .generateMergeSuggestionsForOwner(Number(req.params.ownerId))
+    .catch(() => undefined);
   res.json(ok(result));
 }
 
@@ -162,4 +171,74 @@ export async function merge(req: Request, res: Response): Promise<void> {
   const { keep_id, drop_id } = mergeSchema.parse(req.body);
   const result = await service.mergePersons(keep_id, drop_id, req.user!.userId);
   res.json(ok(result));
+}
+
+// ── Очередь предложений объединения древ (модератор) ──────────
+
+export async function mergeSuggestions(
+  _req: Request,
+  res: Response,
+): Promise<void> {
+  const list = await service.listMergeSuggestions();
+  res.json(ok(list));
+}
+
+export async function resolveMergeSuggestion(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { keep_id, full_name, birth_year, death_year, note } =
+    resolveMergeSchema.parse(req.body);
+  const result = await service.resolveMergeSuggestion(
+    Number(req.params.id),
+    keep_id,
+    req.user!.userId,
+    { full_name, birth_year, death_year, note },
+  );
+  res.json(ok(result));
+}
+
+export async function dismissMergeSuggestion(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const result = await service.dismissMergeSuggestion(
+    Number(req.params.id),
+    req.user!.userId,
+  );
+  res.json(ok(result));
+}
+
+// ── Объединённые древа: очередь повторной модерации и каталог ──────────
+
+export async function pendingMerges(
+  _req: Request,
+  res: Response,
+): Promise<void> {
+  const list = await service.listPendingMerges();
+  res.json(ok(list));
+}
+
+export async function approveMerge(req: Request, res: Response): Promise<void> {
+  const result = await service.approveMerge(
+    Number(req.params.id),
+    req.user!.userId,
+  );
+  res.json(ok(result));
+}
+
+export async function rejectMerge(req: Request, res: Response): Promise<void> {
+  const result = await service.rejectMerge(
+    Number(req.params.id),
+    req.user!.userId,
+  );
+  res.json(ok(result));
+}
+
+export async function publicMerges(
+  _req: Request,
+  res: Response,
+): Promise<void> {
+  const list = await service.listApprovedMerges();
+  res.json(ok(list));
 }

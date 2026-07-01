@@ -80,6 +80,17 @@ export const mergeSchema = z.object({
 });
 export type MergeInput = z.infer<typeof mergeSchema>;
 
+/** Решение по предложению объединения древ: какую запись предка оставить
+ *  и (опционально) какими полями её перезаписать. */
+export const resolveMergeSchema = z.object({
+  keep_id: z.coerce.number().int().positive(),
+  full_name: z.string().min(2).max(200).optional(),
+  birth_year: z.number().int().min(0).max(2100).nullable().optional(),
+  death_year: z.number().int().min(0).max(2100).nullable().optional(),
+  note: z.string().max(5000).nullable().optional(),
+});
+export type ResolveMergeInput = z.infer<typeof resolveMergeSchema>;
+
 /**
  * Пакетная замена всего своего древа одним запросом (из редактора `/my`).
  * Родитель указывается по временному temp_id из этого же пакета, чтобы не

@@ -1,45 +1,56 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react'
-import { Search, MapPin } from 'lucide-react'
-import { api } from '@/lib/api'
-import type { Teip } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { useEffect, useMemo, useState } from "react";
+import { Search, MapPin } from "lucide-react";
+import { api } from "@/lib/api";
+import type { Teip } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
+import { TeipMapModal } from "./TeipMapModal";
 
 export function DirectoryView() {
-  const [teips, setTeips] = useState<Teip[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-  const [tukkhum, setTukkhum] = useState('Все')
+  const [teips, setTeips] = useState<Teip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [tukkhum, setTukkhum] = useState("Все");
+  const [selected, setSelected] = useState<Teip | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     api.teips
       .list()
       .then(setTeips)
-      .catch((e) => setError(e instanceof Error ? e.message : 'Ошибка загрузки'))
-      .finally(() => setLoading(false))
-  }, [])
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Ошибка загрузки"),
+      )
+      .finally(() => setLoading(false));
+  }, []);
 
   const tukkhums = useMemo(
     () => [
-      'Все',
+      "Все",
       ...Array.from(
         new Set(teips.map((t) => t.tukhum_name).filter(Boolean) as string[]),
       ),
     ],
     [teips],
-  )
+  );
 
   const filtered = useMemo(() => {
     return teips.filter((t) => {
       const matchesQuery =
         t.name.toLowerCase().includes(query.toLowerCase()) ||
-        (t.description ?? '').toLowerCase().includes(query.toLowerCase())
-      const matchesTukkhum = tukkhum === 'Все' || t.tukhum_name === tukkhum
-      return matchesQuery && matchesTukkhum
-    })
-  }, [teips, query, tukkhum])
+        (t.description ?? "").toLowerCase().includes(query.toLowerCase());
+      const matchesTukkhum = tukkhum === "Все" || t.tukhum_name === tukkhum;
+      return matchesQuery && matchesTukkhum;
+    });
+  }, [teips, query, tukkhum]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -61,10 +72,10 @@ export function DirectoryView() {
               type="button"
               onClick={() => setTukkhum(t)}
               className={cn(
-                'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                 tukkhum === t
-                  ? 'border-primary bg-primary/15 text-primary'
-                  : 'border-border text-muted-foreground hover:text-foreground',
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground",
               )}
             >
               {t}
@@ -83,7 +94,16 @@ export function DirectoryView() {
             {filtered.map((t) => (
               <article
                 key={t.id}
-                className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelected(t)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelected(t);
+                  }
+                }}
+                className="group flex cursor-pointer flex-col rounded-2xl border border-border bg-card p-6 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40"
               >
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="font-serif text-2xl font-bold text-foreground">
@@ -97,17 +117,17 @@ export function DirectoryView() {
                 </div>
 
                 <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
-                  {t.description ?? 'Описание появится позже.'}
+                  {t.description ?? "Описание появится позже."}
                 </p>
 
-                {t.tukhum_name ? (
-                  <div className="mt-5 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-primary" />
-                      Тукхум {t.tukhum_name}
-                    </span>
-                  </div>
-                ) : null}
+                <div className="mt-5 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                    {t.tukhum_name
+                      ? `Тукхум ${t.tukhum_name}`
+                      : "Место основания на карте"}
+                  </span>
+                </div>
               </article>
             ))}
           </div>
@@ -119,6 +139,26 @@ export function DirectoryView() {
           ) : null}
         </>
       )}
+
+      {mounted && selected
+        ? (() => {
+            const current = teips.find((t) => t.id === selected.id) ?? selected;
+            return (
+              <TeipMapModal
+                teip={current}
+                canEdit={user?.role === "super_admin"}
+                onClose={() => setSelected(null)}
+                onSaved={(updated) =>
+                  setTeips((prev) =>
+                    prev.map((t) =>
+                      t.id === updated.id ? { ...t, ...updated } : t,
+                    ),
+                  )
+                }
+              />
+            );
+          })()
+        : null}
     </div>
-  )
+  );
 }

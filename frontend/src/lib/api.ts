@@ -20,6 +20,8 @@ import type {
   PublicTree,
   RelatedTree,
   DuplicatePair,
+  MergeSuggestion,
+  TreeMerge,
   TreeChange,
 } from "./types";
 
@@ -58,7 +60,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok || !body.success) {
     // Для ошибок валидации показываем конкретную причину (какое поле неверно).
     const detail = formatDetails(body.details);
-    throw new Error(detail ?? body.error ?? `Ошибка запроса (${res.status})`);
+    const err = new Error(
+      detail ?? body.error ?? `Ошибка запроса (${res.status})`,
+    );
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
   }
   return body.data;
 }
@@ -139,6 +145,9 @@ export const api = {
       const s = qs.toString();
       return request<PublicTree[]>(`/persons/trees/public${s ? `?${s}` : ""}`);
     },
+
+    /** Каталог одобренных объединённых (общих) древ. */
+    publicMerges: () => request<TreeMerge[]>(`/persons/trees/merged`),
   },
 
   tree: {
@@ -146,6 +155,11 @@ export const api = {
       request<TreeNode[]>(`/ancestors/${id}/up?depth=${depth}`),
     descendants: (id: number, depth = 20) =>
       request<TreeNode[]>(`/ancestors/${id}/down?depth=${depth}`),
+    /** Полное объединённое древо от старшего предка данной персоны. */
+    fullTree: (id: number) => request<TreeNode[]>(`/ancestors/${id}/full`),
+    /** Общее (объединённое) древо по связи tree_merges. */
+    mergedTree: (id: number) =>
+      request<TreeNode[]>(`/ancestors/merged/${id}/full`),
     commonAncestor: (a: number, b: number) =>
       request<CommonAncestor>(`/ancestors/common?a=${a}&b=${b}`),
     /** Примерное родство с другими древами. */
@@ -168,6 +182,18 @@ export const api = {
   teips: {
     list: () => request<Teip[]>("/teips"),
     gars: (id: number) => request<Gar[]>(`/teips/${id}/gars`),
+    updateOrigin: (
+      id: number,
+      data: {
+        origin_place: string | null;
+        origin_lat: number | null;
+        origin_lng: number | null;
+      },
+    ) =>
+      request<Teip>(`/teips/${id}/origin`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
   },
 
   tukhums: {
@@ -277,6 +303,50 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ keep_id, drop_id }),
       }),
+    /** Очередь авто-предложений объединения древ. */
+    mergeSuggestions: () =>
+      request<MergeSuggestion[]>("/persons/moderation/merge-suggestions"),
+    /** Применить предложение: срастить древа, оставив предка keepId
+     *  (с опциональной перезаписью его полей). */
+    resolveMerge: (
+      id: number,
+      keepId: number,
+      overrides?: {
+        full_name?: string;
+        birth_year?: number | null;
+        death_year?: number | null;
+        note?: string | null;
+      },
+    ) =>
+      request<{ merged: boolean; tree_merge_id: number }>(
+        `/persons/moderation/merge-suggestions/${id}/merge`,
+        {
+          method: "POST",
+          body: JSON.stringify({ keep_id: keepId, ...overrides }),
+        },
+      ),
+    /** Отклонить предложение объединения. */
+    dismissMerge: (id: number) =>
+      request<{ dismissed: boolean }>(
+        `/persons/moderation/merge-suggestions/${id}/dismiss`,
+        { method: "POST" },
+      ),
+
+    /** Очередь объединённых древ на повторной модерации. */
+    pendingMerges: () =>
+      request<TreeMerge[]>("/persons/moderation/tree-merges"),
+    /** Одобрить объединённое древо — оно станет публичным. */
+    approveMerge: (id: number) =>
+      request<{ approved: boolean }>(
+        `/persons/moderation/tree-merges/${id}/approve`,
+        { method: "POST" },
+      ),
+    /** Отклонить объединённое древо — исходные останутся раздельными. */
+    rejectMerge: (id: number) =>
+      request<{ rejected: boolean }>(
+        `/persons/moderation/tree-merges/${id}/reject`,
+        { method: "POST" },
+      ),
   },
 
   /** Ссылка для скачивания экспорта (открывается напрямую). */

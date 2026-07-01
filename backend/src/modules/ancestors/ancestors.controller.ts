@@ -1,8 +1,8 @@
-import type { Request, Response } from 'express';
-import { z } from 'zod';
-import { ok } from '../../utils/http.js';
-import * as service from './ancestors.service.js';
-import type { Viewer } from './ancestors.service.js';
+import type { Request, Response } from "express";
+import { z } from "zod";
+import { ok } from "../../utils/http.js";
+import * as service from "./ancestors.service.js";
+import type { Viewer } from "./ancestors.service.js";
 
 const depthSchema = z.coerce.number().int().min(1).max(30).default(20);
 
@@ -22,6 +22,18 @@ export async function descendants(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const maxDepth = depthSchema.parse(req.query.depth ?? undefined);
   const data = await service.getDescendants(id, maxDepth, viewerOf(req));
+  res.json(ok(data));
+}
+
+export async function fullTree(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  const data = await service.getFullTree(id, viewerOf(req));
+  res.json(ok(data));
+}
+
+export async function mergedTree(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  const data = await service.getMergedTree(id, viewerOf(req));
   res.json(ok(data));
 }
 

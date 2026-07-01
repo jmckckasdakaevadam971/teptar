@@ -12,28 +12,28 @@
 //
 // Такой скрипт безопасно выполнять при каждом старте контейнера.
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import pg from 'pg';
-import dotenv from 'dotenv';
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+import dotenv from "dotenv";
 
 dotenv.config();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const dbDir = join(__dirname, '..', 'src', 'db');
+const dbDir = join(__dirname, "..", "src", "db");
 
-const SEED_DEMO = process.env.SEED_DEMO === '1';
-const FORCE_RESET = process.env.FORCE_RESET === '1';
+const SEED_DEMO = process.env.SEED_DEMO === "1";
+const FORCE_RESET = process.env.FORCE_RESET === "1";
 
 function sql(file) {
-  return readFileSync(join(dbDir, file), 'utf8');
+  return readFileSync(join(dbDir, file), "utf8");
 }
 
 async function run() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error('DATABASE_URL не задан. Скопируйте .env.example → .env');
+    console.error("DATABASE_URL не задан. Скопируйте .env.example → .env");
     process.exit(1);
   }
 
@@ -47,52 +47,102 @@ async function run() {
     );
     const initialized = rows[0].t !== null;
 
-    if (FORCE_RESET || !initialized) {
-      if (FORCE_RESET && initialized) {
-        console.log('→ FORCE_RESET=1 — пересоздаю схему (данные будут стёрты)…');
-      } else {
-        console.log('→ Первый запуск — создаю схему…');
-      }
-      console.log('→ Применяю schema.sql …');
-      await client.query(sql('schema.sql'));
+    // Лёгкие идемпотентные миграции — выполняются ДО reference_data.sql,
+    // потому что там есть UPDATE по новым колонкам (напр. teips.origin_*).
+    if (initialized) {
+      await client.query(
+        `ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_diff JSONB;
+         ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_by BIGINT;
+         ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_at TIMESTAMPTZ;
+         ALTER TABLE users   ADD COLUMN IF NOT EXISTS root_person_id BIGINT;
+         ALTER TABLE teips   ADD COLUMN IF NOT EXISTS origin_place TEXT;
+         ALTER TABLE teips   ADD COLUMN IF NOT EXISTS origin_lat DOUBLE PRECISION;
+         ALTER TABLE teips   ADD COLUMN IF NOT EXISTS origin_lng DOUBLE PRECISION;
+         ALTER TABLE tukhums ADD COLUMN IF NOT EXISTS approx_lat DOUBLE PRECISION;
+         ALTER TABLE tukhums ADD COLUMN IF NOT EXISTS approx_lng DOUBLE PRECISION;
+         DO $$ BEGIN
+           IF NOT EXISTS (
+             SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_root_person'
+           ) THEN
+             ALTER TABLE users
+               ADD CONSTRAINT fk_users_root_person
+               FOREIGN KEY (root_person_id) REFERENCES persons(id) ON DELETE SET NULL;
+           END IF;
+         END $$;`,
+      );
 
-      if (SEED_DEMO) {
-        console.log('→ SEED_DEMO=1 → загружаю seed.sql (демо-данные) …');
-        await client.query(sql('seed.sql'));
-      } else {
-        console.log('→ Демо-данные пропущены (SEED_DEMO≠1).');
-      }
+      // Очередь предложений объединения древ (создаётся, если ещё нет).
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS merge_suggestions (
+           id           BIGSERIAL PRIMARY KEY,
+           person_a_id  BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+           person_b_id  BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+           similarity   REAL   NOT NULL DEFAULT 0,
+           status       TEXT   NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending','merged','dismissed')),
+           resolved_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+           resolved_at  TIMESTAMPTZ,
+           created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+           CONSTRAINT chk_ms_order CHECK (person_a_id < person_b_id)
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS uq_merge_pair    ON merge_suggestions(person_a_id, person_b_id);
+         CREATE INDEX        IF NOT EXISTS idx_merge_status ON merge_suggestions(status);`,
+      );
 
-      console.log('→ Загружаю reference_data.sql (справочник ЧР) …');
-      await client.query(sql('reference_data.sql'));
-
-      console.log('✅ База данных инициализирована.');
-    } else {
-      // Обновление существующей базы: только идемпотентный справочник.
-      console.log('→ База уже инициализирована — обновляю только справочник…');
-      console.log('→ Применяю reference_data.sql (идемпотентно) …');
-      await client.query(sql('reference_data.sql'));
-      console.log('✅ Справочник обновлён, пользовательские данные сохранены.');
+      // Объединённые древа (неразрушительное слияние по общему предку).
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS tree_merges (
+           id                BIGSERIAL PRIMARY KEY,
+           anchor_a_id       BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+           anchor_b_id       BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+           merged_name       TEXT,
+           merged_birth_year INT,
+           merged_death_year INT,
+           merged_note       TEXT,
+           status            TEXT NOT NULL DEFAULT 'pending'
+                             CHECK (status IN ('pending','approved','rejected')),
+           proposed_by       BIGINT REFERENCES users(id) ON DELETE SET NULL,
+           approved_by       BIGINT REFERENCES users(id) ON DELETE SET NULL,
+           created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+           resolved_at       TIMESTAMPTZ,
+           CONSTRAINT chk_tm_order CHECK (anchor_a_id < anchor_b_id)
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS uq_tree_merge_pair  ON tree_merges(anchor_a_id, anchor_b_id);
+         CREATE INDEX        IF NOT EXISTS idx_tree_merge_stat ON tree_merges(status);`,
+      );
     }
 
-    // Лёгкие идемпотентные миграции (безопасны при каждом старте).
-    await client.query(
-      `ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_diff JSONB;
-       ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_by BIGINT;
-       ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_at TIMESTAMPTZ;
-       ALTER TABLE users   ADD COLUMN IF NOT EXISTS root_person_id BIGINT;
-       DO $$ BEGIN
-         IF NOT EXISTS (
-           SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_root_person'
-         ) THEN
-           ALTER TABLE users
-             ADD CONSTRAINT fk_users_root_person
-             FOREIGN KEY (root_person_id) REFERENCES persons(id) ON DELETE SET NULL;
-         END IF;
-       END $$;`,
-    );
+    if (FORCE_RESET || !initialized) {
+      if (FORCE_RESET && initialized) {
+        console.log(
+          "→ FORCE_RESET=1 — пересоздаю схему (данные будут стёрты)…",
+        );
+      } else {
+        console.log("→ Первый запуск — создаю схему…");
+      }
+      console.log("→ Применяю schema.sql …");
+      await client.query(sql("schema.sql"));
+
+      if (SEED_DEMO) {
+        console.log("→ SEED_DEMO=1 → загружаю seed.sql (демо-данные) …");
+        await client.query(sql("seed.sql"));
+      } else {
+        console.log("→ Демо-данные пропущены (SEED_DEMO≠1).");
+      }
+
+      console.log("→ Загружаю reference_data.sql (справочник ЧР) …");
+      await client.query(sql("reference_data.sql"));
+
+      console.log("✅ База данных инициализирована.");
+    } else {
+      // Обновление существующей базы: только идемпотентный справочник.
+      console.log("→ База уже инициализирована — обновляю только справочник…");
+      console.log("→ Применяю reference_data.sql (идемпотентно) …");
+      await client.query(sql("reference_data.sql"));
+      console.log("✅ Справочник обновлён, пользовательские данные сохранены.");
+    }
   } catch (err) {
-    console.error('❌ Ошибка инициализации:', err);
+    console.error("❌ Ошибка инициализации:", err);
     process.exitCode = 1;
   } finally {
     await client.end();

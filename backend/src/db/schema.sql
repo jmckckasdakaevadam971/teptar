@@ -28,6 +28,8 @@ CREATE TABLE tukhums (
     id          BIGSERIAL PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
     description TEXT,
+    approx_lat  DOUBLE PRECISION, -- приблизительный центр исторической области тукхума
+    approx_lng  DOUBLE PRECISION,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -37,6 +39,9 @@ CREATE TABLE teips (
     tukhum_id   BIGINT REFERENCES tukhums(id) ON DELETE SET NULL,
     name        TEXT NOT NULL UNIQUE,
     description TEXT,
+    origin_place TEXT,             -- историческое место основания (аул/ущелье)
+    origin_lat   DOUBLE PRECISION, -- широта метки на карте
+    origin_lng   DOUBLE PRECISION, -- долгота метки на карте
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -186,6 +191,61 @@ CREATE TABLE change_log (
     diff        JSONB,                         -- что именно изменилось
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ============================================================================
+--  ПРЕДЛОЖЕНИЯ ОБЪЕДИНЕНИЯ ДРЕВ (авто-поиск одного человека в разных древах)
+-- ============================================================================
+--  Когда чьё-то древо отправляют/одобряют, система сверяет его людей
+--  с чужими древами. Вероятные совпадения (один и тот же предок)
+--  попадают сюда — модератор решает: объединить или отклонить.
+
+CREATE TABLE merge_suggestions (
+    id           BIGSERIAL PRIMARY KEY,
+    person_a_id  BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    person_b_id  BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    similarity   REAL   NOT NULL DEFAULT 0,
+    status       TEXT   NOT NULL DEFAULT 'pending'
+                 CHECK (status IN ('pending','merged','dismissed')),
+    resolved_by  BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at  TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Канонический порядок пары (a<b) — чтобы не было двух записей на одну пару.
+    CONSTRAINT chk_ms_order CHECK (person_a_id < person_b_id)
+);
+
+CREATE UNIQUE INDEX uq_merge_pair    ON merge_suggestions(person_a_id, person_b_id);
+CREATE INDEX        idx_merge_status ON merge_suggestions(status);
+
+-- ============================================================================
+--  ОБЪЕДИНЁННЫЕ ДРЕВА (неразрушительное слияние по общему предку)
+-- ============================================================================
+--  Когда модератор объединяет два древа, ИСХОДНЫЕ древа не меняются.
+--  Вместо этого создаётся запись-связь: якорь A и якорь B — один и тот же
+--  предок. Общее древо собирается «на лету» из обеих веток. Пара владеет
+--  им совместно. Общее древо сначала уходит на повторную модерацию
+--  (status pending) и становится публичным только после одобрения (approved).
+
+CREATE TABLE tree_merges (
+    id                BIGSERIAL PRIMARY KEY,
+    anchor_a_id       BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    anchor_b_id       BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    -- Итоговые поля общего предка («шапка» объединённого древа).
+    merged_name       TEXT,
+    merged_birth_year INT,
+    merged_death_year INT,
+    merged_note       TEXT,
+    status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','approved','rejected')),
+    proposed_by       BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    approved_by       BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at       TIMESTAMPTZ,
+    -- Канонический порядок пары (a<b) — одна связь на пару предков.
+    CONSTRAINT chk_tm_order CHECK (anchor_a_id < anchor_b_id)
+);
+
+CREATE UNIQUE INDEX uq_tree_merge_pair  ON tree_merges(anchor_a_id, anchor_b_id);
+CREATE INDEX        idx_tree_merge_stat ON tree_merges(status);
 
 -- ============================================================================
 --  ИНДЕКСЫ

@@ -40,6 +40,25 @@ INSERT INTO tukhums (name, description) VALUES
     ('Кей',          'Кей (Кий); горное общество верхнего Аргуна')
 ON CONFLICT (name) DO NOTHING;
 
+-- 1.1 Приблизительные координаты исторических областей тукхумов -------------
+--  Используются как запасной вариант на карте для тейпов, у которых ещё
+--  не указано точное место основания (origin_lat/origin_lng = NULL).
+--  Guard "WHERE approx_lat IS NULL" — чтобы не затирать ручные правки.
+UPDATE tukhums SET approx_lat = 43.10, approx_lng = 46.20 WHERE name = 'Нохчмахкахой' AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 43.28, approx_lng = 45.55 WHERE name = 'Аьккхий'      AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.75, approx_lng = 45.15 WHERE name = 'Маьлхий'      AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.83, approx_lng = 45.55 WHERE name = 'Терлой'       AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.78, approx_lng = 45.55 WHERE name = 'Чаьнтий'      AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.77, approx_lng = 46.07 WHERE name = 'Чеберлой'     AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.78, approx_lng = 45.74 WHERE name = 'Шарой'        AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.97, approx_lng = 45.63 WHERE name = 'Шотой'        AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 43.15, approx_lng = 45.15 WHERE name = 'Эрштхой'      AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.99, approx_lng = 45.16 WHERE name = 'Нашхой'       AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.90, approx_lng = 45.20 WHERE name = 'Пешхой'       AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.68, approx_lng = 45.42 WHERE name = 'Майстой'      AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.85, approx_lng = 45.55 WHERE name = 'Чинхой'       AND approx_lat IS NULL;
+UPDATE tukhums SET approx_lat = 42.83, approx_lng = 45.48 WHERE name = 'Кей'          AND approx_lat IS NULL;
+
 -- ============================================================================
 --  2. ТЕЙПЫ (с привязкой к тукхуму по имени)
 --  tukhum_id вычисляется подзапросом; если союз не указан — NULL.
@@ -211,6 +230,34 @@ INSERT INTO teips (name, description, tukhum_id) VALUES
     ('Хиндахой',    NULL, (SELECT id FROM tukhums WHERE name='Нашхой')),
     ('Пхьамтой',    NULL, (SELECT id FROM tukhums WHERE name='Нашхой'))
 ON CONFLICT (name) DO NOTHING;
+
+-- ============================================================================
+--  2.11 МЕСТА ОСНОВАНИЯ ТЕЙПОВ (координаты для карты в справочнике)
+--  Заполнены только для тейпов, чьё историческое место основания совпадает
+--  с названием современного/исторического населённого пункта и подтверждено
+--  открытыми геоданными (OpenStreetMap). Остальные тейпы — origin_lat/lng
+--  NULL, координаты добавляются модератором (супер-админом) через админку.
+--  Guard "WHERE origin_lat IS NULL" — чтобы повторное применение файла
+--  не затирало ручные правки, сделанные позже через интерфейс.
+-- ============================================================================
+UPDATE teips SET origin_place = 'аул Беной, Ножай-Юртовский район',
+                 origin_lat = 42.982991, origin_lng = 46.310182
+  WHERE name = 'Беной' AND origin_lat IS NULL;
+UPDATE teips SET origin_place = 'аул Курчалой, Курчалоевский район',
+                 origin_lat = 43.200050, origin_lng = 46.090786
+  WHERE name = 'Курчалой' AND origin_lat IS NULL;
+UPDATE teips SET origin_place = 'аул Гуни, Веденский район',
+                 origin_lat = 43.055473, origin_lng = 46.107689
+  WHERE name = 'Гуной' AND origin_lat IS NULL;
+UPDATE teips SET origin_place = 'аул Зандак, Ножай-Юртовский район',
+                 origin_lat = 43.057301, origin_lng = 46.455147
+  WHERE name = 'Зандакъой' AND origin_lat IS NULL;
+UPDATE teips SET origin_place = 'аул Аллерой, Курчалоевский район',
+                 origin_lat = 43.216561, origin_lng = 46.282890
+  WHERE name = 'Аллерой' AND origin_lat IS NULL;
+UPDATE teips SET origin_place = 'аул Энгеной, Ножай-Юртовский район',
+                 origin_lat = 43.038900, origin_lng = 46.282764
+  WHERE name = 'Энгеной' AND origin_lat IS NULL;
 
 -- ============================================================================
 --  3. ГАРЫ (ветви). Примеры для части тейпов — структура для пополнения.

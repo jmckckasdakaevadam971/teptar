@@ -1,9 +1,9 @@
 // Общие типы данных, согласованные с backend.
 
-export type Gender = 'm' | 'f';
-export type PersonStatus = 'pending' | 'approved' | 'rejected';
-export type Visibility = 'private' | 'public';
-export type UserRole = 'viewer' | 'editor' | 'teip_admin' | 'super_admin';
+export type Gender = "m" | "f";
+export type PersonStatus = "pending" | "approved" | "rejected";
+export type Visibility = "private" | "public";
+export type UserRole = "viewer" | "editor" | "teip_admin" | "super_admin";
 
 export interface User {
   id: number;
@@ -69,7 +69,7 @@ export interface TreeStatus {
   pending: number;
   published: number;
   rejected: number;
-  state: 'empty' | 'private' | 'pending' | 'published' | 'mixed';
+  state: "empty" | "private" | "pending" | "published" | "mixed";
 }
 
 /** Древо в очереди модерации (сгруппировано по владельцу). */
@@ -134,6 +134,57 @@ export interface DuplicatePair {
   candidate: SimilarPerson;
 }
 
+/** Общий предок (якорь) одного из двух древ — с контекстом для мини-схемы. */
+export interface MergeAnchor {
+  id: number;
+  full_name: string;
+  birth_year: number | null;
+  death_year: number | null;
+  note: string | null;
+  teip_name: string | null;
+  father_name: string | null;
+  children: { id: number; full_name: string; birth_year: number | null }[];
+}
+
+/** Владелец древа. */
+export interface MergeParty {
+  owner_id: number | null;
+  owner_name: string | null;
+}
+
+/** Предложение срастить два древа по общему предку. */
+export interface MergeSuggestion {
+  id: number;
+  similarity: number;
+  owner_a: MergeParty;
+  owner_b: MergeParty;
+  anchor_a: MergeAnchor;
+  anchor_b: MergeAnchor;
+}
+
+/** Одна ветка объединённого древа. */
+export interface MergeBranch {
+  anchor_id: number;
+  anchor_name: string;
+  owner_id: number | null;
+  owner_name: string | null;
+  teip_name: string | null;
+  size: number;
+}
+
+/** Объединённое (общее) древо — связь двух веток по общему предку. */
+export interface TreeMerge {
+  id: number;
+  status: "pending" | "approved" | "rejected";
+  merged_name: string;
+  merged_birth_year: number | null;
+  merged_death_year: number | null;
+  created_at: string;
+  branch_a: MergeBranch;
+  branch_b: MergeBranch;
+  total: number;
+}
+
 /** Правка персоны на повторной модерации (что изменилось). */
 export interface TreeChange {
   person_id: number;
@@ -159,6 +210,11 @@ export interface Teip {
   description: string | null;
   tukhum_id: number | null;
   tukhum_name?: string | null;
+  origin_place: string | null;
+  origin_lat: number | null;
+  origin_lng: number | null;
+  tukhum_approx_lat?: number | null;
+  tukhum_approx_lng?: number | null;
 }
 
 export interface Tukhum {

@@ -17,3 +17,11 @@ teipsRouter.post(
   requireRole('super_admin'),
   asyncHandler(controller.create),
 );
+
+// Редактировать место основания (для метки на карте) — тоже супер-админ
+teipsRouter.patch(
+  '/:id/origin',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.updateOrigin),
+);

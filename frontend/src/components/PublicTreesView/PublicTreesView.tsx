@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TreePine, Users, MapPin, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { TreePine, Users, MapPin, RotateCcw, GitMerge } from "lucide-react";
 import { api } from "@/lib/api";
-import type { PublicTree, Teip, Village } from "@/lib/types";
+import type { PublicTree, TreeMerge, Teip, Village } from "@/lib/types";
 import { CARD, FIELD, LABEL, ERR_TEXT } from "@/lib/ui";
 
 const SELECT =
@@ -23,6 +24,7 @@ export function PublicTreesView() {
   const [villageId, setVillageId] = useState("");
 
   const [trees, setTrees] = useState<PublicTree[]>([]);
+  const [merges, setMerges] = useState<TreeMerge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,6 +37,16 @@ export function PublicTreesView() {
       })
       .catch(() => {
         /* справочники не критичны для показа списка */
+      });
+  }, []);
+
+  // Общие (объединённые) древа — загружаются один раз.
+  useEffect(() => {
+    api.persons
+      .publicMerges()
+      .then(setMerges)
+      .catch(() => {
+        /* общие древа необязательны */
       });
   }, []);
 
@@ -124,6 +136,59 @@ export function PublicTreesView() {
         </button>
       </div>
 
+      {/* Общие (объединённые) древа */}
+      {merges.length > 0 && (
+        <div className="grid gap-4">
+          <div className="flex items-center gap-2">
+            <GitMerge className="h-5 w-5 text-primary" />
+            <h2 className="m-0 font-serif text-lg font-bold text-foreground">
+              Общие древа
+            </h2>
+            <span className="text-sm text-muted-foreground">
+              объединены по общему предку
+            </span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {merges.map((m) => (
+              <Link
+                key={m.id}
+                href={`/trees/merged/${m.id}`}
+                className={`${CARD} flex flex-col gap-3 transition-colors hover:border-primary`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
+                    <GitMerge className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-serif text-lg font-bold text-foreground">
+                      {m.merged_name}
+                    </h3>
+                    <p className="truncate text-sm text-muted-foreground">
+                      {m.branch_a.owner_name ?? "—"} +{" "}
+                      {m.branch_b.owner_name ?? "—"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-auto flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1">
+                    <Users className="h-3.5 w-3.5 text-primary" />
+                    {m.total} чел.
+                  </span>
+                  {m.merged_birth_year != null ? (
+                    <span className="rounded-lg border border-border bg-card px-2.5 py-1">
+                      {m.merged_birth_year}
+                      {m.merged_death_year != null
+                        ? `–${m.merged_death_year}`
+                        : ""}
+                    </span>
+                  ) : null}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Результаты */}
       {error ? (
         <p className={ERR_TEXT}>{error}</p>
@@ -149,11 +214,8 @@ export function PublicTreesView() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {trees.map((tree) => {
               const years = yearsLabel(tree.min_year, tree.max_year);
-              return (
-                <article
-                  key={tree.owner_id}
-                  className={`${CARD} flex flex-col gap-3`}
-                >
+              const inner = (
+                <>
                   <div className="flex items-start gap-3">
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary">
                       <TreePine className="h-5 w-5" />
@@ -185,6 +247,22 @@ export function PublicTreesView() {
                       </span>
                     ) : null}
                   </div>
+                </>
+              );
+
+              const cardClass = `${CARD} flex flex-col gap-3`;
+
+              return tree.root_person_id != null ? (
+                <Link
+                  key={tree.owner_id}
+                  href={`/trees/${tree.root_person_id}`}
+                  className={`${cardClass} transition-colors hover:border-primary`}
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <article key={tree.owner_id} className={cardClass}>
+                  {inner}
                 </article>
               );
             })}
