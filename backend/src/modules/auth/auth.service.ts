@@ -1,9 +1,15 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import jwt from 'jsonwebtoken';
-import { query } from '../../db/pool.js';
-import { env } from '../../config/env.js';
-import { ApiError } from '../../utils/http.js';
-import type { UserRole } from '../../middleware/auth.js';
+import {
+  randomBytes,
+  randomInt,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
+import jwt from "jsonwebtoken";
+import { query } from "../../db/pool.js";
+import { env } from "../../config/env.js";
+import { ApiError } from "../../utils/http.js";
+import { sendVerificationCode } from "./mailer.js";
+import type { UserRole } from "../../middleware/auth.js";
 
 interface UserRow {
   id: number;
@@ -16,15 +22,15 @@ interface UserRow {
 
 /** Хеш пароля через scrypt (без внешних зависимостей). Формат: salt:hash. */
 function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
   return `${salt}:${hash}`;
 }
 
 function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(':');
+  const [salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
-  const hashBuf = Buffer.from(hash, 'hex');
+  const hashBuf = Buffer.from(hash, "hex");
   const test = scryptSync(password, salt, 64);
   return hashBuf.length === test.length && timingSafeEqual(hashBuf, test);
 }
@@ -36,7 +42,13 @@ function signToken(user: UserRow): string {
 }
 
 function publicUser(u: UserRow) {
-  return { id: u.id, display_name: u.display_name, phone: u.phone, email: u.email, role: u.role };
+  return {
+    id: u.id,
+    display_name: u.display_name,
+    phone: u.phone,
+    email: u.email,
+    role: u.role,
+  };
 }
 
 export async function register(input: {
@@ -46,19 +58,143 @@ export async function register(input: {
   password: string;
 }): Promise<{ token: string; user: ReturnType<typeof publicUser> }> {
   const existing = await query<UserRow>(
-    'SELECT * FROM users WHERE (phone = $1 AND $1 IS NOT NULL) OR (email = $2 AND $2 IS NOT NULL)',
+    "SELECT * FROM users WHERE (phone = $1 AND $1 IS NOT NULL) OR (email = $2 AND $2 IS NOT NULL)",
     [input.phone ?? null, input.email ?? null],
   );
   if (existing.length > 0) {
-    throw new ApiError(409, 'Пользователь с таким телефоном или e-mail уже существует');
+    throw new ApiError(
+      409,
+      "Пользователь с таким телефоном или e-mail уже существует",
+    );
   }
 
   const rows = await query<UserRow>(
     `INSERT INTO users (display_name, phone, email, password_hash, role)
      VALUES ($1,$2,$3,$4,'viewer') RETURNING *`,
-    [input.display_name, input.phone ?? null, input.email ?? null, hashPassword(input.password)],
+    [
+      input.display_name,
+      input.phone ?? null,
+      input.email ?? null,
+      hashPassword(input.password),
+    ],
   );
   const user = rows[0];
+  return { token: signToken(user), user: publicUser(user) };
+}
+
+/**
+ * Шаг 1 регистрации с подтверждением: проверяем e-mail, сохраняем заявку
+ * и отправляем код. Пользователь СОЗДАЁТСЯ только после верного кода (шаг 2).
+ * Повторный вызов для того же e-mail перезаписывает заявку и шлёт новый код
+ * (но не чаще раза в минуту).
+ */
+export async function requestEmailVerification(input: {
+  display_name: string;
+  email: string;
+  password: string;
+}): Promise<{ pending: true; email: string }> {
+  const email = input.email.trim().toLowerCase();
+
+  const existing = await query<UserRow>(
+    "SELECT id FROM users WHERE email = $1",
+    [email],
+  );
+  if (existing.length > 0) {
+    throw new ApiError(409, "Пользователь с таким e-mail уже существует");
+  }
+
+  // Антиспам: новый код на тот же адрес — не чаще раза в минуту.
+  const recent = await query<{ created_at: string }>(
+    `SELECT created_at FROM email_verifications
+     WHERE email = $1 AND created_at > now() - interval '60 seconds'`,
+    [email],
+  );
+  if (recent.length > 0) {
+    throw new ApiError(
+      429,
+      "Код уже отправлен. Подождите минуту перед повторной отправкой.",
+    );
+  }
+
+  const code = String(randomInt(100000, 1000000)); // 6 цифр
+
+  await query(
+    `INSERT INTO email_verifications (email, code, display_name, password_hash, attempts, expires_at)
+     VALUES ($1, $2, $3, $4, 0, now() + interval '15 minutes')
+     ON CONFLICT (email) DO UPDATE SET
+       code = EXCLUDED.code,
+       display_name = EXCLUDED.display_name,
+       password_hash = EXCLUDED.password_hash,
+       attempts = 0,
+       expires_at = EXCLUDED.expires_at,
+       created_at = now()`,
+    [email, code, input.display_name, hashPassword(input.password)],
+  );
+
+  await sendVerificationCode(email, code);
+  return { pending: true, email };
+}
+
+/** Шаг 2: проверка кода и создание пользователя. */
+export async function verifyEmail(input: {
+  email: string;
+  code: string;
+}): Promise<{ token: string; user: ReturnType<typeof publicUser> }> {
+  const email = input.email.trim().toLowerCase();
+
+  const rows = await query<{
+    id: number;
+    code: string;
+    display_name: string;
+    password_hash: string;
+    attempts: number;
+    expired: boolean;
+  }>(
+    `SELECT id, code, display_name, password_hash, attempts, (expires_at < now()) AS expired
+     FROM email_verifications WHERE email = $1`,
+    [email],
+  );
+  const row = rows[0];
+  if (!row || row.expired) {
+    throw new ApiError(
+      410,
+      "Код истёк или не запрашивался. Отправьте код заново.",
+    );
+  }
+  if (row.attempts >= 5) {
+    throw new ApiError(
+      429,
+      "Слишком много неверных попыток. Отправьте код заново.",
+    );
+  }
+  if (row.code !== input.code.trim()) {
+    await query(
+      "UPDATE email_verifications SET attempts = attempts + 1 WHERE id = $1",
+      [row.id],
+    );
+    throw new ApiError(
+      400,
+      "Неверный код. Проверьте письмо и попробуйте ещё раз.",
+    );
+  }
+
+  // Код верен — создаём пользователя (гонка с повторной регистрацией закрыта UNIQUE(email)).
+  const existing = await query<UserRow>(
+    "SELECT id FROM users WHERE email = $1",
+    [email],
+  );
+  if (existing.length > 0) {
+    await query("DELETE FROM email_verifications WHERE id = $1", [row.id]);
+    throw new ApiError(409, "Пользователь с таким e-mail уже существует");
+  }
+  const created = await query<UserRow>(
+    `INSERT INTO users (display_name, email, password_hash, role)
+     VALUES ($1,$2,$3,'viewer') RETURNING *`,
+    [row.display_name, email, row.password_hash],
+  );
+  await query("DELETE FROM email_verifications WHERE id = $1", [row.id]);
+
+  const user = created[0];
   return { token: signToken(user), user: publicUser(user) };
 }
 
@@ -67,12 +203,16 @@ export async function login(input: {
   password: string;
 }): Promise<{ token: string; user: ReturnType<typeof publicUser> }> {
   const rows = await query<UserRow>(
-    'SELECT * FROM users WHERE phone = $1 OR email = $1',
+    "SELECT * FROM users WHERE phone = $1 OR email = $1",
     [input.login],
   );
   const user = rows[0];
-  if (!user || !user.password_hash || !verifyPassword(input.password, user.password_hash)) {
-    throw new ApiError(401, 'Неверный логин или пароль');
+  if (
+    !user ||
+    !user.password_hash ||
+    !verifyPassword(input.password, user.password_hash)
+  ) {
+    throw new ApiError(401, "Неверный логин или пароль");
   }
   return { token: signToken(user), user: publicUser(user) };
 }
@@ -83,10 +223,10 @@ export async function assignAdmin(input: {
   teip_id: number;
   village_id?: number | null;
 }): Promise<void> {
-  await query('UPDATE users SET role = $2 WHERE id = $1 AND role = $3', [
+  await query("UPDATE users SET role = $2 WHERE id = $1 AND role = $3", [
     input.user_id,
-    'teip_admin',
-    'viewer',
+    "teip_admin",
+    "viewer",
   ]);
   await query(
     `INSERT INTO admin_assignments (user_id, teip_id, village_id)
@@ -123,7 +263,7 @@ export async function getProfile(userId: number): Promise<UserProfile> {
      FROM users u WHERE u.id = $1`,
     [userId],
   );
-  if (rows.length === 0) throw new ApiError(404, 'Пользователь не найден');
+  if (rows.length === 0) throw new ApiError(404, "Пользователь не найден");
   return rows[0];
 }
 
@@ -141,7 +281,10 @@ export async function updateProfile(
     [userId, phone, email],
   );
   if (dup.length > 0) {
-    throw new ApiError(409, 'Такой телефон или e-mail уже занят другим пользователем');
+    throw new ApiError(
+      409,
+      "Такой телефон или e-mail уже занят другим пользователем",
+    );
   }
 
   await query(
@@ -157,13 +300,18 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<void> {
-  const rows = await query<UserRow>('SELECT * FROM users WHERE id = $1', [userId]);
+  const rows = await query<UserRow>("SELECT * FROM users WHERE id = $1", [
+    userId,
+  ]);
   const user = rows[0];
-  if (!user) throw new ApiError(404, 'Пользователь не найден');
-  if (!user.password_hash || !verifyPassword(currentPassword, user.password_hash)) {
-    throw new ApiError(400, 'Текущий пароль неверен');
+  if (!user) throw new ApiError(404, "Пользователь не найден");
+  if (
+    !user.password_hash ||
+    !verifyPassword(currentPassword, user.password_hash)
+  ) {
+    throw new ApiError(400, "Текущий пароль неверен");
   }
-  await query('UPDATE users SET password_hash = $2 WHERE id = $1', [
+  await query("UPDATE users SET password_hash = $2 WHERE id = $1", [
     userId,
     hashPassword(newPassword),
   ]);

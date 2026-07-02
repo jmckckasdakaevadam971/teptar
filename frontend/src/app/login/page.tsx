@@ -54,6 +54,18 @@ function LoginPageInner() {
   const [displayName, setDisplayName] = useState("");
   const [agreed, setAgreed] = useState(false);
 
+  // Шаг подтверждения почты: после отправки формы ждём код из письма.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0); // секунд до повторной отправки
+
+  // Таймер обратного отсчёта для кнопки «Отправить ещё раз».
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -158,7 +170,9 @@ function LoginPageInner() {
 
     // Клиентская валидация — мгновенная подсказка до обращения к серверу.
     if (!login.trim()) {
-      setError(tab === "register" ? "Введите e-mail." : "Введите телефон или e-mail.");
+      setError(
+        tab === "register" ? "Введите e-mail." : "Введите телефон или e-mail.",
+      );
       return;
     }
     if (tab === "register") {
@@ -206,7 +220,15 @@ function LoginPageInner() {
           email: login.trim(),
           turnstile_token: token ?? undefined,
         });
-        saveAuth(result);
+        // Если включено подтверждение почты — сервер вернёт pending,
+        // показываем шаг ввода кода вместо входа.
+        if ("pending" in result && result.pending) {
+          setPendingEmail(result.email);
+          setResendIn(60);
+          setBusy(false);
+          return;
+        }
+        saveAuth(result as { token: string; user: never });
       }
       window.location.href = nextUrl();
     } catch (e) {
@@ -214,6 +236,43 @@ function LoginPageInner() {
       resetCaptcha();
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Шаг 2: отправка кода из письма. */
+  async function submitCode(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!pendingEmail) return;
+    if (code.trim().length < 4) {
+      setError("Введите код из письма.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.auth.verifyEmail(pendingEmail, code.trim());
+      saveAuth(result);
+      window.location.href = nextUrl();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Повторная отправка кода. */
+  async function resend() {
+    if (!pendingEmail || resendIn > 0) return;
+    setError(null);
+    try {
+      await api.auth.resendCode({
+        display_name: displayName.trim(),
+        email: pendingEmail,
+        password,
+      });
+      setResendIn(60);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка");
     }
   }
 
@@ -225,116 +284,173 @@ function LoginPageInner() {
         description="Войдите или создайте аккаунт, чтобы вести своё родовое древо."
       />
       <div className={CARD}>
-        <div className={TABS}>
-          <button
-            className={tabBtn(tab === "login")}
-            onClick={() => setTab("login")}
-          >
-            Вход
-          </button>
-          <button
-            className={tabBtn(tab === "register")}
-            onClick={() => setTab("register")}
-          >
-            Регистрация
-          </button>
-        </div>
-
-        <form className={FORM_GRID} onSubmit={submit}>
-          {tab === "register" && (
+        {pendingEmail ? (
+          /* Шаг 2: подтверждение почты кодом из письма */
+          <form className={FORM_GRID} onSubmit={submitCode}>
+            <p className="m-0 text-sm leading-relaxed text-muted-foreground">
+              Мы отправили 6-значный код на{" "}
+              <span className="text-foreground">{pendingEmail}</span>. Введите
+              его, чтобы завершить регистрацию. Код действует 15 минут.
+            </p>
             <div className={FIELD}>
-              <label className={LABEL}>Имя</label>
+              <label className={LABEL}>Код из письма</label>
               <input
                 className={INPUT}
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Как вас называть"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="000000"
+                autoFocus
               />
             </div>
-          )}
 
-          <div className={FIELD}>
-            <label className={LABEL}>
-              {tab === "login" ? "Телефон или e-mail" : "E-mail"}
-            </label>
-            <input
-              className={INPUT}
-              type={tab === "register" ? "email" : "text"}
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              placeholder={
-                tab === "register"
-                  ? "mail@example.com"
-                  : "+7… или mail@example.com"
-              }
-            />
-          </div>
+            {error && <p className="m-0 text-[#f0a0a0]">{error}</p>}
 
-          <div className={FIELD}>
-            <label className={LABEL}>Пароль</label>
-            <input
-              className={INPUT}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={tab === "register" ? "минимум 8 символов" : ""}
-            />
-          </div>
+            <button type="submit" className={BTN_PRIMARY} disabled={busy}>
+              {busy ? "…" : "Подтвердить"}
+            </button>
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                onClick={resend}
+                disabled={resendIn > 0}
+                className="text-primary disabled:cursor-default disabled:text-muted-foreground"
+              >
+                {resendIn > 0
+                  ? `Отправить ещё раз (${resendIn} с)`
+                  : "Отправить код ещё раз"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingEmail(null);
+                  setCode("");
+                  setError(null);
+                }}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Изменить e-mail
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <div className={TABS}>
+              <button
+                className={tabBtn(tab === "login")}
+                onClick={() => setTab("login")}
+              >
+                Вход
+              </button>
+              <button
+                className={tabBtn(tab === "register")}
+                onClick={() => setTab("register")}
+              >
+                Регистрация
+              </button>
+            </div>
 
-          {/* Виджет проверки на бота — появляется, только если включён на сервере */}
-          <div ref={widgetRef} />
-          {siteKey && captchaState === "loading" && (
-            <p className="m-0 text-sm text-muted-foreground">
-              Загрузка проверки…
-            </p>
-          )}
-          {siteKey && captchaState === "error" && (
-            <p className="m-0 text-sm text-[#f0a0a0]">
-              Не удалось загрузить проверку. Обновите страницу (Ctrl+Shift+R).
-            </p>
-          )}
+            <form className={FORM_GRID} onSubmit={submit}>
+              {tab === "register" && (
+                <div className={FIELD}>
+                  <label className={LABEL}>Имя</label>
+                  <input
+                    className={INPUT}
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Как вас называть"
+                  />
+                </div>
+              )}
 
-          {/* Согласие с документами — обязательно для регистрации (152-ФЗ) */}
-          {tab === "register" && (
-            <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
-                className="mt-1 h-4 w-4 shrink-0 accent-[#c9a227]"
-              />
-              <span>
-                Принимаю{" "}
-                <a
-                  href="/terms"
-                  target="_blank"
-                  className="text-primary hover:underline"
-                >
-                  пользовательское соглашение
-                </a>{" "}
-                и даю согласие на обработку персональных данных в соответствии с{" "}
-                <a
-                  href="/privacy"
-                  target="_blank"
-                  className="text-primary hover:underline"
-                >
-                  политикой конфиденциальности
-                </a>
-                .
-              </span>
-            </label>
-          )}
+              <div className={FIELD}>
+                <label className={LABEL}>
+                  {tab === "login" ? "Телефон или e-mail" : "E-mail"}
+                </label>
+                <input
+                  className={INPUT}
+                  type={tab === "register" ? "email" : "text"}
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
+                  placeholder={
+                    tab === "register"
+                      ? "mail@example.com"
+                      : "+7… или mail@example.com"
+                  }
+                />
+              </div>
 
-          {error && <p className="m-0 text-[#f0a0a0]">{error}</p>}
+              <div className={FIELD}>
+                <label className={LABEL}>Пароль</label>
+                <input
+                  className={INPUT}
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={tab === "register" ? "минимум 8 символов" : ""}
+                />
+              </div>
 
-          <button
-            type="submit"
-            className={BTN_PRIMARY}
-            disabled={busy || (tab === "register" && !agreed)}
-          >
-            {busy ? "…" : tab === "login" ? "Войти" : "Зарегистрироваться"}
-          </button>
-        </form>
+              {/* Виджет проверки на бота — появляется, только если включён на сервере */}
+              <div ref={widgetRef} />
+              {siteKey && captchaState === "loading" && (
+                <p className="m-0 text-sm text-muted-foreground">
+                  Загрузка проверки…
+                </p>
+              )}
+              {siteKey && captchaState === "error" && (
+                <p className="m-0 text-sm text-[#f0a0a0]">
+                  Не удалось загрузить проверку. Обновите страницу
+                  (Ctrl+Shift+R).
+                </p>
+              )}
+
+              {/* Согласие с документами — обязательно для регистрации (152-ФЗ) */}
+              {tab === "register" && (
+                <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={agreed}
+                    onChange={(e) => setAgreed(e.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-[#c9a227]"
+                  />
+                  <span>
+                    Принимаю{" "}
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      className="text-primary hover:underline"
+                    >
+                      пользовательское соглашение
+                    </a>{" "}
+                    и даю согласие на обработку персональных данных в
+                    соответствии с{" "}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      className="text-primary hover:underline"
+                    >
+                      политикой конфиденциальности
+                    </a>
+                    .
+                  </span>
+                </label>
+              )}
+
+              {error && <p className="m-0 text-[#f0a0a0]">{error}</p>}
+
+              <button
+                type="submit"
+                className={BTN_PRIMARY}
+                disabled={busy || (tab === "register" && !agreed)}
+              >
+                {busy ? "…" : tab === "login" ? "Войти" : "Зарегистрироваться"}
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

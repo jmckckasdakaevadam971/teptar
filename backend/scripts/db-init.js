@@ -71,6 +71,21 @@ async function run() {
          END $$;`,
       );
 
+      // Коды подтверждения e-mail при регистрации (создаётся, если ещё нет).
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS email_verifications (
+           id            BIGSERIAL PRIMARY KEY,
+           email         TEXT NOT NULL,
+           code          TEXT NOT NULL,
+           display_name  TEXT NOT NULL,
+           password_hash TEXT NOT NULL,
+           attempts      INT  NOT NULL DEFAULT 0,
+           expires_at    TIMESTAMPTZ NOT NULL,
+           created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE UNIQUE INDEX IF NOT EXISTS uq_email_verif_email ON email_verifications(email);`,
+      );
+
       // Очередь предложений объединения древ (создаётся, если ещё нет).
       await client.query(
         `CREATE TABLE IF NOT EXISTS merge_suggestions (

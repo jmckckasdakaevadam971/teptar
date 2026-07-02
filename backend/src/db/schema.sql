@@ -93,6 +93,20 @@ CREATE TABLE users (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Коды подтверждения e-mail при регистрации. Пользователь создаётся
+-- только после ввода верного кода; до этого данные регистрации ждут здесь.
+CREATE TABLE email_verifications (
+    id            BIGSERIAL PRIMARY KEY,
+    email         TEXT NOT NULL,
+    code          TEXT NOT NULL,               -- 6 цифр
+    display_name  TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    attempts      INT  NOT NULL DEFAULT 0,     -- неверные попытки ввода
+    expires_at    TIMESTAMPTZ NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX uq_email_verif_email ON email_verifications(email);
+
 -- ============================================================================
 --  ЯДРО — ПЕРСОНЫ
 -- ============================================================================

@@ -12,6 +12,16 @@ const authLimiter = rateLimit({ windowMs: 60_000, max: 10 });
 
 authRouter.post("/register", authLimiter, asyncHandler(controller.register));
 authRouter.post("/login", authLimiter, asyncHandler(controller.login));
+authRouter.post(
+  "/verify-email",
+  authLimiter,
+  asyncHandler(controller.verifyEmail),
+);
+authRouter.post(
+  "/resend-code",
+  authLimiter,
+  asyncHandler(controller.resendCode),
+);
 authRouter.get("/config", asyncHandler(controller.config));
 authRouter.get("/me", requireAuth, asyncHandler(controller.me));
 authRouter.get("/profile", requireAuth, asyncHandler(controller.profile));

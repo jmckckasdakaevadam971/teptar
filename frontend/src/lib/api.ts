@@ -216,9 +216,12 @@ export const api = {
   },
 
   auth: {
-    /** Публичная конфигурация (нужен ли виджет проверки на бота). */
+    /** Публичная конфигурация (нужен ли виджет проверки на бота, включено ли подтверждение почты). */
     config: () =>
-      request<{ turnstile_site_key: string | null }>("/auth/config"),
+      request<{
+        turnstile_site_key: string | null;
+        email_verification: boolean;
+      }>("/auth/config"),
     login: (login: string, password: string, turnstile_token?: string) =>
       request<AuthResult>("/auth/login", {
         method: "POST",
@@ -231,7 +234,23 @@ export const api = {
       password: string;
       turnstile_token?: string;
     }) =>
-      request<AuthResult>("/auth/register", {
+      request<AuthResult | { pending: true; email: string }>("/auth/register", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    /** Шаг 2 регистрации: подтверждение кода из письма. */
+    verifyEmail: (email: string, code: string) =>
+      request<AuthResult>("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({ email, code }),
+      }),
+    /** Повторная отправка кода подтверждения. */
+    resendCode: (input: {
+      display_name: string;
+      email: string;
+      password: string;
+    }) =>
+      request<{ pending: true; email: string }>("/auth/resend-code", {
         method: "POST",
         body: JSON.stringify(input),
       }),
