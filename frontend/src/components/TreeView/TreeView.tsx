@@ -13,23 +13,13 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
-// размеры узла и отступы для древовидной раскладки (круглые аватарки а-ля Familio)
-const CIRCLE = 72; // диаметр круга
-const NODE_W = 128; // ширина слота (круг + подпись)
-const NODE_H = 128; // круг + имя + годы
-const H_GAP = 20;
-const V_GAP = 56;
+// размеры узла и отступы для древовидной раскладки
+const NODE_W = 176; // w-44
+const NODE_H = 108;
+const H_GAP = 24;
+const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
 const ROW_PITCH = NODE_H + V_GAP;
-
-/** Плейсхолдер «добавить родственника» рядом с выбранным узлом. */
-type AddRelation = "father" | "wife" | "son" | "daughter";
-const ADD_LABEL: Record<AddRelation, string> = {
-  father: "Отец",
-  wife: "Жена",
-  son: "Сын",
-  daughter: "Дочь",
-};
 
 // Уголковый коннектор: вертикаль от родителя к шине, горизонтальная шина
 // и вертикали к каждому ребёнку.
@@ -46,15 +36,11 @@ export function TreeView({
   people,
   selectedId,
   onSelect,
-  onAddRelative,
 }: {
   people: Person[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  /** Если передан — вокруг выбранного узла появляются «+» для добавления родных. */
-  onAddRelative?: (rel: AddRelation) => void;
 }) {
-  const editable = Boolean(onAddRelative);
   const [connectors, setConnectors] = useState<Connector[]>([]);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,62 +84,12 @@ export function TreeView({
     };
     [...roots].reverse().forEach(place);
 
-    let width = cursor > 0 ? (cursor - 1) * SLOT + NODE_W : NODE_W;
-    let height = (maxGen - minGen) * ROW_PITCH + NODE_H;
-
-    // Запас по краям под плейсхолдеры «+» (отец сверху, жена справа, дети снизу).
-    if (editable) {
-      for (const key of Object.keys(pos)) {
-        pos[key] = { x: pos[key].x + SLOT, y: pos[key].y + ROW_PITCH };
-      }
-      width += 2 * SLOT;
-      height += 2 * ROW_PITCH;
-    }
+    const width = cursor > 0 ? (cursor - 1) * SLOT + NODE_W : NODE_W;
+    const height = (maxGen - minGen) * ROW_PITCH + NODE_H;
     return { pos, width, height };
-  }, [people, editable]);
+  }, [people]);
 
   const selected = people.find((p) => p.id === selectedId) ?? null;
-
-  // Слоты «добавить родственника» вокруг выбранного узла (Familio-стиль).
-  const addSlots = useMemo(() => {
-    if (!editable || !selected) return [];
-    const p = layout.pos[selected.id];
-    if (!p) return [];
-    const slots: { rel: AddRelation; x: number; y: number }[] = [];
-
-    // Отец — над узлом, если родитель ещё не указан.
-    if (!selected.parentId) {
-      slots.push({ rel: "father", x: p.x, y: p.y - ROW_PITCH });
-    }
-    // Жена — справа, если супруга не записана.
-    if (!selected.spouseName) {
-      slots.push({ rel: "wife", x: p.x + SLOT, y: p.y });
-    }
-    // Сын/дочь — под узлом; если дети уже есть — сбоку от крайних детей.
-    const kids = people.filter((k) => k.parentId === selected.id);
-    if (kids.length) {
-      const xs = kids
-        .map((k) => layout.pos[k.id]?.x)
-        .filter((v): v is number => v !== undefined);
-      const rowY = p.y + ROW_PITCH;
-      slots.push({ rel: "son", x: Math.min(...xs) - SLOT, y: rowY });
-      slots.push({ rel: "daughter", x: Math.max(...xs) + SLOT, y: rowY });
-    } else {
-      slots.push({ rel: "son", x: p.x - SLOT / 2 - 6, y: p.y + ROW_PITCH });
-      slots.push({
-        rel: "daughter",
-        x: p.x + SLOT / 2 + 6,
-        y: p.y + ROW_PITCH,
-      });
-    }
-    // Не рисуем плейсхолдер поверх существующего узла.
-    const occupied = (x: number, y: number) =>
-      Object.values(layout.pos).some(
-        (q) =>
-          Math.abs(q.x - x) < NODE_W * 0.8 && Math.abs(q.y - y) < NODE_H * 0.8,
-      );
-    return slots.filter((s) => !occupied(s.x, s.y));
-  }, [editable, selected, people, layout]);
 
   // вычисляем уголковые связи родитель → дети.
   // Координаты X/Y берём из layout (надёжно), высоту карточки — из DOM.
@@ -170,9 +106,10 @@ export function TreeView({
     const next: Connector[] = [];
     byParent.forEach((kids, parentId) => {
       const pPos = layout.pos[parentId];
-      if (!pPos) return;
+      const parentEl = nodeRefs.current[parentId];
+      if (!pPos || !parentEl) return;
       const px = pPos.x + NODE_W / 2;
-      const py = pPos.y + CIRCLE; // линии идут от низа круга, не карточки
+      const py = pPos.y + parentEl.offsetHeight;
 
       const children: { x: number; topY: number }[] = [];
       for (const kid of kids) {
@@ -431,32 +368,9 @@ export function TreeView({
                   ))}
                 </g>
               ))}
-
-              {/* пунктирные связи к плейсхолдерам «+» */}
-              {selected && layout.pos[selected.id]
-                ? addSlots.map((slot) => {
-                    const sp = layout.pos[selected.id];
-                    const x1 = sp.x + NODE_W / 2;
-                    const y1 = sp.y + CIRCLE / 2;
-                    const x2 = slot.x + NODE_W / 2;
-                    const y2 = slot.y + CIRCLE / 2;
-                    return (
-                      <line
-                        key={slot.rel}
-                        x1={x1}
-                        y1={y1}
-                        x2={x2}
-                        y2={y2}
-                        stroke="rgb(var(--primary) / 0.25)"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 4"
-                      />
-                    );
-                  })
-                : null}
             </svg>
 
-            {/* узлы древа: круглые аватарки с подписью (абсолютная раскладка) */}
+            {/* узлы древа (абсолютная раскладка) */}
             <div className="relative z-10">
               {people.map((person) => {
                 const isSelected = person.id === selectedId;
@@ -478,61 +392,49 @@ export function TreeView({
                       top: p.y,
                       width: NODE_W,
                     }}
-                    className="group flex flex-col items-center text-center"
+                    className={cn(
+                      "group rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                      isSelected
+                        ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
+                        : isAncestor
+                          ? "border-primary/50"
+                          : "border-border hover:border-primary/40",
+                    )}
                   >
-                    <span
-                      className={cn(
-                        "flex items-center justify-center rounded-full border-2 font-serif text-2xl font-bold transition-all duration-200",
-                        isSelected
-                          ? "border-primary bg-primary/15 text-primary shadow-[0_0_0_4px_rgb(var(--primary)/0.18)]"
-                          : isAncestor
-                            ? "border-primary/60 bg-secondary text-primary"
-                            : "border-border bg-secondary text-primary group-hover:border-primary/50",
-                      )}
-                      style={{ width: CIRCLE, height: CIRCLE }}
-                    >
-                      {person.name.charAt(0)}
-                    </span>
-                    <span className="mt-1.5 line-clamp-2 w-full text-xs font-medium leading-tight text-foreground">
-                      {person.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {person.birth
-                        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
-                        : isLiving
-                          ? ""
-                          : `†${person.death}`}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-serif text-lg font-bold",
+                          isSelected || isAncestor
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-primary",
+                        )}
+                      >
+                        {person.name.charAt(0)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-serif text-base font-semibold text-foreground">
+                          {person.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {person.birth}
+                          {person.death ? `–${person.death}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {person.role}
+                      </span>
+                      {isLiving ? (
+                        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          жив
+                        </span>
+                      ) : null}
+                    </div>
                   </button>
                 );
               })}
-
-              {/* плейсхолдеры «добавить родственника» вокруг выбранного */}
-              {addSlots.map((slot) => (
-                <button
-                  key={slot.rel}
-                  type="button"
-                  onClick={() => onAddRelative?.(slot.rel)}
-                  style={{
-                    position: "absolute",
-                    left: slot.x,
-                    top: slot.y,
-                    width: NODE_W,
-                  }}
-                  className="group flex flex-col items-center text-center"
-                  aria-label={`Добавить: ${ADD_LABEL[slot.rel]}`}
-                >
-                  <span
-                    className="flex items-center justify-center rounded-full border-2 border-dashed border-border bg-card/60 text-2xl font-light text-muted-foreground transition-all duration-200 group-hover:border-primary/60 group-hover:text-primary"
-                    style={{ width: CIRCLE, height: CIRCLE }}
-                  >
-                    +
-                  </span>
-                  <span className="mt-1.5 text-xs text-muted-foreground transition-colors group-hover:text-primary">
-                    {ADD_LABEL[slot.rel]}
-                  </span>
-                </button>
-              ))}
             </div>
           </div>
         </div>

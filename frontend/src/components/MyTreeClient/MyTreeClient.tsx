@@ -96,7 +96,6 @@ export function MyTreeClient() {
   const [started, setStarted] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [relation, setRelation] = useState<Relation | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -311,19 +310,11 @@ export function MyTreeClient() {
 
   function selectPerson(id: string) {
     setSelectedId(id);
-    setPanelOpen(true);
-    setConfirmDelete(false);
-  }
-
-  /** Закрыть панель, ОСТАВИВ узел выбранным — вокруг него остаются «+» для добавления родных. */
-  function hidePanel() {
-    setPanelOpen(false);
     setConfirmDelete(false);
   }
 
   function closePanel() {
     setSelectedId(null);
-    setPanelOpen(false);
     setConfirmDelete(false);
   }
 
@@ -589,24 +580,23 @@ export function MyTreeClient() {
           people={people}
           selectedId={selectedId}
           onSelect={selectPerson}
-          onAddRelative={(rel) => openForm(rel)}
         />
       )}
 
       {/* Правая панель выбранного человека с действиями. */}
-      {selected && panelOpen && !formOpen && mounted
+      {selected && !formOpen && mounted
         ? createPortal(
             <div className="fixed inset-0 z-[60] flex">
               <button
                 type="button"
                 aria-label="Закрыть"
                 className="flex-1 bg-background/70 backdrop-blur-sm"
-                onClick={hidePanel}
+                onClick={closePanel}
               />
               <aside className="relative flex h-full w-full max-w-sm flex-col overflow-y-auto border-l border-border bg-card p-6 md:p-8">
                 <button
                   type="button"
-                  onClick={hidePanel}
+                  onClick={closePanel}
                   className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="Закрыть"
                 >
