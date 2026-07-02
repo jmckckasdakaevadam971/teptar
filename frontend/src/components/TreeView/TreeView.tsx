@@ -22,9 +22,9 @@ import {
 import type { Person } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
-// размеры узла и отступы для древовидной раскладки (компактные карточки)
+// размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
 const NODE_W = 176; // w-44
-const NODE_H = 84;
+const NODE_H = 116; // вмещает имя в 2 строки + годы + супругу
 const H_GAP = 24;
 const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
@@ -501,10 +501,10 @@ export function TreeView({
       const p = layout.pos[person.id];
       if (!p) continue;
 
-      // перенос имени по словам под ширину карточки
+      // перенос имени по словам под ширину карточки (максимум 2 строки)
       ctx.font = "600 13px Georgia, serif";
       const maxTextW = NODE_W - 32;
-      const nameLines: string[] = [];
+      let nameLines: string[] = [];
       let line = "";
       for (const word of person.name.split(" ")) {
         const probe = line ? `${line} ${word}` : word;
@@ -516,19 +516,15 @@ export function TreeView({
         }
       }
       if (line) nameLines.push(line);
+      if (nameLines.length > 2) {
+        nameLines = [nameLines[0], `${nameLines[1]}…`];
+      }
 
       const years = person.birth
         ? `${person.birth}${person.death ? `–${person.death}` : ""}`
         : "";
-      // высота карточки растёт под число строк
-      const cardH = Math.max(
-        NODE_H,
-        14 +
-          nameLines.length * 16 +
-          (years ? 18 : 0) +
-          (person.spouseName ? 16 : 0) +
-          12,
-      );
+      // карточки фиксированного размера
+      const cardH = NODE_H;
 
       const r = 14;
       ctx.beginPath();
@@ -745,9 +741,10 @@ export function TreeView({
                       left: p.x,
                       top: p.y,
                       width: NODE_W,
+                      height: NODE_H,
                     }}
                     className={cn(
-                      "group cursor-pointer rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                      "group cursor-pointer overflow-visible rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
                       isSelected
                         ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
                         : isAncestor
@@ -755,9 +752,9 @@ export function TreeView({
                           : "border-border hover:border-primary/40",
                     )}
                   >
-                    {/* Бургер-меню карточки */}
+                    {/* Бургер-меню карточки; само меню раскрывается СПРАВА от карточки */}
                     {onShowInfo ? (
-                      <div className="absolute right-2 top-2">
+                      <>
                         <button
                           type="button"
                           aria-label="Меню карточки"
@@ -767,12 +764,12 @@ export function TreeView({
                               v === person.id ? null : person.id,
                             );
                           }}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
                         {menuId === person.id ? (
-                          <div className="absolute right-0 top-8 z-30 min-w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+                          <div className="absolute left-full top-0 z-30 ml-2 min-w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -787,12 +784,12 @@ export function TreeView({
                             </button>
                           </div>
                         ) : null}
-                      </div>
+                      </>
                     ) : null}
 
                     <p
                       className={cn(
-                        "break-words font-serif text-base font-semibold leading-snug text-foreground",
+                        "line-clamp-2 break-words font-serif text-base font-semibold leading-snug text-foreground",
                         onShowInfo && "pr-6",
                       )}
                     >
@@ -812,7 +809,7 @@ export function TreeView({
                     {/* Супруга видна прямо в карточке — иначе непонятно,
                         почему слот «+ Жена» не показывается. */}
                     {person.spouseName ? (
-                      <p className="mt-1.5 break-words text-[11px] leading-snug text-muted-foreground">
+                      <p className="mt-1 truncate text-[11px] leading-snug text-muted-foreground">
                         ⚭ {person.spouseName}
                       </p>
                     ) : null}
