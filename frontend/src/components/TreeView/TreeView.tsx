@@ -20,9 +20,9 @@ import {
 import type { Person } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
-// размеры узла и отступы для древовидной раскладки (прямоугольные карточки)
+// размеры узла и отступы для древовидной раскладки (компактные карточки)
 const NODE_W = 176; // w-44
-const NODE_H = 108;
+const NODE_H = 84;
 const H_GAP = 24;
 const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
@@ -481,7 +481,7 @@ export function TreeView({
       ctx.stroke();
     });
 
-    // Узлы: прямоугольная карточка — кружок-инициал, имя, годы, роль
+    // Узлы: компактная карточка — имя, годы, супруга
     for (const person of people) {
       const p = layout.pos[person.id];
       if (!p) continue;
@@ -496,48 +496,38 @@ export function TreeView({
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // кружок с инициалом
-      const ax = p.x + 16 + 20;
-      const ay = p.y + 16 + 20;
-      ctx.beginPath();
-      ctx.arc(ax, ay, 20, 0, Math.PI * 2);
-      ctx.fillStyle = "#2a2216";
-      ctx.fill();
-      ctx.fillStyle = "#c9a227";
-      ctx.font = "bold 18px Georgia, serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(person.name.charAt(0), ax, ay + 1);
-
-      // имя (до двух строк) и годы справа от кружка
-      const tx = p.x + 16 + 44;
+      // имя (до двух строк)
+      const tx = p.x + 16;
       ctx.textAlign = "left";
       ctx.fillStyle = "#f2ecdd";
       ctx.font = "600 13px Georgia, serif";
+      ctx.textBaseline = "top";
       const words = person.name.split(" ");
       const line1 = words.slice(0, 2).join(" ");
       const line2 = words.slice(2).join(" ");
-      ctx.textBaseline = "middle";
-      if (line2) {
-        ctx.fillText(line1, tx, ay - 8, NODE_W - 76);
-        ctx.fillText(line2, tx, ay + 8, NODE_W - 76);
-      } else {
-        ctx.fillText(line1, tx, ay - 6, NODE_W - 76);
-        const years = person.birth
-          ? `${person.birth}${person.death ? `–${person.death}` : ""}`
-          : "";
-        if (years) {
-          ctx.fillStyle = "#a99a78";
-          ctx.font = "11px Arial, sans-serif";
-          ctx.fillText(years, tx, ay + 12);
-        }
-      }
+      ctx.fillText(line1, tx, p.y + 14, NODE_W - 32);
+      if (line2) ctx.fillText(line2, tx, p.y + 30, NODE_W - 32);
 
-      // роль внизу карточки
-      if (person.role && person.role !== "—") {
+      // годы жизни
+      const years = person.birth
+        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
+        : "";
+      if (years) {
         ctx.fillStyle = "#a99a78";
         ctx.font = "11px Arial, sans-serif";
-        ctx.fillText(person.role, p.x + 16, p.y + NODE_H - 18, NODE_W - 32);
+        ctx.fillText(years, tx, p.y + (line2 ? 48 : 34));
+      }
+
+      // супруга
+      if (person.spouseName) {
+        ctx.fillStyle = "#a99a78";
+        ctx.font = "10px Arial, sans-serif";
+        ctx.fillText(
+          `⚭ ${person.spouseName}`,
+          tx,
+          p.y + NODE_H - 16,
+          NODE_W - 32,
+        );
       }
     }
 
@@ -729,30 +719,13 @@ export function TreeView({
                           : "border-border hover:border-primary/40",
                     )}
                   >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={cn(
-                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-serif text-lg font-bold",
-                          isSelected || isAncestor
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-primary",
-                        )}
-                      >
-                        {person.name.charAt(0)}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate font-serif text-base font-semibold text-foreground">
-                          {person.name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {person.birth}
-                          {person.death ? `–${person.death}` : ""}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between">
+                    <p className="truncate font-serif text-base font-semibold text-foreground">
+                      {person.name}
+                    </p>
+                    <div className="mt-1 flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">
-                        {person.role}
+                        {person.birth}
+                        {person.death ? `–${person.death}` : ""}
                       </span>
                       {isLiving ? (
                         <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
