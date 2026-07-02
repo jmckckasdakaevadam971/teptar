@@ -125,15 +125,42 @@ export function TreeView({
     if (!editable || !selected) return [];
     const p = layout.pos[selected.id];
     if (!p) return [];
-    const slots: { rel: AddRelation; x: number; y: number }[] = [];
 
-    // Отец — над узлом, если родитель ещё не указан.
+    // Занята ли позиция существующим узлом или уже добавленным слотом.
+    const taken: { x: number; y: number }[] = Object.values(layout.pos).map(
+      (q) => ({ x: q.x, y: q.y }),
+    );
+    const occupied = (x: number, y: number) =>
+      taken.some(
+        (q) =>
+          Math.abs(q.x - x) < NODE_W * 0.8 && Math.abs(q.y - y) < NODE_H * 0.8,
+      );
+
+    const slots: { rel: AddRelation; x: number; y: number }[] = [];
+    /** Ставит слот на первую свободную позицию из списка кандидатов. */
+    const pushFree = (rel: AddRelation, candidates: { x: number; y: number }[]) => {
+      const spot = candidates.find((c) => !occupied(c.x, c.y));
+      if (!spot) return;
+      slots.push({ rel, ...spot });
+      taken.push(spot); // чтобы следующие слоты не сели на то же место
+    };
+
+    // Отец — над узлом (если занято — чуть в сторону).
     if (!selected.parentId) {
-      slots.push({ rel: "father", x: p.x, y: p.y - ROW_PITCH });
+      pushFree("father", [
+        { x: p.x, y: p.y - ROW_PITCH },
+        { x: p.x + SLOT, y: p.y - ROW_PITCH },
+        { x: p.x - SLOT, y: p.y - ROW_PITCH },
+      ]);
     }
-    // Жена — справа, если супруга не записана.
+    // Жена — справа; если справа сосед, пробуем слева и дальше.
     if (!selected.spouseName) {
-      slots.push({ rel: "wife", x: p.x + SLOT, y: p.y });
+      pushFree("wife", [
+        { x: p.x + SLOT, y: p.y },
+        { x: p.x - SLOT, y: p.y },
+        { x: p.x + 2 * SLOT, y: p.y },
+        { x: p.x - 2 * SLOT, y: p.y },
+      ]);
     }
     // Сын/дочь — под узлом; если дети уже есть — сбоку от крайних детей.
     const kids = people.filter((k) => k.parentId === selected.id);
@@ -142,23 +169,28 @@ export function TreeView({
         .map((k) => layout.pos[k.id]?.x)
         .filter((v): v is number => v !== undefined);
       const rowY = p.y + ROW_PITCH;
-      slots.push({ rel: "son", x: Math.min(...xs) - SLOT, y: rowY });
-      slots.push({ rel: "daughter", x: Math.max(...xs) + SLOT, y: rowY });
+      pushFree("son", [
+        { x: Math.min(...xs) - SLOT, y: rowY },
+        { x: Math.min(...xs) - 2 * SLOT, y: rowY },
+      ]);
+      pushFree("daughter", [
+        { x: Math.max(...xs) + SLOT, y: rowY },
+        { x: Math.max(...xs) + 2 * SLOT, y: rowY },
+      ]);
     } else {
-      slots.push({ rel: "son", x: p.x - SLOT / 2 - 6, y: p.y + ROW_PITCH });
-      slots.push({
-        rel: "daughter",
-        x: p.x + SLOT / 2 + 6,
-        y: p.y + ROW_PITCH,
-      });
+      const rowY = p.y + ROW_PITCH;
+      pushFree("son", [
+        { x: p.x - SLOT / 2 - 6, y: rowY },
+        { x: p.x - SLOT, y: rowY },
+        { x: p.x - 2 * SLOT, y: rowY },
+      ]);
+      pushFree("daughter", [
+        { x: p.x + SLOT / 2 + 6, y: rowY },
+        { x: p.x + SLOT, y: rowY },
+        { x: p.x + 2 * SLOT, y: rowY },
+      ]);
     }
-    // Не рисуем плейсхолдер поверх существующего узла.
-    const occupied = (x: number, y: number) =>
-      Object.values(layout.pos).some(
-        (q) =>
-          Math.abs(q.x - x) < NODE_W * 0.8 && Math.abs(q.y - y) < NODE_H * 0.8,
-      );
-    return slots.filter((s) => !occupied(s.x, s.y));
+    return slots;
   }, [editable, selected, people, layout]);
 
   // вычисляем уголковые связи родитель → дети.
