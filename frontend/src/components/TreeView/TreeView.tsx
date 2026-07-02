@@ -481,53 +481,67 @@ export function TreeView({
       ctx.stroke();
     });
 
-    // Узлы: компактная карточка — имя, годы, супруга
+    // Узлы: компактная карточка — полное имя (с переносами), годы, супруга
     for (const person of people) {
       const p = layout.pos[person.id];
       if (!p) continue;
 
-      // карточка
+      // перенос имени по словам под ширину карточки
+      ctx.font = "600 13px Georgia, serif";
+      const maxTextW = NODE_W - 32;
+      const nameLines: string[] = [];
+      let line = "";
+      for (const word of person.name.split(" ")) {
+        const probe = line ? `${line} ${word}` : word;
+        if (ctx.measureText(probe).width > maxTextW && line) {
+          nameLines.push(line);
+          line = word;
+        } else {
+          line = probe;
+        }
+      }
+      if (line) nameLines.push(line);
+
+      const years = person.birth
+        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
+        : "";
+      // высота карточки растёт под число строк
+      const cardH = Math.max(
+        NODE_H,
+        14 +
+          nameLines.length * 16 +
+          (years ? 18 : 0) +
+          (person.spouseName ? 16 : 0) +
+          12,
+      );
+
       const r = 14;
       ctx.beginPath();
-      ctx.roundRect(p.x, p.y, NODE_W, NODE_H, r);
+      ctx.roundRect(p.x, p.y, NODE_W, cardH, r);
       ctx.fillStyle = "#201a12";
       ctx.fill();
       ctx.strokeStyle = "#c9a227";
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // имя (до двух строк)
       const tx = p.x + 16;
       ctx.textAlign = "left";
+      ctx.textBaseline = "top";
       ctx.fillStyle = "#f2ecdd";
       ctx.font = "600 13px Georgia, serif";
-      ctx.textBaseline = "top";
-      const words = person.name.split(" ");
-      const line1 = words.slice(0, 2).join(" ");
-      const line2 = words.slice(2).join(" ");
-      ctx.fillText(line1, tx, p.y + 14, NODE_W - 32);
-      if (line2) ctx.fillText(line2, tx, p.y + 30, NODE_W - 32);
+      nameLines.forEach((l, i) => ctx.fillText(l, tx, p.y + 14 + i * 16));
 
-      // годы жизни
-      const years = person.birth
-        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
-        : "";
+      let cursorY = p.y + 14 + nameLines.length * 16 + 4;
       if (years) {
         ctx.fillStyle = "#a99a78";
         ctx.font = "11px Arial, sans-serif";
-        ctx.fillText(years, tx, p.y + (line2 ? 48 : 34));
+        ctx.fillText(years, tx, cursorY);
+        cursorY += 16;
       }
-
-      // супруга
       if (person.spouseName) {
         ctx.fillStyle = "#a99a78";
         ctx.font = "10px Arial, sans-serif";
-        ctx.fillText(
-          `⚭ ${person.spouseName}`,
-          tx,
-          p.y + NODE_H - 16,
-          NODE_W - 32,
-        );
+        ctx.fillText(`⚭ ${person.spouseName}`, tx, cursorY, maxTextW);
       }
     }
 
@@ -719,7 +733,7 @@ export function TreeView({
                           : "border-border hover:border-primary/40",
                     )}
                   >
-                    <p className="truncate font-serif text-base font-semibold text-foreground">
+                    <p className="break-words font-serif text-base font-semibold leading-snug text-foreground">
                       {person.name}
                     </p>
                     <div className="mt-1 flex items-center justify-between">
@@ -736,7 +750,7 @@ export function TreeView({
                     {/* Супруга видна прямо в карточке — иначе непонятно,
                         почему слот «+ Жена» не показывается. */}
                     {person.spouseName ? (
-                      <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
+                      <p className="mt-1.5 break-words text-[11px] leading-snug text-muted-foreground">
                         ⚭ {person.spouseName}
                       </p>
                     ) : null}
