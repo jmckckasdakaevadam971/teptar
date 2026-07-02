@@ -131,7 +131,14 @@ export async function requestEmailVerification(input: {
     [email, code, input.display_name, hashPassword(input.password)],
   );
 
-  await sendVerificationCode(email, code);
+  try {
+    await sendVerificationCode(email, code);
+  } catch (e) {
+    // Письмо не ушло — убираем заявку, чтобы не блокировать повтор
+    // антиспам-паузой, и отдаём ошибку выше (контроллер решит, что делать).
+    await query('DELETE FROM email_verifications WHERE email = $1', [email]);
+    throw e;
+  }
   return { pending: true, email };
 }
 

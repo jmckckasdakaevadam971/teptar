@@ -38,14 +38,25 @@ export async function register(req: Request, res: Response): Promise<void> {
 
   // Если включено подтверждение почты и регистрация идёт по e-mail —
   // отправляем код и ждём подтверждения (пользователь создастся на шаге verify).
+  // Если письмо отправить не удалось (SMTP недоступен / домен на модерации) —
+  // не блокируем регистрацию, а честно регистрируем без подтверждения.
   if (input.email && emailVerificationEnabled()) {
-    const result = await service.requestEmailVerification({
-      display_name: input.display_name,
-      email: input.email,
-      password: input.password,
-    });
-    res.status(202).json(ok(result));
-    return;
+    try {
+      const result = await service.requestEmailVerification({
+        display_name: input.display_name,
+        email: input.email,
+        password: input.password,
+      });
+      res.status(202).json(ok(result));
+      return;
+    } catch (e) {
+      // Ошибки бизнес-логики (занятый e-mail, антиспам-пауза) пробрасываем как есть.
+      if (e instanceof ApiError) throw e;
+      console.error(
+        "[register] не удалось отправить код, регистрирую без подтверждения:",
+        e,
+      );
+    }
   }
 
   const result = await service.register(input);
