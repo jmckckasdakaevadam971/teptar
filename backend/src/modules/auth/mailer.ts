@@ -19,10 +19,15 @@ const transporter = env.smtpHost
   ? nodemailer.createTransport({
       host: env.smtpHost,
       port: env.smtpPort,
-      secure: env.smtpPort === 465,
+      secure: env.smtpPort === 465 || env.smtpPort === 9465,
       auth: env.smtpUser
         ? { user: env.smtpUser, pass: env.smtpPass }
         : undefined,
+      // Таймауты обязательны: если порт заблокирован хостером, без них
+      // запрос висит минутами и клиент получает 504 от nginx.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     })
   : null;
 
