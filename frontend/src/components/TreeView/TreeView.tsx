@@ -9,7 +9,14 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Minimize2 } from "lucide-react";
+import {
+  Crosshair,
+  Download,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Plus,
+} from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +37,23 @@ const ADD_LABEL: Record<AddRelation, string> = {
   son: "Сын",
   daughter: "Дочь",
 };
+
+/** Цвет бейджа роли на аватарке (как на Familio: Отец — зелёный, Мать/Дочь — розовый…). */
+function roleBadgeClass(role: string): string {
+  const r = role.toLowerCase();
+  if (r.includes("отец") || r.includes("предок") || r.includes("дед"))
+    return "bg-emerald-600/90 text-white";
+  if (
+    r.includes("мать") ||
+    r.includes("доч") ||
+    r.includes("жен") ||
+    r.includes("бабуш")
+  )
+    return "bg-rose-500/90 text-white";
+  if (r.includes("сын") || r.includes("брат"))
+    return "bg-sky-600/90 text-white";
+  return "bg-primary/90 text-primary-foreground";
+}
 
 // Уголковый коннектор: вертикаль от родителя к шине, горизонтальная шина
 // и вертикали к каждому ребёнку.
@@ -348,6 +372,142 @@ export function TreeView({
 
   const fs = isFullscreen && mounted;
 
+  /** Плавный зум кнопками (центр области — якорь). */
+  const zoomBy = useCallback((delta: number) => {
+    const el = scrollRef.current;
+    const sizer = sizerRef.current;
+    setScale((s) => {
+      const next = Math.min(2, Math.max(0.4, s + delta));
+      if (el && sizer && next !== s) {
+        const rect = sizer.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const clientX = elRect.left + el.clientWidth / 2;
+        const clientY = elRect.top + el.clientHeight / 2;
+        pendingAnchor.current = {
+          cx: (clientX - rect.left) / s,
+          cy: (clientY - rect.top) / s,
+          clientX,
+          clientY,
+        };
+      }
+      return next;
+    });
+  }, []);
+
+  /** Центрирование: выбранный узел (или корень) — в центр экрана. */
+  const centerView = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const targetId = selectedId ?? people[0]?.id;
+    const p = targetId ? layout.pos[targetId] : undefined;
+    const cx = p ? (p.x + NODE_W / 2) * scale : (layout.width * scale) / 2;
+    const cy = p ? (p.y + CIRCLE / 2) * scale : (layout.height * scale) / 2;
+    const contentW = layout.width * scale;
+    const contentH = layout.height * scale;
+    const offX = Math.max(0, (el.clientWidth - contentW) / 2);
+    const offY = Math.max(0, (el.clientHeight - contentH) / 2);
+    el.scrollTo({
+      left: offX + cx - el.clientWidth / 2,
+      top: offY + cy - el.clientHeight / 2,
+      behavior: "smooth",
+    });
+  }, [selectedId, people, layout, scale]);
+
+  /** Экспорт древа в PNG: рисуем на canvas без внешних библиотек. */
+  const exportPng = useCallback(() => {
+    const PAD = 40;
+    const dpr = 2; // чёткость
+    const canvas = document.createElement("canvas");
+    canvas.width = (layout.width + PAD * 2) * dpr;
+    canvas.height = (layout.height + PAD * 2) * dpr;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+
+    // Фон в цветах сайта
+    ctx.fillStyle = "#14100c";
+    ctx.fillRect(0, 0, layout.width + PAD * 2, layout.height + PAD * 2);
+    ctx.translate(PAD, PAD);
+
+    // Связи родитель → дети (та же логика, что в computeConnectors)
+    ctx.strokeStyle = "rgba(201,162,39,0.5)";
+    ctx.lineWidth = 2;
+    const byParent = new Map<string, Person[]>();
+    for (const person of people) {
+      if (!person.parentId) continue;
+      const arr = byParent.get(person.parentId) ?? [];
+      arr.push(person);
+      byParent.set(person.parentId, arr);
+    }
+    byParent.forEach((kids, parentId) => {
+      const pPos = layout.pos[parentId];
+      if (!pPos) return;
+      const px = pPos.x + NODE_W / 2;
+      const py = pPos.y + CIRCLE;
+      const kidPts = kids
+        .map((k) => layout.pos[k.id])
+        .filter(Boolean)
+        .map((q) => ({ x: q.x + NODE_W / 2, topY: q.y }));
+      if (!kidPts.length) return;
+      const busY = py + (Math.min(...kidPts.map((k) => k.topY)) - py) / 2;
+      const xs = [px, ...kidPts.map((k) => k.x)];
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px, busY);
+      ctx.moveTo(Math.min(...xs), busY);
+      ctx.lineTo(Math.max(...xs), busY);
+      for (const k of kidPts) {
+        ctx.moveTo(k.x, busY);
+        ctx.lineTo(k.x, k.topY);
+      }
+      ctx.stroke();
+    });
+
+    // Узлы: круг + инициал + имя + годы
+    for (const person of people) {
+      const p = layout.pos[person.id];
+      if (!p) continue;
+      const cx = p.x + NODE_W / 2;
+      const cy = p.y + CIRCLE / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, CIRCLE / 2, 0, Math.PI * 2);
+      ctx.fillStyle = "#2a2216";
+      ctx.fill();
+      ctx.strokeStyle = "#c9a227";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#c9a227";
+      ctx.font = "bold 26px Georgia, serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(person.name.charAt(0), cx, cy + 2);
+
+      ctx.fillStyle = "#f2ecdd";
+      ctx.font = "600 12px Arial, sans-serif";
+      ctx.textBaseline = "top";
+      // имя в две строки максимум
+      const words = person.name.split(" ");
+      const line1 = words.slice(0, 2).join(" ");
+      const line2 = words.slice(2).join(" ");
+      ctx.fillText(line1, cx, p.y + CIRCLE + 6, NODE_W);
+      if (line2) ctx.fillText(line2, cx, p.y + CIRCLE + 20, NODE_W);
+      const years = person.birth
+        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
+        : "";
+      if (years) {
+        ctx.fillStyle = "#a99a78";
+        ctx.font = "10px Arial, sans-serif";
+        ctx.fillText(years, cx, p.y + CIRCLE + (line2 ? 34 : 20));
+      }
+    }
+
+    const a = document.createElement("a");
+    a.download = "vorhda-drevo.png";
+    a.href = canvas.toDataURL("image/png");
+    a.click();
+  }, [people, layout]);
+
   const tree = (
     <div
       className={cn(
@@ -356,25 +516,68 @@ export function TreeView({
           : "relative",
       )}
     >
-      <div className="absolute right-2 top-2 z-20 flex items-center gap-2">
+      {/* Счётчик людей — как на Familio, сверху по центру */}
+      <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center">
+        <span className="rounded-full border border-border bg-card/80 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
+          Людей в древе:{" "}
+          <span className="text-foreground">{people.length}</span>
+        </span>
+      </div>
+
+      {/* Панель управления — колонка справа (как на Familio) */}
+      <div className="absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => zoomBy(0.15)}
+          aria-label="Приблизить"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => zoomBy(-0.15)}
+          aria-label="Отдалить"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => setScale(1)}
-          className="rounded-full border border-border bg-card/80 px-3 py-1 text-xs text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+          aria-label="Сбросить масштаб"
+          className="rounded-full border border-border bg-card/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
         >
           {Math.round(scale * 100)}%
         </button>
         <button
           type="button"
+          onClick={centerView}
+          aria-label="Центрировать"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <Crosshair className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
           onClick={() => setIsFullscreen((v) => !v)}
           aria-label={isFullscreen ? "Свернуть" : "На весь экран"}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
         >
           {isFullscreen ? (
             <Minimize2 className="h-4 w-4" />
           ) : (
             <Maximize2 className="h-4 w-4" />
           )}
+        </button>
+        <button
+          type="button"
+          onClick={exportPng}
+          aria-label="Сохранить как изображение"
+          title="Сохранить как изображение"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <Download className="h-4 w-4" />
         </button>
       </div>
       <div
@@ -480,18 +683,35 @@ export function TreeView({
                     }}
                     className="group flex flex-col items-center text-center"
                   >
-                    <span
-                      className={cn(
-                        "flex items-center justify-center rounded-full border-2 font-serif text-2xl font-bold transition-all duration-200",
-                        isSelected
-                          ? "border-primary bg-primary/15 text-primary shadow-[0_0_0_4px_rgb(var(--primary)/0.18)]"
-                          : isAncestor
-                            ? "border-primary/60 bg-secondary text-primary"
-                            : "border-border bg-secondary text-primary group-hover:border-primary/50",
-                      )}
-                      style={{ width: CIRCLE, height: CIRCLE }}
-                    >
-                      {person.name.charAt(0)}
+                    <span className="relative">
+                      <span
+                        className={cn(
+                          "flex items-center justify-center rounded-full border-2 font-serif text-2xl font-bold transition-all duration-200",
+                          isSelected
+                            ? "border-primary bg-primary/15 text-primary shadow-[0_0_0_4px_rgb(var(--primary)/0.18)]"
+                            : isAncestor
+                              ? "border-primary/60 bg-secondary text-primary"
+                              : "border-border bg-secondary text-primary group-hover:border-primary/50",
+                        )}
+                        style={{
+                          width: CIRCLE,
+                          height: CIRCLE,
+                          display: "flex",
+                        }}
+                      >
+                        {person.name.charAt(0)}
+                      </span>
+                      {/* Бейдж роли на аватарке (как на Familio) */}
+                      {person.role && person.role !== "—" ? (
+                        <span
+                          className={cn(
+                            "absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold leading-tight",
+                            roleBadgeClass(person.role),
+                          )}
+                        >
+                          {person.role}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="mt-1.5 line-clamp-2 w-full text-xs font-medium leading-tight text-foreground">
                       {person.name}
