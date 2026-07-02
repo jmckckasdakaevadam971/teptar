@@ -71,6 +71,12 @@ services:
       # Cloudflare Turnstile (проверка на бота). Пустые → проверка отключена.
       TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      # SMTP для писем подтверждения почты (smtp.bz). Пустой SMTP_HOST → выключено.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Vorhda <no-reply@vorhda.ru>}
       # Инициализацию выполняет отдельный сервис db-init, поэтому здесь 0.
       RUN_DB_INIT: "0"
     expose:
