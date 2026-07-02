@@ -20,12 +20,11 @@ import {
 import type { Person } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
-// размеры узла и отступы для древовидной раскладки (круглые аватарки а-ля Familio)
-const CIRCLE = 72; // диаметр круга
-const NODE_W = 128; // ширина слота (круг + подпись)
-const NODE_H = 128; // круг + имя + годы
-const H_GAP = 20;
-const V_GAP = 56;
+// размеры узла и отступы для древовидной раскладки (прямоугольные карточки)
+const NODE_W = 176; // w-44
+const NODE_H = 108;
+const H_GAP = 24;
+const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
 const ROW_PITCH = NODE_H + V_GAP;
 
@@ -37,23 +36,6 @@ const ADD_LABEL: Record<AddRelation, string> = {
   son: "Сын",
   daughter: "Дочь",
 };
-
-/** Цвет бейджа роли на аватарке (как на Familio: Отец — зелёный, Мать/Дочь — розовый…). */
-function roleBadgeClass(role: string): string {
-  const r = role.toLowerCase();
-  if (r.includes("отец") || r.includes("предок") || r.includes("дед"))
-    return "bg-emerald-600/90 text-white";
-  if (
-    r.includes("мать") ||
-    r.includes("доч") ||
-    r.includes("жен") ||
-    r.includes("бабуш")
-  )
-    return "bg-rose-500/90 text-white";
-  if (r.includes("сын") || r.includes("брат"))
-    return "bg-sky-600/90 text-white";
-  return "bg-primary/90 text-primary-foreground";
-}
 
 // Уголковый коннектор: вертикаль от родителя к шине, горизонтальная шина
 // и вертикали к каждому ребёнку.
@@ -194,9 +176,10 @@ export function TreeView({
     const next: Connector[] = [];
     byParent.forEach((kids, parentId) => {
       const pPos = layout.pos[parentId];
-      if (!pPos) return;
+      const parentEl = nodeRefs.current[parentId];
+      if (!pPos || !parentEl) return;
       const px = pPos.x + NODE_W / 2;
-      const py = pPos.y + CIRCLE; // линии идут от низа круга, не карточки
+      const py = pPos.y + parentEl.offsetHeight;
 
       const children: { x: number; topY: number }[] = [];
       for (const kid of kids) {
@@ -401,7 +384,7 @@ export function TreeView({
     const targetId = selectedId ?? people[0]?.id;
     const p = targetId ? layout.pos[targetId] : undefined;
     const cx = p ? (p.x + NODE_W / 2) * scale : (layout.width * scale) / 2;
-    const cy = p ? (p.y + CIRCLE / 2) * scale : (layout.height * scale) / 2;
+    const cy = p ? (p.y + NODE_H / 2) * scale : (layout.height * scale) / 2;
     const contentW = layout.width * scale;
     const contentH = layout.height * scale;
     const offX = Math.max(0, (el.clientWidth - contentW) / 2);
@@ -443,7 +426,7 @@ export function TreeView({
       const pPos = layout.pos[parentId];
       if (!pPos) return;
       const px = pPos.x + NODE_W / 2;
-      const py = pPos.y + CIRCLE;
+      const py = pPos.y + NODE_H;
       const kidPts = kids
         .map((k) => layout.pos[k.id])
         .filter(Boolean)
@@ -463,42 +446,63 @@ export function TreeView({
       ctx.stroke();
     });
 
-    // Узлы: круг + инициал + имя + годы
+    // Узлы: прямоугольная карточка — кружок-инициал, имя, годы, роль
     for (const person of people) {
       const p = layout.pos[person.id];
       if (!p) continue;
-      const cx = p.x + NODE_W / 2;
-      const cy = p.y + CIRCLE / 2;
+
+      // карточка
+      const r = 14;
       ctx.beginPath();
-      ctx.arc(cx, cy, CIRCLE / 2, 0, Math.PI * 2);
-      ctx.fillStyle = "#2a2216";
+      ctx.roundRect(p.x, p.y, NODE_W, NODE_H, r);
+      ctx.fillStyle = "#201a12";
       ctx.fill();
       ctx.strokeStyle = "#c9a227";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
 
+      // кружок с инициалом
+      const ax = p.x + 16 + 20;
+      const ay = p.y + 16 + 20;
+      ctx.beginPath();
+      ctx.arc(ax, ay, 20, 0, Math.PI * 2);
+      ctx.fillStyle = "#2a2216";
+      ctx.fill();
       ctx.fillStyle = "#c9a227";
-      ctx.font = "bold 26px Georgia, serif";
+      ctx.font = "bold 18px Georgia, serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(person.name.charAt(0), cx, cy + 2);
+      ctx.fillText(person.name.charAt(0), ax, ay + 1);
 
+      // имя (до двух строк) и годы справа от кружка
+      const tx = p.x + 16 + 44;
+      ctx.textAlign = "left";
       ctx.fillStyle = "#f2ecdd";
-      ctx.font = "600 12px Arial, sans-serif";
-      ctx.textBaseline = "top";
-      // имя в две строки максимум
+      ctx.font = "600 13px Georgia, serif";
       const words = person.name.split(" ");
       const line1 = words.slice(0, 2).join(" ");
       const line2 = words.slice(2).join(" ");
-      ctx.fillText(line1, cx, p.y + CIRCLE + 6, NODE_W);
-      if (line2) ctx.fillText(line2, cx, p.y + CIRCLE + 20, NODE_W);
-      const years = person.birth
-        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
-        : "";
-      if (years) {
+      ctx.textBaseline = "middle";
+      if (line2) {
+        ctx.fillText(line1, tx, ay - 8, NODE_W - 76);
+        ctx.fillText(line2, tx, ay + 8, NODE_W - 76);
+      } else {
+        ctx.fillText(line1, tx, ay - 6, NODE_W - 76);
+        const years = person.birth
+          ? `${person.birth}${person.death ? `–${person.death}` : ""}`
+          : "";
+        if (years) {
+          ctx.fillStyle = "#a99a78";
+          ctx.font = "11px Arial, sans-serif";
+          ctx.fillText(years, tx, ay + 12);
+        }
+      }
+
+      // роль внизу карточки
+      if (person.role && person.role !== "—") {
         ctx.fillStyle = "#a99a78";
-        ctx.font = "10px Arial, sans-serif";
-        ctx.fillText(years, cx, p.y + CIRCLE + (line2 ? 34 : 20));
+        ctx.font = "11px Arial, sans-serif";
+        ctx.fillText(person.role, p.x + 16, p.y + NODE_H - 18, NODE_W - 32);
       }
     }
 
@@ -640,9 +644,9 @@ export function TreeView({
                 ? addSlots.map((slot) => {
                     const sp = layout.pos[selected.id];
                     const x1 = sp.x + NODE_W / 2;
-                    const y1 = sp.y + CIRCLE / 2;
+                    const y1 = sp.y + NODE_H / 2;
                     const x2 = slot.x + NODE_W / 2;
-                    const y2 = slot.y + CIRCLE / 2;
+                    const y2 = slot.y + NODE_H / 2;
                     return (
                       <line
                         key={slot.rel}
@@ -659,7 +663,7 @@ export function TreeView({
                 : null}
             </svg>
 
-            {/* узлы древа: круглые аватарки с подписью (абсолютная раскладка) */}
+            {/* узлы древа — прямоугольные карточки (абсолютная раскладка) */}
             <div className="relative z-10">
               {people.map((person) => {
                 const isSelected = person.id === selectedId;
@@ -681,48 +685,46 @@ export function TreeView({
                       top: p.y,
                       width: NODE_W,
                     }}
-                    className="group flex flex-col items-center text-center"
+                    className={cn(
+                      "group rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                      isSelected
+                        ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
+                        : isAncestor
+                          ? "border-primary/50"
+                          : "border-border hover:border-primary/40",
+                    )}
                   >
-                    <span className="relative">
+                    <div className="flex items-center gap-3">
                       <span
                         className={cn(
-                          "flex items-center justify-center rounded-full border-2 font-serif text-2xl font-bold transition-all duration-200",
-                          isSelected
-                            ? "border-primary bg-primary/15 text-primary shadow-[0_0_0_4px_rgb(var(--primary)/0.18)]"
-                            : isAncestor
-                              ? "border-primary/60 bg-secondary text-primary"
-                              : "border-border bg-secondary text-primary group-hover:border-primary/50",
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-serif text-lg font-bold",
+                          isSelected || isAncestor
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-primary",
                         )}
-                        style={{
-                          width: CIRCLE,
-                          height: CIRCLE,
-                          display: "flex",
-                        }}
                       >
                         {person.name.charAt(0)}
                       </span>
-                      {/* Бейдж роли на аватарке (как на Familio) */}
-                      {person.role && person.role !== "—" ? (
-                        <span
-                          className={cn(
-                            "absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold leading-tight",
-                            roleBadgeClass(person.role),
-                          )}
-                        >
-                          {person.role}
+                      <div className="min-w-0">
+                        <p className="truncate font-serif text-base font-semibold text-foreground">
+                          {person.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {person.birth}
+                          {person.death ? `–${person.death}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {person.role}
+                      </span>
+                      {isLiving ? (
+                        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          жив
                         </span>
                       ) : null}
-                    </span>
-                    <span className="mt-1.5 line-clamp-2 w-full text-xs font-medium leading-tight text-foreground">
-                      {person.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {person.birth
-                        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
-                        : isLiving
-                          ? ""
-                          : `†${person.death}`}
-                    </span>
+                    </div>
                   </button>
                 );
               })}
@@ -738,17 +740,15 @@ export function TreeView({
                     left: slot.x,
                     top: slot.y,
                     width: NODE_W,
+                    height: NODE_H,
                   }}
-                  className="group flex flex-col items-center text-center"
+                  className="group flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-border bg-card/50 transition-all duration-200 hover:border-primary/60"
                   aria-label={`Добавить: ${ADD_LABEL[slot.rel]}`}
                 >
-                  <span
-                    className="flex items-center justify-center rounded-full border-2 border-dashed border-border bg-card/60 text-2xl font-light text-muted-foreground transition-all duration-200 group-hover:border-primary/60 group-hover:text-primary"
-                    style={{ width: CIRCLE, height: CIRCLE }}
-                  >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xl font-light text-muted-foreground transition-colors group-hover:text-primary">
                     +
                   </span>
-                  <span className="mt-1.5 text-xs text-muted-foreground transition-colors group-hover:text-primary">
+                  <span className="text-xs text-muted-foreground transition-colors group-hover:text-primary">
                     {ADD_LABEL[slot.rel]}
                   </span>
                 </button>
