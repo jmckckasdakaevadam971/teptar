@@ -138,7 +138,10 @@ export function TreeView({
 
     const slots: { rel: AddRelation; x: number; y: number }[] = [];
     /** Ставит слот на первую свободную позицию из списка кандидатов. */
-    const pushFree = (rel: AddRelation, candidates: { x: number; y: number }[]) => {
+    const pushFree = (
+      rel: AddRelation,
+      candidates: { x: number; y: number }[],
+    ) => {
       const spot = candidates.find((c) => !occupied(c.x, c.y));
       if (!spot) return;
       slots.push({ rel, ...spot });
@@ -757,6 +760,13 @@ export function TreeView({
                         </span>
                       ) : null}
                     </div>
+                    {/* Супруга видна прямо в карточке — иначе непонятно,
+                        почему слот «+ Жена» не показывается. */}
+                    {person.spouseName ? (
+                      <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
+                        ⚭ {person.spouseName}
+                      </p>
+                    ) : null}
                   </button>
                 );
               })}
