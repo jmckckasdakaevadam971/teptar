@@ -52,7 +52,6 @@ function LoginPageInner() {
 
   // Доп. поля регистрации
   const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
   const [agreed, setAgreed] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -159,10 +158,14 @@ function LoginPageInner() {
 
     // Клиентская валидация — мгновенная подсказка до обращения к серверу.
     if (!login.trim()) {
-      setError("Введите телефон или e-mail.");
+      setError(tab === "register" ? "Введите e-mail." : "Введите телефон или e-mail.");
       return;
     }
     if (tab === "register") {
+      if (!/^\S+@\S+\.\S+$/.test(login.trim())) {
+        setError("Введите корректный e-mail — например, mail@example.com.");
+        return;
+      }
       if (displayName.trim().length < 2) {
         setError("Введите имя — минимум 2 символа.");
         return;
@@ -196,12 +199,11 @@ function LoginPageInner() {
         );
         saveAuth(result);
       } else {
-        const isEmail = login.includes("@");
+        // Регистрация — только по e-mail.
         const result = await api.auth.register({
           display_name: displayName.trim(),
           password,
-          phone: isEmail ? undefined : login.trim(),
-          email: isEmail ? login.trim() : email.trim() || undefined,
+          email: login.trim(),
           turnstile_token: token ?? undefined,
         });
         saveAuth(result);
@@ -253,30 +255,20 @@ function LoginPageInner() {
 
           <div className={FIELD}>
             <label className={LABEL}>
-              {tab === "login"
-                ? "Телефон или e-mail"
-                : "Телефон или e-mail (логин)"}
+              {tab === "login" ? "Телефон или e-mail" : "E-mail"}
             </label>
             <input
               className={INPUT}
+              type={tab === "register" ? "email" : "text"}
               value={login}
               onChange={(e) => setLogin(e.target.value)}
-              placeholder="+7… или mail@example.com"
+              placeholder={
+                tab === "register"
+                  ? "mail@example.com"
+                  : "+7… или mail@example.com"
+              }
             />
           </div>
-
-          {tab === "register" && !login.includes("@") && (
-            <div className={FIELD}>
-              <label className={LABEL}>E-mail (необязательно)</label>
-              <input
-                className={INPUT}
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="mail@example.com"
-              />
-            </div>
-          )}
 
           <div className={FIELD}>
             <label className={LABEL}>Пароль</label>
