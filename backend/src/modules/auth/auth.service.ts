@@ -136,7 +136,7 @@ export async function requestEmailVerification(input: {
   } catch (e) {
     // Письмо не ушло — убираем заявку, чтобы не блокировать повтор
     // антиспам-паузой, и отдаём ошибку выше (контроллер решит, что делать).
-    await query('DELETE FROM email_verifications WHERE email = $1', [email]);
+    await query("DELETE FROM email_verifications WHERE email = $1", [email]);
     throw e;
   }
   return { pending: true, email };
