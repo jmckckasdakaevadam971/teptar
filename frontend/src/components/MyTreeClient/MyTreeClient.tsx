@@ -309,7 +309,14 @@ export function MyTreeClient() {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
+  /** Клик по карточке — только выделение (показывает «+» вокруг), без панели. */
   function selectPerson(id: string) {
+    setSelectedId(id);
+    setConfirmDelete(false);
+  }
+
+  /** «Информация» в бургере карточки — открывает боковую панель. */
+  function showInfo(id: string) {
     setSelectedId(id);
     setPanelOpen(true);
     setConfirmDelete(false);
@@ -590,6 +597,7 @@ export function MyTreeClient() {
           selectedId={selectedId}
           onSelect={selectPerson}
           onAddRelative={(rel) => openForm(rel)}
+          onShowInfo={showInfo}
         />
       )}
 

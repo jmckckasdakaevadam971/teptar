@@ -12,9 +12,11 @@ import { createPortal } from "react-dom";
 import {
   Crosshair,
   Download,
+  Info,
   Maximize2,
   Minimize2,
   Minus,
+  MoreVertical,
   Plus,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
@@ -53,18 +55,31 @@ export function TreeView({
   selectedId,
   onSelect,
   onAddRelative,
+  onShowInfo,
 }: {
   people: Person[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   /** Если передан — вокруг выбранного узла появляются «+» для добавления родных. */
   onAddRelative?: (rel: AddRelation) => void;
+  /** Если передан — на карточках появляется бургер-меню с пунктом «Информация». */
+  onShowInfo?: (id: string) => void;
 }) {
   const editable = Boolean(onAddRelative);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  // какая карточка держит открытым бургер-меню
+  const [menuId, setMenuId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const nodeRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // клик в любом месте вне меню — закрыть его
+  useEffect(() => {
+    if (!menuId) return;
+    const close = () => setMenuId(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [menuId]);
 
   // древовидная раскладка: каждый родитель центрируется над своими детьми
   const layout = useMemo(() => {
@@ -711,13 +726,20 @@ export function TreeView({
                 const p = layout.pos[person.id];
                 if (!p) return null;
                 return (
-                  <button
+                  <div
                     key={person.id}
                     ref={(el) => {
                       nodeRefs.current[person.id] = el;
                     }}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelect(person.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(person.id);
+                      }
+                    }}
                     style={{
                       position: "absolute",
                       left: p.x,
@@ -725,7 +747,7 @@ export function TreeView({
                       width: NODE_W,
                     }}
                     className={cn(
-                      "group rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                      "group cursor-pointer rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
                       isSelected
                         ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
                         : isAncestor
@@ -733,7 +755,47 @@ export function TreeView({
                           : "border-border hover:border-primary/40",
                     )}
                   >
-                    <p className="break-words font-serif text-base font-semibold leading-snug text-foreground">
+                    {/* Бургер-меню карточки */}
+                    {onShowInfo ? (
+                      <div className="absolute right-2 top-2">
+                        <button
+                          type="button"
+                          aria-label="Меню карточки"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuId((v) =>
+                              v === person.id ? null : person.id,
+                            );
+                          }}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {menuId === person.id ? (
+                          <div className="absolute right-0 top-8 z-30 min-w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuId(null);
+                                onShowInfo(person.id);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                            >
+                              <Info className="h-4 w-4 text-primary" />
+                              Информация
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <p
+                      className={cn(
+                        "break-words font-serif text-base font-semibold leading-snug text-foreground",
+                        onShowInfo && "pr-6",
+                      )}
+                    >
                       {person.name}
                     </p>
                     <div className="mt-1 flex items-center justify-between">
@@ -754,7 +816,7 @@ export function TreeView({
                         ⚭ {person.spouseName}
                       </p>
                     ) : null}
-                  </button>
+                  </div>
                 );
               })}
 
