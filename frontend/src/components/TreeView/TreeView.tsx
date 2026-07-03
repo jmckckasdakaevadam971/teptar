@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  ChevronUp,
   Crosshair,
   Download,
   Info,
@@ -53,6 +54,60 @@ type Connector = {
   children: { x: number; topY: number }[];
 };
 
+/** Чистая древовидная раскладка: каждый родитель центрируется над детьми.
+ *  Вынесена из компонента, чтобы PNG-экспорт мог построить раскладку
+ *  ПОЛНОГО древа независимо от свёрнутых ветвей. */
+function computeTreeLayout(people: Person[], editable: boolean) {
+  const idSet = new Set(people.map((p) => p.id));
+  const childrenMap = new Map<string, Person[]>();
+  const roots: Person[] = [];
+  for (const p of people) {
+    if (p.parentId && idSet.has(p.parentId)) {
+      const arr = childrenMap.get(p.parentId) ?? [];
+      arr.push(p);
+      childrenMap.set(p.parentId, arr);
+    } else {
+      roots.push(p);
+    }
+  }
+
+  const pos: Record<string, { x: number; y: number }> = {};
+  if (!people.length) return { pos, width: NODE_W, height: NODE_H };
+
+  const minGen = Math.min(...people.map((p) => p.generation));
+  const maxGen = Math.max(...people.map((p) => p.generation));
+  let cursor = 0;
+
+  // дети раскладываются справа налево: первый добавленный — правее
+  const place = (node: Person): number => {
+    const kids = childrenMap.get(node.id);
+    let x: number;
+    if (!kids || kids.length === 0) {
+      x = cursor * SLOT;
+      cursor += 1;
+    } else {
+      const xs = [...kids].reverse().map(place);
+      x = (Math.min(...xs) + Math.max(...xs)) / 2;
+    }
+    pos[node.id] = { x, y: (node.generation - minGen) * ROW_PITCH };
+    return x;
+  };
+  [...roots].reverse().forEach(place);
+
+  let width = cursor > 0 ? (cursor - 1) * SLOT + NODE_W : NODE_W;
+  let height = (maxGen - minGen) * ROW_PITCH + NODE_H;
+
+  // Запас по краям под плейсхолдеры «+» (отец сверху, жена справа, дети снизу).
+  if (editable) {
+    for (const key of Object.keys(pos)) {
+      pos[key] = { x: pos[key].x + SLOT, y: pos[key].y + ROW_PITCH };
+    }
+    width += 2 * SLOT;
+    height += 2 * ROW_PITCH;
+  }
+  return { pos, width, height };
+}
+
 export function TreeView({
   people,
   selectedId,
@@ -78,6 +133,62 @@ export function TreeView({
   const [connectors, setConnectors] = useState<Connector[]>([]);
   // какая карточка держит открытым бургер-меню
   const [menuId, setMenuId] = useState<string | null>(null);
+  // свёрнутые ветви: id узлов, чьи потомки скрыты
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Число потомков каждого узла (для счётчика на кнопке свёрнутой ветви).
+  const descendantCount = useMemo(() => {
+    const kidsMap = new Map<string, Person[]>();
+    for (const p of people) {
+      if (!p.parentId) continue;
+      const arr = kidsMap.get(p.parentId) ?? [];
+      arr.push(p);
+      kidsMap.set(p.parentId, arr);
+    }
+    const memo = new Map<string, number>();
+    const count = (id: string): number => {
+      const cached = memo.get(id);
+      if (cached !== undefined) return cached;
+      const kids = kidsMap.get(id) ?? [];
+      const total = kids.reduce((sum, k) => sum + 1 + count(k.id), 0);
+      memo.set(id, total);
+      return total;
+    };
+    for (const p of people) count(p.id);
+    return memo;
+  }, [people]);
+
+  // Люди видимой части древа: потомки свёрнутых узлов скрыты.
+  const visiblePeople = useMemo(() => {
+    if (!collapsed.size) return people;
+    const idSet = new Set(people.map((p) => p.id));
+    const hidden = new Set<string>();
+    // узел скрыт, если какой-то из его предков свёрнут
+    const isHidden = (p: Person): boolean => {
+      if (hidden.has(p.id)) return true;
+      let cur = p;
+      while (cur.parentId && idSet.has(cur.parentId)) {
+        if (collapsed.has(cur.parentId)) {
+          hidden.add(p.id);
+          return true;
+        }
+        const parent = people.find((q) => q.id === cur.parentId);
+        if (!parent) break;
+        cur = parent;
+      }
+      return false;
+    };
+    return people.filter((p) => !isHidden(p));
+  }, [people, collapsed]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -90,57 +201,11 @@ export function TreeView({
     return () => window.removeEventListener("click", close);
   }, [menuId]);
 
-  // древовидная раскладка: каждый родитель центрируется над своими детьми
-  const layout = useMemo(() => {
-    const idSet = new Set(people.map((p) => p.id));
-    const childrenMap = new Map<string, Person[]>();
-    const roots: Person[] = [];
-    for (const p of people) {
-      if (p.parentId && idSet.has(p.parentId)) {
-        const arr = childrenMap.get(p.parentId) ?? [];
-        arr.push(p);
-        childrenMap.set(p.parentId, arr);
-      } else {
-        roots.push(p);
-      }
-    }
-
-    const pos: Record<string, { x: number; y: number }> = {};
-    if (!people.length) return { pos, width: NODE_W, height: NODE_H };
-
-    const minGen = Math.min(...people.map((p) => p.generation));
-    const maxGen = Math.max(...people.map((p) => p.generation));
-    let cursor = 0;
-
-    // дети раскладываются справа налево: первый добавленный — правее
-    const place = (node: Person): number => {
-      const kids = childrenMap.get(node.id);
-      let x: number;
-      if (!kids || kids.length === 0) {
-        x = cursor * SLOT;
-        cursor += 1;
-      } else {
-        const xs = [...kids].reverse().map(place);
-        x = (Math.min(...xs) + Math.max(...xs)) / 2;
-      }
-      pos[node.id] = { x, y: (node.generation - minGen) * ROW_PITCH };
-      return x;
-    };
-    [...roots].reverse().forEach(place);
-
-    let width = cursor > 0 ? (cursor - 1) * SLOT + NODE_W : NODE_W;
-    let height = (maxGen - minGen) * ROW_PITCH + NODE_H;
-
-    // Запас по краям под плейсхолдеры «+» (отец сверху, жена справа, дети снизу).
-    if (editable) {
-      for (const key of Object.keys(pos)) {
-        pos[key] = { x: pos[key].x + SLOT, y: pos[key].y + ROW_PITCH };
-      }
-      width += 2 * SLOT;
-      height += 2 * ROW_PITCH;
-    }
-    return { pos, width, height };
-  }, [people, editable]);
+  // раскладка видимой части древа (свёрнутые ветви исключены)
+  const layout = useMemo(
+    () => computeTreeLayout(visiblePeople, editable),
+    [visiblePeople, editable],
+  );
 
   const selected = people.find((p) => p.id === selectedId) ?? null;
 
@@ -192,7 +257,12 @@ export function TreeView({
     }
     // Сын/дочь — под узлом; дочь СЛЕВА, сын СПРАВА.
     // Если дети уже есть — сбоку от крайних детей.
+    // У свёрнутой ветви детей не добавляют — сначала нужно раскрыть.
+    const isCollapsed = collapsed.has(selected.id);
     const kids = people.filter((k) => k.parentId === selected.id);
+    if (isCollapsed && kids.length) {
+      return slots;
+    }
     if (kids.length) {
       const xs = kids
         .map((k) => layout.pos[k.id]?.x)
@@ -220,14 +290,14 @@ export function TreeView({
       ]);
     }
     return slots;
-  }, [editable, selected, people, layout]);
+  }, [editable, selected, people, layout, collapsed]);
 
   // вычисляем уголковые связи родитель → дети.
   // Координаты X/Y берём из layout (надёжно), высоту карточки — из DOM.
   const computeConnectors = useCallback(() => {
-    // группируем детей по родителю
+    // группируем детей по родителю (только видимые узлы)
     const byParent = new Map<string, Person[]>();
-    for (const person of people) {
+    for (const person of visiblePeople) {
       if (!person.parentId) continue;
       const arr = byParent.get(person.parentId) ?? [];
       arr.push(person);
@@ -263,7 +333,7 @@ export function TreeView({
       });
     });
     setConnectors(next);
-  }, [people, layout]);
+  }, [visiblePeople, layout]);
 
   useEffect(() => {
     computeConnectors();
@@ -457,20 +527,23 @@ export function TreeView({
     });
   }, [selectedId, people, layout, scale]);
 
-  /** Экспорт древа в PNG: рисуем на canvas без внешних библиотек. */
+  /** Экспорт древа в PNG: рисуем на canvas без внешних библиотек.
+   *  Всегда экспортируется ПОЛНОЕ древо — свёрнутые ветви не влияют. */
   const exportPng = useCallback(() => {
+    // отдельная раскладка полного древа без запаса под плейсхолдеры «+»
+    const full = computeTreeLayout(people, false);
     const PAD = 40;
     const dpr = 2; // чёткость
     const canvas = document.createElement("canvas");
-    canvas.width = (layout.width + PAD * 2) * dpr;
-    canvas.height = (layout.height + PAD * 2) * dpr;
+    canvas.width = (full.width + PAD * 2) * dpr;
+    canvas.height = (full.height + PAD * 2) * dpr;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.scale(dpr, dpr);
 
     // Фон в цветах сайта
     ctx.fillStyle = "#14100c";
-    ctx.fillRect(0, 0, layout.width + PAD * 2, layout.height + PAD * 2);
+    ctx.fillRect(0, 0, full.width + PAD * 2, full.height + PAD * 2);
     ctx.translate(PAD, PAD);
 
     // Связи родитель → дети (та же логика, что в computeConnectors)
@@ -484,12 +557,12 @@ export function TreeView({
       byParent.set(person.parentId, arr);
     }
     byParent.forEach((kids, parentId) => {
-      const pPos = layout.pos[parentId];
+      const pPos = full.pos[parentId];
       if (!pPos) return;
       const px = pPos.x + NODE_W / 2;
       const py = pPos.y + NODE_H;
       const kidPts = kids
-        .map((k) => layout.pos[k.id])
+        .map((k) => full.pos[k.id])
         .filter(Boolean)
         .map((q) => ({ x: q.x + NODE_W / 2, topY: q.y }));
       if (!kidPts.length) return;
@@ -509,7 +582,7 @@ export function TreeView({
 
     // Узлы: компактная карточка — полное имя (с переносами), годы, супруга
     for (const person of people) {
-      const p = layout.pos[person.id];
+      const p = full.pos[person.id];
       if (!p) continue;
 
       // перенос имени по словам под ширину карточки (максимум 2 строки)
@@ -571,7 +644,7 @@ export function TreeView({
     a.download = "vorhda-drevo.png";
     a.href = canvas.toDataURL("image/png");
     a.click();
-  }, [people, layout]);
+  }, [people]);
 
   const tree = (
     <div
@@ -726,10 +799,12 @@ export function TreeView({
 
             {/* узлы древа — прямоугольные карточки (абсолютная раскладка) */}
             <div className="relative z-10">
-              {people.map((person) => {
+              {visiblePeople.map((person) => {
                 const isSelected = person.id === selectedId;
                 const isAncestor = ancestorIds.has(person.id);
                 const isLiving = !person.death;
+                const isCollapsed = collapsed.has(person.id);
+                const kidsCount = descendantCount.get(person.id) ?? 0;
                 const p = layout.pos[person.id];
                 if (!p) return null;
                 return (
@@ -855,6 +930,40 @@ export function TreeView({
                       <p className="mt-1 truncate text-[11px] leading-snug text-muted-foreground">
                         ⚭ {person.spouseName}
                       </p>
+                    ) : null}
+
+                    {/* Кнопка сворачивания ветви — на нижней кромке карточки.
+                        Показывается только у узлов с потомками. */}
+                    {kidsCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCollapse(person.id);
+                        }}
+                        aria-label={
+                          isCollapsed
+                            ? `Развернуть ветвь (${kidsCount})`
+                            : "Свернуть ветвь"
+                        }
+                        title={
+                          isCollapsed
+                            ? `Развернуть ветвь — скрыто: ${kidsCount}`
+                            : "Свернуть ветвь"
+                        }
+                        className={cn(
+                          "absolute -bottom-3.5 left-1/2 z-20 flex h-7 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border px-1 text-[11px] font-medium backdrop-blur transition-colors",
+                          isCollapsed
+                            ? "border-primary/60 bg-secondary text-primary hover:bg-primary hover:text-primary-foreground"
+                            : "border-border bg-card text-muted-foreground hover:border-primary/60 hover:text-primary",
+                        )}
+                      >
+                        {isCollapsed ? (
+                          kidsCount
+                        ) : (
+                          <ChevronUp className="h-4 w-4" />
+                        )}
+                      </button>
                     ) : null}
                   </div>
                 );
