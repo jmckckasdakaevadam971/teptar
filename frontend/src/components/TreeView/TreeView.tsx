@@ -746,6 +746,10 @@ export function TreeView({
                       top: p.y,
                       width: NODE_W,
                       height: NODE_H,
+                      // Карточка с открытым меню поднимается над плейсхолдерами
+                      // «+ родственник»: hover-transform создаёт stacking context,
+                      // и без этого меню рисуется ПОД плейсхолдером.
+                      zIndex: menuId === person.id ? 40 : undefined,
                     }}
                     className={cn(
                       "group cursor-pointer overflow-visible rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
