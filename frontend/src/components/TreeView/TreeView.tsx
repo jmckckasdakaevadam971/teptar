@@ -36,6 +36,49 @@ const ROW_PITCH = NODE_H + V_GAP;
 // вертикальный шаг карточек в стопке листьев (дети без потомков)
 const STACK_PITCH = NODE_H + 56;
 
+// Палитра ветвей: каждый ребёнок родоначальника открывает свою ветвь.
+// Приглушённые тона, различимые на тёмном фоне и не спорящие с золотом.
+const BRANCH_COLORS = [
+  "#5da9a2", // бирюзовый
+  "#7f9ccb", // голубой
+  "#a58fd0", // лавандовый
+  "#c77e94", // розовый
+  "#8fb573", // зелёный
+  "#cf8f5a", // медный
+  "#6fb3c9", // циан
+  "#b3b264", // оливковый
+];
+
+/** Раскраска ветвей: потомки каждого ребёнка корня получают свой цвет.
+ *  Считается по ПОЛНОМУ списку людей — цвета стабильны при сворачивании. */
+function computeBranchColors(people: Person[]): Map<string, string> {
+  const idSet = new Set(people.map((p) => p.id));
+  const kidsOf = new Map<string, Person[]>();
+  const roots: Person[] = [];
+  for (const p of people) {
+    if (p.parentId && idSet.has(p.parentId)) {
+      const arr = kidsOf.get(p.parentId) ?? [];
+      arr.push(p);
+      kidsOf.set(p.parentId, arr);
+    } else {
+      roots.push(p);
+    }
+  }
+  const colors = new Map<string, string>();
+  let branch = 0;
+  const paint = (id: string, color: string) => {
+    colors.set(id, color);
+    for (const k of kidsOf.get(id) ?? []) paint(k.id, color);
+  };
+  for (const root of roots) {
+    for (const kid of kidsOf.get(root.id) ?? []) {
+      paint(kid.id, BRANCH_COLORS[branch % BRANCH_COLORS.length]);
+      branch += 1;
+    }
+  }
+  return colors;
+}
+
 /** Плейсхолдер «добавить родственника» рядом с выбранным узлом. */
 type AddRelation = "father" | "wife" | "son" | "daughter";
 const ADD_LABEL: Record<AddRelation, string> = {
@@ -48,6 +91,7 @@ const ADD_LABEL: Record<AddRelation, string> = {
 // Уголковый коннектор: вертикаль от родителя к шине, горизонтальная шина
 // и вертикали к каждому ребёнку.
 type Connector = {
+  pid: string; // id родителя — для раскраски линий в цвет его ветви
   px: number; // центр родителя по X
   py: number; // низ родителя по Y
   busY: number; // высота горизонтальной шины
@@ -223,6 +267,7 @@ function buildConnectors(
       }
     });
     result.push({
+      pid: parentId,
       px,
       py,
       busY,
@@ -326,6 +371,9 @@ export function TreeView({
     };
     return people.filter((p) => !isHidden(p));
   }, [people, collapsed]);
+
+  // Цвета ветвей — по полному древу, чтобы не менялись при сворачивании
+  const branchColors = useMemo(() => computeBranchColors(people), [people]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -717,10 +765,13 @@ export function TreeView({
     ctx.fillRect(0, 0, full.width + PAD * 2, full.height + PAD * 2);
     ctx.translate(PAD, PAD);
 
-    // Связи родитель → дети (общая логика с интерактивным SVG)
-    ctx.strokeStyle = "rgba(201,162,39,0.5)";
+    // Связи родитель → дети (общая логика с интерактивным SVG),
+    // линии — в цвет ветви родителя
+    const bColors = computeBranchColors(people);
     ctx.lineWidth = 2;
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
+      const bc = bColors.get(c.pid);
+      ctx.strokeStyle = bc ? `${bc}a6` : "rgba(201,162,39,0.5)";
       ctx.beginPath();
       ctx.moveTo(c.px, c.py);
       ctx.lineTo(c.px, c.busY);
@@ -795,6 +846,15 @@ export function TreeView({
       ctx.strokeStyle = "#c9a227";
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
+      // цветная метка ветви на левом крае карточки
+      const stripe = bColors.get(person.id);
+      if (stripe) {
+        ctx.beginPath();
+        ctx.roundRect(p.x + 1, p.y + 12, 4, cardH - 24, [0, 2, 2, 0]);
+        ctx.fillStyle = stripe;
+        ctx.fill();
+      }
 
       const tx = p.x + 16;
       ctx.textAlign = "left";
@@ -950,39 +1010,43 @@ export function TreeView({
               height={layout.height}
               aria-hidden="true"
             >
-              {connectors.map((c, i) => (
-                <g
-                  key={i}
-                  stroke="rgb(var(--primary) / 0.45)"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                >
-                  {/* спуск от родителя к шине */}
-                  <line x1={c.px} y1={c.py} x2={c.px} y2={c.busY} />
-                  {/* горизонтальная шина */}
-                  <line x1={c.minX} y1={c.busY} x2={c.maxX} y2={c.busY} />
-                  {/* спуски к каждому ребёнку */}
-                  {c.children.map((ch, j) => (
-                    <line
-                      key={j}
-                      x1={ch.x}
-                      y1={c.busY}
-                      x2={ch.x}
-                      y2={ch.topY}
-                    />
-                  ))}
-                  {/* хребет стопки листьев + отводы к карточкам */}
-                  {c.extra.map((s, j) => (
-                    <line
-                      key={`e${j}`}
-                      x1={s.x1}
-                      y1={s.y1}
-                      x2={s.x2}
-                      y2={s.y2}
-                    />
-                  ))}
-                </g>
-              ))}
+              {connectors.map((c, i) => {
+                const bc = branchColors.get(c.pid);
+                return (
+                  <g
+                    key={i}
+                    stroke={bc ?? "rgb(var(--primary) / 0.45)"}
+                    strokeOpacity={bc ? 0.65 : undefined}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  >
+                    {/* спуск от родителя к шине */}
+                    <line x1={c.px} y1={c.py} x2={c.px} y2={c.busY} />
+                    {/* горизонтальная шина */}
+                    <line x1={c.minX} y1={c.busY} x2={c.maxX} y2={c.busY} />
+                    {/* спуски к каждому ребёнку */}
+                    {c.children.map((ch, j) => (
+                      <line
+                        key={j}
+                        x1={ch.x}
+                        y1={c.busY}
+                        x2={ch.x}
+                        y2={ch.topY}
+                      />
+                    ))}
+                    {/* хребет стопки листьев + отводы к карточкам */}
+                    {c.extra.map((s, j) => (
+                      <line
+                        key={`e${j}`}
+                        x1={s.x1}
+                        y1={s.y1}
+                        x2={s.x2}
+                        y2={s.y2}
+                      />
+                    ))}
+                  </g>
+                );
+              })}
 
               {/* линии брака: муж — жена (жёны справа от мужа) */}
               {visiblePeople.map((person) => {
@@ -1037,6 +1101,7 @@ export function TreeView({
                 const isLiving = !person.death;
                 const isCollapsed = collapsed.has(person.id);
                 const kidsCount = descendantCount.get(person.id) ?? 0;
+                const branchColor = branchColors.get(person.id);
                 const p = layout.pos[person.id];
                 if (!p) return null;
                 return (
@@ -1074,6 +1139,14 @@ export function TreeView({
                           : "border-border hover:border-primary/40",
                     )}
                   >
+                    {/* Цветная метка ветви: помогает различать линии рода */}
+                    {branchColor ? (
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute bottom-3 left-0 top-3 w-1 rounded-r-full"
+                        style={{ backgroundColor: branchColor }}
+                      />
+                    ) : null}
                     {/* Бургер-меню карточки; само меню раскрывается СПРАВА от карточки */}
                     {onShowInfo ? (
                       <>
