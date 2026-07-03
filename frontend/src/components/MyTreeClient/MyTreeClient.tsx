@@ -18,7 +18,7 @@ import {
   Globe,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
-import { isFemale } from "@/lib/demo-data";
+import { getSpouses, isFemale } from "@/lib/demo-data";
 import { useAuth, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { TEIPS, GARS_BY_TEIP } from "@/lib/teips";
@@ -222,7 +222,15 @@ export function MyTreeClient() {
       const payload = people.map((p) => {
         const noteParts: string[] = [];
         if (p.bio) noteParts.push(p.bio);
-        if (p.spouseName) noteParts.push(`Супруга: ${p.spouseName}`);
+        {
+          const spouses = getSpouses(p);
+          if (spouses.length)
+            noteParts.push(
+              spouses.length > 1
+                ? `Жёны: ${spouses.join(", ")}`
+                : `Супруга: ${spouses[0]}`,
+            );
+        }
         return {
           temp_id: p.id,
           full_name: p.name,
@@ -415,7 +423,7 @@ export function MyTreeClient() {
       teip: person.teip === "—" ? "" : person.teip,
       gar: person.gar ?? "",
       village: person.village ?? "",
-      spouseName: person.spouseName ?? "",
+      spouseName: getSpouses(person).join(", "),
       bio: person.bio ?? "",
     });
     setTeipFocused(false);
@@ -452,6 +460,11 @@ export function MyTreeClient() {
 
     // Редактирование — обновляем поля существующего человека (связи не трогаем).
     if (editingId) {
+      // поле «Жёны» принимает несколько имён через запятую
+      const spouses = draft.spouseName
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
       setPeople((prev) =>
         prev.map((p) =>
           p.id === editingId
@@ -463,7 +476,8 @@ export function MyTreeClient() {
                 teip: lockedTeip ?? (draft.teip.trim() || p.teip),
                 gar: draft.gar.trim() || undefined,
                 village: draft.village.trim() || undefined,
-                spouseName: draft.spouseName.trim() || undefined,
+                spouseName: undefined,
+                spouseNames: spouses.length ? spouses : undefined,
                 bio: draft.bio.trim() || undefined,
               }
             : p,
@@ -473,11 +487,17 @@ export function MyTreeClient() {
       return;
     }
 
-    // Жена — записываем супругу выбранного человека, без отдельного узла.
+    // Жена — добавляем в список жён выбранного человека, без отдельного узла.
     if (relation === "wife" && selected) {
       setPeople((prev) =>
         prev.map((p) =>
-          p.id === selected.id ? { ...p, spouseName: name } : p,
+          p.id === selected.id
+            ? {
+                ...p,
+                spouseName: undefined,
+                spouseNames: [...getSpouses(p), name],
+              }
+            : p,
         ),
       );
       closeForm();
@@ -503,7 +523,10 @@ export function MyTreeClient() {
       teip: lockedTeip ?? (draft.teip.trim() || "—"),
       gar: draft.gar.trim() || undefined,
       village: draft.village.trim() || undefined,
-      spouseName: draft.spouseName.trim() || undefined,
+      spouseNames: draft.spouseName
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
       bio: draft.bio.trim() || undefined,
       gender: relation === "daughter" ? "f" : "m",
       generation,
@@ -710,11 +733,13 @@ export function MyTreeClient() {
                       selected.gar ? ` · ${selected.gar}` : ""
                     }`}
                   />
-                  {selected.spouseName ? (
+                  {getSpouses(selected).length ? (
                     <DetailRow
                       icon={<Heart className="h-4 w-4 text-primary" />}
-                      label="Супруга"
-                      value={selected.spouseName}
+                      label={
+                        getSpouses(selected).length > 1 ? "Жёны" : "Супруга"
+                      }
+                      value={getSpouses(selected).join(", ")}
                     />
                   ) : null}
                   <DetailRow
@@ -1007,14 +1032,14 @@ export function MyTreeClient() {
                       !(editingPerson && isFemale(editingPerson)) ? (
                         <div className={FIELD}>
                           <label className={LABEL} htmlFor="spouse">
-                            Супруга
+                            Супруги
                           </label>
                           <input
                             id="spouse"
                             className={INPUT}
                             value={draft.spouseName}
                             onChange={(e) => set("spouseName", e.target.value)}
-                            placeholder="Необязательно"
+                            placeholder="Необязательно, несколько — через запятую"
                           />
                         </div>
                       ) : null}

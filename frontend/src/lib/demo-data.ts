@@ -14,9 +14,21 @@ export type Person = {
   bio?: string;
   generation: number;
   parentId?: string;
+  /** Устаревшее поле одной супруги — читается для старых данных. */
   spouseName?: string;
+  /** Список жён (может быть несколько). */
+  spouseNames?: string[];
   gender?: "m" | "f";
 };
+
+/** Все жёны человека: новое поле spouseNames + устаревшее spouseName. */
+export function getSpouses(p: Person): string[] {
+  const list = p.spouseNames ?? [];
+  if (p.spouseName && !list.includes(p.spouseName)) {
+    return [p.spouseName, ...list];
+  }
+  return list;
+}
 
 /** Женский узел: по полю gender или по роли «Дочь» (старые данные без gender). */
 export function isFemale(p: Person): boolean {

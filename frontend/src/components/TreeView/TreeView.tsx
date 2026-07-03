@@ -23,7 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
-import { isFemale } from "@/lib/demo-data";
+import { getSpouses, isFemale } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
@@ -247,7 +247,8 @@ export function TreeView({
     }
     // Жена — справа; если справа сосед, пробуем слева и дальше.
     // У женского узла (дочь) жену не предлагаем.
-    if (!selected.spouseName && !isFemale(selected)) {
+    // Жён может быть несколько, поэтому слот доступен всегда.
+    if (!isFemale(selected)) {
       pushFree("wife", [
         { x: p.x + SLOT, y: p.y },
         { x: p.x - SLOT, y: p.y },
@@ -633,10 +634,11 @@ export function TreeView({
         ctx.fillText(years, tx, cursorY);
         cursorY += 16;
       }
-      if (person.spouseName) {
+      const spouses = getSpouses(person);
+      if (spouses.length) {
         ctx.fillStyle = "#a99a78";
         ctx.font = "10px Arial, sans-serif";
-        ctx.fillText(`⚭ ${person.spouseName}`, tx, cursorY, maxTextW);
+        ctx.fillText(`⚭ ${spouses.join(", ")}`, tx, cursorY, maxTextW);
       }
     }
 
@@ -924,11 +926,10 @@ export function TreeView({
                         </span>
                       ) : null}
                     </div>
-                    {/* Супруга видна прямо в карточке — иначе непонятно,
-                        почему слот «+ Жена» не показывается. */}
-                    {person.spouseName ? (
+                    {/* Жёны видны прямо в карточке (может быть несколько). */}
+                    {getSpouses(person).length ? (
                       <p className="mt-1 truncate text-[11px] leading-snug text-muted-foreground">
-                        ⚭ {person.spouseName}
+                        ⚭ {getSpouses(person).join(", ")}
                       </p>
                     ) : null}
 
