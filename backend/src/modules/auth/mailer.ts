@@ -31,6 +31,80 @@ const transporter = env.smtpHost
     })
   : null;
 
+/** Общая обёртка HTML-письма в фирменном стиле. */
+function wrapHtml(body: string): string {
+  return (
+    `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px">` +
+    `<h2 style="color:#c9a227;margin:0 0 16px">Vorhda · Ворх Да</h2>` +
+    body +
+    `</div>`
+  );
+}
+
+/** Письмо владельцу: древо прошло модерацию и опубликовано в общей базе. */
+export async function sendTreeApprovedEmail(
+  email: string,
+  displayName: string,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «древо одобрено» для ${email}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    to: email,
+    subject: "Ваше древо опубликовано — Vorhda",
+    text:
+      `Здравствуйте, ${displayName}!\n\n` +
+      `Ваше семейное древо прошло проверку модератором и опубликовано ` +
+      `в общей базе vorhda.ru.\n\n` +
+      `Посмотреть его можно в каталоге древ: https://vorhda.ru/trees\n\n` +
+      `Спасибо, что помогаете сохранять родовую память.`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${displayName}</strong>!</p>` +
+        `<p>Ваше семейное древо <strong style="color:#2e7d32">прошло проверку</strong> ` +
+        `модератором и опубликовано в общей базе vorhda.ru.</p>` +
+        `<p style="margin:24px 0"><a href="https://vorhda.ru/trees" ` +
+        `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +
+        `text-decoration:none;font-weight:bold">Открыть каталог древ</a></p>` +
+        `<p style="color:#666">Спасибо, что помогаете сохранять родовую память.</p>`,
+    ),
+  });
+}
+
+/** Письмо владельцу: древо не прошло модерацию, возвращено в личное. */
+export async function sendTreeRejectedEmail(
+  email: string,
+  displayName: string,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «древо отклонено» для ${email}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    to: email,
+    subject: "Ваше древо не прошло модерацию — Vorhda",
+    text:
+      `Здравствуйте, ${displayName}!\n\n` +
+      `К сожалению, ваше семейное древо не прошло проверку модератором ` +
+      `и возвращено в личный режим.\n\n` +
+      `Вы можете исправить данные и отправить древо на модерацию повторно: ` +
+      `https://vorhda.ru/my`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${displayName}</strong>!</p>` +
+        `<p>К сожалению, ваше семейное древо <strong style="color:#c62828">не прошло ` +
+        `проверку</strong> модератором и возвращено в личный режим.</p>` +
+        `<p>Вы можете исправить данные и отправить древо на модерацию повторно.</p>` +
+        `<p style="margin:24px 0"><a href="https://vorhda.ru/my" ` +
+        `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +
+        `text-decoration:none;font-weight:bold">Открыть моё древо</a></p>`,
+    ),
+  });
+}
+
 /** Отправить код подтверждения на почту. */
 export async function sendVerificationCode(
   email: string,

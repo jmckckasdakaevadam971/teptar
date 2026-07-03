@@ -585,6 +585,17 @@ export async function getPendingPersons(ownerId: number): Promise<PersonRow[]> {
   );
 }
 
+/** Контакт владельца древа — для почтовых уведомлений о модерации. */
+export async function getOwnerContact(
+  ownerId: number,
+): Promise<{ email: string | null; display_name: string } | null> {
+  const rows = await query<{ email: string | null; display_name: string }>(
+    `SELECT email, display_name FROM users WHERE id = $1`,
+    [ownerId],
+  );
+  return rows[0] ?? null;
+}
+
 /**
  * Одобрить древо пользователя целиком. Если у него уже была одобренная
  * версия — она заменяется новой (старая удаляется в той же транзакции).

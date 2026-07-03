@@ -12,6 +12,34 @@ import {
 } from "./persons.types.js";
 import * as service from "./persons.service.js";
 import type { Viewer } from "./persons.service.js";
+import {
+  sendTreeApprovedEmail,
+  sendTreeRejectedEmail,
+} from "../auth/mailer.js";
+
+/**
+ * Фоново уведомить владельца древа о результате модерации.
+ * Ошибки отправки не должны ломать ответ модератору — только лог.
+ */
+function notifyOwnerModeration(
+  ownerId: number,
+  kind: "approved" | "rejected",
+): void {
+  void (async () => {
+    const owner = await service.getOwnerContact(ownerId);
+    if (!owner?.email) return; // регистрация по телефону — почты нет
+    if (kind === "approved") {
+      await sendTreeApprovedEmail(owner.email, owner.display_name);
+    } else {
+      await sendTreeRejectedEmail(owner.email, owner.display_name);
+    }
+  })().catch((err) => {
+    console.error(
+      `[moderation] не удалось отправить письмо (${kind}) владельцу ${ownerId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
 
 /** Извлечь зрителя из запроса (для контроля видимости). */
 function viewerOf(req: Request): Viewer {
@@ -120,6 +148,8 @@ export async function approve(req: Request, res: Response): Promise<void> {
   service
     .generateMergeSuggestionsForOwner(Number(req.params.ownerId))
     .catch(() => undefined);
+  // Уведомляем владельца на почту — фоново, не задерживая ответ.
+  notifyOwnerModeration(Number(req.params.ownerId), "approved");
   res.json(ok(result));
 }
 
@@ -128,6 +158,7 @@ export async function reject(req: Request, res: Response): Promise<void> {
     Number(req.params.ownerId),
     req.user!.userId,
   );
+  notifyOwnerModeration(Number(req.params.ownerId), "rejected");
   res.json(ok(result));
 }
 
