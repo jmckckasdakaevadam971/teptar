@@ -9,6 +9,7 @@ import {
   mergeSchema,
   resolveMergeSchema,
   bulkTreeSchema,
+  rejectTreeSchema,
 } from "./persons.types.js";
 import * as service from "./persons.service.js";
 import type { Viewer } from "./persons.service.js";
@@ -24,6 +25,7 @@ import {
 function notifyOwnerModeration(
   ownerId: number,
   kind: "approved" | "rejected",
+  reason?: string | null,
 ): void {
   void (async () => {
     const owner = await service.getOwnerContact(ownerId);
@@ -31,7 +33,7 @@ function notifyOwnerModeration(
     if (kind === "approved") {
       await sendTreeApprovedEmail(owner.email, owner.display_name);
     } else {
-      await sendTreeRejectedEmail(owner.email, owner.display_name);
+      await sendTreeRejectedEmail(owner.email, owner.display_name, reason);
     }
   })().catch((err) => {
     console.error(
@@ -160,11 +162,13 @@ export async function approve(req: Request, res: Response): Promise<void> {
 export async function reject(req: Request, res: Response): Promise<void> {
   const teipIds = await service.getModeratorTeipIds(viewerOf(req));
   await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
+  const { reason } = rejectTreeSchema.parse(req.body ?? {});
   const result = await service.rejectTree(
     Number(req.params.ownerId),
     req.user!.userId,
+    reason,
   );
-  notifyOwnerModeration(Number(req.params.ownerId), "rejected");
+  notifyOwnerModeration(Number(req.params.ownerId), "rejected", reason);
   res.json(ok(result));
 }
 

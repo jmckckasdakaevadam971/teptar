@@ -41,6 +41,16 @@ function wrapHtml(body: string): string {
   );
 }
 
+/** Экранировать пользовательский текст перед вставкой в HTML-письмо. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/\n/g, "<br/>");
+}
+
 /** Письмо владельцу: древо прошло модерацию и опубликовано в общей базе. */
 export async function sendTreeApprovedEmail(
   email: string,
@@ -77,11 +87,25 @@ export async function sendTreeApprovedEmail(
 export async function sendTreeRejectedEmail(
   email: string,
   displayName: string,
+  reason?: string | null,
 ): Promise<void> {
   if (!transporter) {
-    console.log(`[mailer] DEV: письмо «древо отклонено» для ${email}`);
+    console.log(
+      `[mailer] DEV: письмо «древо отклонено» для ${email}` +
+        (reason ? ` (причина: ${reason})` : ""),
+    );
     return;
   }
+
+  const trimmedReason = reason?.trim() || null;
+  const reasonText = trimmedReason
+    ? `Комментарий модератора:\n${trimmedReason}\n\n`
+    : "";
+  const reasonHtml = trimmedReason
+    ? `<p style="background:#faf6ec;border-left:4px solid #c9a227;padding:12px 16px;` +
+      `border-radius:0 8px 8px 0;margin:16px 0"><strong>Комментарий модератора:</strong><br/>` +
+      `${escapeHtml(trimmedReason)}</p>`
+    : "";
 
   await transporter.sendMail({
     from: env.smtpFrom,
@@ -91,12 +115,14 @@ export async function sendTreeRejectedEmail(
       `Здравствуйте, ${displayName}!\n\n` +
       `К сожалению, ваше семейное древо не прошло проверку модератором ` +
       `и возвращено в личный режим.\n\n` +
+      reasonText +
       `Вы можете исправить данные и отправить древо на модерацию повторно: ` +
       `https://vorhda.ru/my`,
     html: wrapHtml(
       `<p>Здравствуйте, <strong>${displayName}</strong>!</p>` +
         `<p>К сожалению, ваше семейное древо <strong style="color:#c62828">не прошло ` +
         `проверку</strong> модератором и возвращено в личный режим.</p>` +
+        reasonHtml +
         `<p>Вы можете исправить данные и отправить древо на модерацию повторно.</p>` +
         `<p style="margin:24px 0"><a href="https://vorhda.ru/my" ` +
         `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +

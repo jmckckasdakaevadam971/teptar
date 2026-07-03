@@ -426,6 +426,10 @@ export interface TreeStatus {
   published: number;
   rejected: number;
   state: "empty" | "private" | "pending" | "published" | "mixed";
+  /** Комментарий модератора к последнему отклонению (если было). */
+  reject_reason: string | null;
+  /** Когда древо отклонили в последний раз. */
+  rejected_at: string | null;
 }
 
 /** Текущее состояние своего древа (для ползунка видимости). */
@@ -452,7 +456,30 @@ export async function getTreeStatus(userId: number): Promise<TreeStatus> {
   else if (r.pending > 0) state = "pending";
   else if (r.published > 0) state = r.private > 0 ? "mixed" : "published";
   else state = "private";
-  return { ...r, state };
+
+  // Последняя причина отклонения — показываем автору, пока он не отправил
+  // древо на модерацию повторно и оно не было одобрено.
+  let rejectReason: string | null = null;
+  let rejectedAt: string | null = null;
+  if (state !== "pending" && state !== "published" && r.total > 0) {
+    const lastReject = await query<{ reason: string | null; created_at: string }>(
+      `SELECT diff->>'reason' AS reason, created_at
+       FROM change_log
+       WHERE action = 'reject' AND (diff->>'owner')::bigint = $1
+         AND created_at > COALESCE(
+           (SELECT max(created_at) FROM change_log
+            WHERE action = 'approve' AND (diff->>'owner')::bigint = $1),
+           'epoch'::timestamptz)
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId],
+    );
+    if (lastReject.length > 0) {
+      rejectReason = lastReject[0].reason;
+      rejectedAt = lastReject[0].created_at;
+    }
+  }
+
+  return { ...r, state, reject_reason: rejectReason, rejected_at: rejectedAt };
 }
 
 /**
@@ -727,10 +754,11 @@ export async function approveTree(
   });
 }
 
-/** Отклонить древо пользователя — вернуть в личное. */
+/** Отклонить древо пользователя — вернуть в личное (с комментарием автору). */
 export async function rejectTree(
   ownerId: number,
   adminId: number,
+  reason?: string | null,
 ): Promise<{ count: number }> {
   const rows = await query(
     `UPDATE persons SET status = 'rejected', visibility = 'private', updated_at = now()
@@ -742,7 +770,14 @@ export async function rejectTree(
   await query(
     `INSERT INTO change_log (person_id, user_id, action, diff)
      VALUES (NULL, $1, 'reject', $2)`,
-    [adminId, JSON.stringify({ owner: ownerId, count: rows.length })],
+    [
+      adminId,
+      JSON.stringify({
+        owner: ownerId,
+        count: rows.length,
+        reason: reason?.trim() || null,
+      }),
+    ],
   );
   return { count: rows.length };
 }

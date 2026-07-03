@@ -70,6 +70,10 @@ export interface TreeStatus {
   published: number;
   rejected: number;
   state: "empty" | "private" | "pending" | "published" | "mixed";
+  /** Комментарий модератора к последнему отклонению (если было). */
+  reject_reason: string | null;
+  /** Когда древо отклонили в последний раз. */
+  rejected_at: string | null;
 }
 
 /** Древо в очереди модерации (сгруппировано по владельцу). */

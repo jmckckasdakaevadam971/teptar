@@ -476,6 +476,94 @@ function completeness(a: MergeAnchor): number {
   );
 }
 
+/** Быстрые варианты причин отклонения — автор увидит текст в письме. */
+const REJECT_PRESETS = [
+  "Не хватает данных: у многих людей не указаны годы жизни или тейп.",
+  "Есть ошибки в именах или датах — проверьте написание.",
+  "Похоже на дубликат уже опубликованного древа.",
+  "Слишком мало людей: добавьте хотя бы 2–3 поколения.",
+] as const;
+
+/**
+ * Форма отклонения древа: быстрые причины (чипы) + свой комментарий.
+ * Итоговый текст уходит автору в письмо и сохраняется в журнале модерации.
+ */
+function RejectTreeForm({
+  busy,
+  onReject,
+  onCancel,
+}: {
+  busy: boolean;
+  onReject: (reason?: string) => void;
+  onCancel: () => void;
+}) {
+  const [preset, setPreset] = useState<string | null>(null);
+  const [custom, setCustom] = useState("");
+
+  const reason = [preset, custom.trim()].filter(Boolean).join("\n");
+
+  return (
+    <div className="mt-3 w-full rounded-xl border border-[#b91c1c]/40 bg-[#b91c1c]/[0.06] p-3">
+      <p className="m-0 mb-2 text-[13px] font-semibold text-cream">
+        Почему отклоняете? Выберите причину или напишите свою — автор увидит её
+        в письме.
+      </p>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {REJECT_PRESETS.map((p) => {
+          const active = preset === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              disabled={busy}
+              onClick={() => setPreset(active ? null : p)}
+              className={`cursor-pointer rounded-full border px-3 py-1 text-left text-[12px] leading-snug transition-colors ${
+                active
+                  ? "border-gold bg-gold/15 text-gold-light"
+                  : "border-line bg-transparent text-sand hover:border-gold/50 hover:text-cream"
+              }`}
+            >
+              {p}
+            </button>
+          );
+        })}
+      </div>
+      <textarea
+        value={custom}
+        onChange={(e) => setCustom(e.target.value)}
+        maxLength={500}
+        rows={2}
+        disabled={busy}
+        placeholder="Свой комментарий автору (необязательно)…"
+        className="mb-2 w-full resize-y rounded-lg border border-line bg-transparent px-3 py-2 text-[13px] text-cream outline-none transition-colors placeholder:text-sand/60 focus:border-gold/60"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#b91c1c] px-3 py-1.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={busy}
+          onClick={() => onReject(reason || undefined)}
+        >
+          ✖ Отклонить{reason ? " с комментарием" : " без комментария"}
+        </button>
+        <button
+          type="button"
+          className={`${BTN_SECONDARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Отмена
+        </button>
+      </div>
+      {!reason && (
+        <p className="m-0 mt-2 text-[12px] text-sand">
+          Комментарий необязателен, но с ним автору будет проще исправить древо.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Раскрытая карточка «Публикация древа». */
 function TreeBody({
   tree,
@@ -488,7 +576,7 @@ function TreeBody({
   busy: boolean;
   onView: () => void;
   onApprove: () => void;
-  onReject: () => void;
+  onReject: (reason?: string) => void;
 }) {
   const [confirmReject, setConfirmReject] = useState(false);
   return (
@@ -521,27 +609,7 @@ function TreeBody({
         >
           ✓ Одобрить
         </button>
-        {confirmReject ? (
-          <span className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
-            Вернуть автору?
-            <button
-              type="button"
-              className={LINK_DANGER}
-              disabled={busy}
-              onClick={onReject}
-            >
-              Да, отклонить
-            </button>
-            <button
-              type="button"
-              className={BTN_SECONDARY}
-              disabled={busy}
-              onClick={() => setConfirmReject(false)}
-            >
-              Отмена
-            </button>
-          </span>
-        ) : (
+        {!confirmReject && (
           <button
             type="button"
             className={LINK_DANGER}
@@ -552,6 +620,13 @@ function TreeBody({
           </button>
         )}
       </div>
+      {confirmReject && (
+        <RejectTreeForm
+          busy={busy}
+          onReject={onReject}
+          onCancel={() => setConfirmReject(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1048,11 +1123,16 @@ export function ModerationPanel() {
 
   // ---------- действия ----------
 
-  async function decideTree(item: Extract<FeedItem, { kind: "tree" }>, action: "approve" | "reject") {
+  async function decideTree(
+    item: Extract<FeedItem, { kind: "tree" }>,
+    action: "approve" | "reject",
+    reason?: string,
+  ) {
     setBusyKey(item.key);
     setError(null);
     try {
-      await api.moderation[action](item.tree.owner_id);
+      if (action === "approve") await api.moderation.approve(item.tree.owner_id);
+      else await api.moderation.reject(item.tree.owner_id, reason);
       setTrees((prev) => prev.filter((t) => t.owner_id !== item.tree.owner_id));
       finish(item, action === "approve" ? "approved" : "rejected");
       if (viewer?.tree.owner_id === item.tree.owner_id) setViewer(null);
@@ -1254,7 +1334,7 @@ export function ModerationPanel() {
             busy={busy}
             onView={() => void openTreeViewer(item.tree)}
             onApprove={() => void decideTree(item, "approve")}
-            onReject={() => void decideTree(item, "reject")}
+            onReject={(reason) => void decideTree(item, "reject", reason)}
           />
         );
       case "suggestion":
@@ -1500,53 +1580,46 @@ export function ModerationPanel() {
                 >
                   ✓ Одобрить
                 </button>
-                {viewer.confirmReject ? (
-                  <span className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
-                    Отклонить и вернуть автору?
-                    <button
-                      type="button"
-                      className={LINK_DANGER}
-                      disabled={busyKey === `tree-${viewer.tree.owner_id}`}
-                      onClick={() =>
-                        void decideTree(
-                          {
-                            kind: "tree",
-                            key: `tree-${viewer.tree.owner_id}`,
-                            tree: viewer.tree,
-                          },
-                          "reject",
-                        )
-                      }
-                    >
-                      Да, отклонить
-                    </button>
-                    <button
-                      type="button"
-                      className={BTN_SECONDARY}
-                      onClick={() =>
-                        setViewer((prev) =>
-                          prev ? { ...prev, confirmReject: false } : prev,
-                        )
-                      }
-                    >
-                      Отмена
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className={LINK_DANGER}
-                    onClick={() =>
-                      setViewer((prev) =>
-                        prev ? { ...prev, confirmReject: true } : prev,
-                      )
-                    }
-                  >
-                    ✖ Отклонить
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className={LINK_DANGER}
+                  onClick={() =>
+                    setViewer((prev) =>
+                      prev
+                        ? { ...prev, confirmReject: !prev.confirmReject }
+                        : prev,
+                    )
+                  }
+                >
+                  ✖ Отклонить
+                </button>
               </div>
             </div>
+
+            {/* Панель выбора причины отклонения — под шапкой. */}
+            {viewer.confirmReject && (
+              <div className="border-b border-line px-4 pb-3">
+                <RejectTreeForm
+                  busy={busyKey === `tree-${viewer.tree.owner_id}`}
+                  onReject={(reason) =>
+                    void decideTree(
+                      {
+                        kind: "tree",
+                        key: `tree-${viewer.tree.owner_id}`,
+                        tree: viewer.tree,
+                      },
+                      "reject",
+                      reason,
+                    )
+                  }
+                  onCancel={() =>
+                    setViewer((prev) =>
+                      prev ? { ...prev, confirmReject: false } : prev,
+                    )
+                  }
+                />
+              </div>
+            )}
 
             <div className="flex-1 overflow-auto p-4">
               {error && <p className="mb-3 text-sm text-[#b91c1c]">{error}</p>}

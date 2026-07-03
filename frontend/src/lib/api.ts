@@ -300,9 +300,10 @@ export const api = {
       request<{ count: number }>(`/persons/moderation/${ownerId}/approve`, {
         method: "POST",
       }),
-    reject: (ownerId: number) =>
+    reject: (ownerId: number, reason?: string) =>
       request<{ count: number }>(`/persons/moderation/${ownerId}/reject`, {
         method: "POST",
+        body: JSON.stringify({ reason: reason || undefined }),
       }),
     /** Возможные дубли древа в других древах. */
     duplicates: (ownerId: number) =>

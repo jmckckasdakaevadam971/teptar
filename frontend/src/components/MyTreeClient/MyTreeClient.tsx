@@ -111,11 +111,39 @@ export function MyTreeClient() {
   const [publishing, setPublishing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // Последняя причина отклонения древа модератором (показываем автору).
+  const [rejectInfo, setRejectInfo] = useState<{
+    reason: string | null;
+    at: string | null;
+  } | null>(null);
   const lastSavedRef = useRef("[]");
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Узнаём у сервера, не отклонили ли отправленное ранее древо.
+  useEffect(() => {
+    if (!ready || !user) {
+      setRejectInfo(null);
+      return;
+    }
+    let cancelled = false;
+    api.persons
+      .treeStatus()
+      .then((st) => {
+        if (cancelled) return;
+        if (st.rejected_at && st.state !== "pending") {
+          setRejectInfo({ reason: st.reject_reason, at: st.rejected_at });
+        } else {
+          setRejectInfo(null);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, user]);
 
   // Загружаем черновик конкретного аккаунта. При смене аккаунта — перезагружаем.
   useEffect(() => {
@@ -259,6 +287,7 @@ export function MyTreeClient() {
 
       setSubmitted(true);
       setPublishedOpen(true);
+      setRejectInfo(null); // древо снова на модерации — старая причина неактуальна
     } catch (e) {
       setPublishError(
         e instanceof Error ? e.message : "Не удалось отправить древо.",
@@ -668,6 +697,43 @@ export function MyTreeClient() {
           ) : null}
         </div>
       </div>
+
+      {/* Баннер: древо отклонено модератором — показываем причину. */}
+      {rejectInfo && !submitted ? (
+        <div className="mb-5 rounded-2xl border border-[#c62828]/40 bg-[#c62828]/[0.07] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="m-0 font-semibold text-foreground">
+                Ваше древо не прошло модерацию
+              </p>
+              {rejectInfo.reason ? (
+                <p className="m-0 mt-1.5 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    Комментарий модератора:
+                  </span>{" "}
+                  {rejectInfo.reason}
+                </p>
+              ) : (
+                <p className="m-0 mt-1.5 text-sm text-muted-foreground">
+                  Модератор не оставил комментария. Проверьте имена, годы жизни
+                  и тейпы — и отправьте древо повторно.
+                </p>
+              )}
+              <p className="m-0 mt-1.5 text-xs text-muted-foreground">
+                Исправьте данные и нажмите «Отправить в общий доступ» ещё раз.
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Скрыть"
+              onClick={() => setRejectInfo(null)}
+              className="cursor-pointer rounded-lg border-0 bg-transparent p-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {publishError ? <p className={ERR_TEXT}>{publishError}</p> : null}
 

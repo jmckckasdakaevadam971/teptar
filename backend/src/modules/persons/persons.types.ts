@@ -65,6 +65,12 @@ export const publishTreeSchema = z.object({
 });
 export type PublishTreeInput = z.infer<typeof publishTreeSchema>;
 
+/** Отклонение древа модератором: необязательный комментарий автору. */
+export const rejectTreeSchema = z.object({
+  reason: z.string().trim().max(1000).optional(),
+});
+export type RejectTreeInput = z.infer<typeof rejectTreeSchema>;
+
 /** Каталог опубликованных древ — фильтры. */
 export const publicTreesSchema = z.object({
   q: z.string().optional(),
