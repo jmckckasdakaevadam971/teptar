@@ -100,6 +100,110 @@ const FIELD_RU: Record<string, string> = {
   mother_id: "Мать",
 };
 
+/** Ключ localStorage: показывать ли инструкцию модератора. */
+const GUIDE_KEY = "vorhda_moderation_guide";
+
+/** Кружок с номером шага конвейера модерации. */
+function StepBadge({ n }: { n: number }) {
+  return (
+    <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border border-gold-soft bg-gold/10 text-[12px] font-bold text-gold-light">
+      {n}
+    </span>
+  );
+}
+
+/** Золотой счётчик элементов, ожидающих действия модератора. */
+function CountBadge({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-bold leading-[18px] text-background">
+      {n}
+    </span>
+  );
+}
+
+/** Сводка очередей: сколько где ждёт решения. Клик — прокрутка к разделу. */
+function SummaryChips({
+  items,
+}: {
+  items: { id: string; label: string; count: number | null }[];
+}) {
+  return (
+    <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          title="Перейти к разделу"
+          onClick={() =>
+            document
+              .getElementById(it.id)
+              ?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+          className="rounded-xl border border-line bg-background/40 px-3 py-2.5 text-left transition-colors hover:border-gold-soft"
+        >
+          <span
+            className={`block font-serif text-[22px] font-bold leading-none ${
+              (it.count ?? 0) > 0 ? "text-gold-light" : "text-sand"
+            }`}
+          >
+            {it.count ?? "…"}
+          </span>
+          <span className="mt-1 block text-[12px] text-sand">{it.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Пошаговая инструкция для модератора: путь древа от автора до общей базы. */
+function ModerationGuide() {
+  const steps: { title: string; text: string }[] = [
+    {
+      title: "Новые древа",
+      text: "Автор отправил своё древо в общую базу. Откройте его, просмотрите имена и годы. «Одобрить» — древо увидят все в разделе «Древа». «Отклонить» — древо вернётся автору на доработку. В обоих случаях автор получит письмо.",
+    },
+    {
+      title: "Предложения объединить древа",
+      text: "Система сама сравнивает опубликованные древа и находит общих предков. Если в двух древах действительно один и тот же человек — нажмите «Объединить древа», и из двух веток соберётся общее древо. Если люди разные — «Не совпадают».",
+    },
+    {
+      title: "Общие древа на проверке",
+      text: "Проверьте собранное общее древо целиком: правильно ли срослись ветки, нет ли двойников. «Одобрить и опубликовать» — древо появится у всех. Исходные древа авторов при этом не меняются.",
+    },
+    {
+      title: "Правки опубликованных записей",
+      text: "Автор изменил запись, которая уже видна всем. Пока правку не одобрили, все видят старые данные. Посмотрите, что меняется, и примите или отклоните.",
+    },
+  ];
+  return (
+    <div className="mb-4 rounded-xl border border-gold-soft bg-gold/[0.04] p-4">
+      <p className="m-0 mb-3 text-[13px] font-semibold uppercase tracking-wide text-gold-light">
+        Путь древа: от автора до общей базы
+      </p>
+      <ol className="m-0 flex list-none flex-col gap-3 p-0">
+        {steps.map((s, i) => (
+          <li key={s.title} className="flex gap-2.5">
+            <StepBadge n={i + 1} />
+            <div>
+              <p className="m-0 text-[14px] font-semibold text-cream">
+                {s.title}
+              </p>
+              <p className="m-0 mt-0.5 text-[13px] leading-relaxed text-sand">
+                {s.text}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="m-0 mt-3 border-t border-line pt-3 text-[13px] leading-relaxed text-sand">
+        Сомневаетесь — отклоняйте: автор сможет исправить и отправить снова,
+        ничего не потеряется.
+      </p>
+    </div>
+  );
+}
+
 /**
  * Очередь модерации общей базы: древа, отправленные пользователями.
  * Модератор может развернуть древо и посмотреть персоны перед решением.
@@ -110,6 +214,31 @@ export function ModerationPanel() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Счётчики дочерних очередей — для сводки вверху панели.
+  const [sugCount, setSugCount] = useState<number | null>(null);
+  const [mergeCount, setMergeCount] = useState<number | null>(null);
+  const [editCount, setEditCount] = useState<number | null>(null);
+
+  // Инструкция модератора: по умолчанию раскрыта, выбор запоминается.
+  const [guideOpen, setGuideOpen] = useState(false);
+  useEffect(() => {
+    try {
+      setGuideOpen(localStorage.getItem(GUIDE_KEY) !== "hidden");
+    } catch {
+      setGuideOpen(true);
+    }
+  }, []);
+
+  function toggleGuide() {
+    const next = !guideOpen;
+    setGuideOpen(next);
+    try {
+      localStorage.setItem(GUIDE_KEY, next ? "shown" : "hidden");
+    } catch {
+      /* например, приватный режим — просто не запоминаем выбор */
+    }
+  }
 
   // Просмотр: какое древо открыто в модальном окне и кэш загруженных персон.
   const [viewerId, setViewerId] = useState<number | null>(null);
@@ -209,10 +338,41 @@ export function ModerationPanel() {
 
   return (
     <div className={CARD}>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="m-0 text-xl font-semibold text-cream">
-          Модерация общей базы
-        </h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="m-0 text-xl font-semibold text-cream">Модерация</h2>
+        <button
+          type="button"
+          className={BTN_SECONDARY}
+          onClick={toggleGuide}
+          title="Краткая инструкция для модератора"
+        >
+          {guideOpen ? "Скрыть инструкцию" : "❔ Как это работает"}
+        </button>
+      </div>
+
+      {guideOpen && <ModerationGuide />}
+
+      <SummaryChips
+        items={[
+          {
+            id: "mod-pending",
+            label: "Новые древа",
+            count: loading ? null : trees.length,
+          },
+          { id: "mod-suggestions", label: "Объединения", count: sugCount },
+          { id: "mod-merges", label: "Общие древа", count: mergeCount },
+          { id: "mod-edits", label: "Правки", count: editCount },
+        ]}
+      />
+
+      <div
+        id="mod-pending"
+        className="mb-2 flex items-center justify-between scroll-mt-4"
+      >
+        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
+          <StepBadge n={1} /> Новые древа
+          <CountBadge n={trees.length} />
+        </h3>
         <button
           type="button"
           className={BTN_SECONDARY}
@@ -223,12 +383,20 @@ export function ModerationPanel() {
         </button>
       </div>
 
+      <p className="mb-3 text-[13px] text-sand">
+        Древа, отправленные авторами в общую базу. Откройте, просмотрите и
+        решите: одобрить или вернуть автору.
+      </p>
+
       {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
 
       {loading ? (
         <p className="text-sand">Загрузка…</p>
       ) : trees.length === 0 ? (
-        <p className="text-sand">Нет древ, ожидающих модерации.</p>
+        <p className="text-sand">
+          ✓ Всё проверено — новых древ нет. Когда автор отправит древо, оно
+          появится здесь.
+        </p>
       ) : (
         <div className="flex flex-col gap-2.5">
           {trees.map((t) => (
@@ -466,11 +634,11 @@ export function ModerationPanel() {
           document.body,
         )}
 
-      <MergeSuggestionsQueue />
+      <MergeSuggestionsQueue onCount={setSugCount} />
 
-      <PendingMergesQueue />
+      <PendingMergesQueue onCount={setMergeCount} />
 
-      <EditQueue />
+      <EditQueue onCount={setEditCount} />
     </div>
   );
 }
@@ -777,7 +945,11 @@ function isStale(e: unknown): boolean {
   return status === 404 || msg.includes("не найдено");
 }
 
-function MergeSuggestionsQueue() {
+function MergeSuggestionsQueue({
+  onCount,
+}: {
+  onCount: (n: number) => void;
+}) {
   const [items, setItems] = useState<MergeSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
@@ -791,6 +963,7 @@ function MergeSuggestionsQueue() {
   } | null>(null);
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => onCount(items.length), [items.length, onCount]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -877,10 +1050,11 @@ function MergeSuggestionsQueue() {
   }
 
   return (
-    <div className="mt-6 border-t border-line pt-5">
+    <div id="mod-suggestions" className="mt-6 scroll-mt-4 border-t border-line pt-5">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="m-0 text-lg font-semibold text-cream">
-          Предложения объединить древа
+        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
+          <StepBadge n={2} /> Предложения объединить древа
+          <CountBadge n={items.length} />
         </h3>
         <button
           type="button"
@@ -893,10 +1067,10 @@ function MergeSuggestionsQueue() {
       </div>
 
       <p className="mb-3 text-[13px] text-sand">
-        Система нашла древа с общим предком. Объедините — и создастся отдельное
-        общее древо (обе ветки под этим предком). Исходные древа не меняются.
-        Общее древо уйдёт на повторную проверку и станет видно всем после
-        одобрения; либо отклоните, если это разные люди.
+        Система нашла древа с общим предком. Ваш вопрос здесь один:{" "}
+        <b className="text-cream">это один и тот же человек?</b> Да —
+        «Объединить древа» (создастся общее древо, исходные не меняются). Нет —
+        «Не совпадают».
       </p>
 
       {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
@@ -904,7 +1078,10 @@ function MergeSuggestionsQueue() {
       {loading ? (
         <p className="text-sand">Загрузка…</p>
       ) : items.length === 0 ? (
-        <p className="text-sand">Пока нет предложений объединения.</p>
+        <p className="text-sand">
+          ✓ Предложений нет. Система сравнивает древа автоматически при каждой
+          публикации — совпадения появятся здесь сами.
+        </p>
       ) : (
         <div className="flex flex-col gap-2.5">
           {items.map((s) => (
@@ -974,7 +1151,7 @@ function MergeSuggestionsQueue() {
  * Модератор смотрит собранное общее древо целиком и одобряет (публикует)
  * либо отклоняет. Исходные древа при этом не затрагиваются.
  */
-function PendingMergesQueue() {
+function PendingMergesQueue({ onCount }: { onCount: (n: number) => void }) {
   const [items, setItems] = useState<TreeMerge[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
@@ -988,6 +1165,7 @@ function PendingMergesQueue() {
   } | null>(null);
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => onCount(items.length), [items.length, onCount]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1040,10 +1218,11 @@ function PendingMergesQueue() {
   }
 
   return (
-    <div className="mt-6 border-t border-line pt-5">
+    <div id="mod-merges" className="mt-6 scroll-mt-4 border-t border-line pt-5">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="m-0 text-lg font-semibold text-cream">
-          Объединённые древа на проверке
+        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
+          <StepBadge n={3} /> Общие древа на проверке
+          <CountBadge n={items.length} />
         </h3>
         <button
           type="button"
@@ -1056,9 +1235,10 @@ function PendingMergesQueue() {
       </div>
 
       <p className="mb-3 text-[13px] text-sand">
-        Это общие древа, собранные из двух веток по общему предку. Проверьте
-        целиком и одобрите — тогда общее древо появится у всех в разделе
-        «Древа». Исходные древа обоих владельцев остаются нетронутыми.
+        Финальная проверка после шага 2: общее древо уже собрано из двух веток.
+        Нажмите «Показать древо», убедитесь, что ветки срослись правильно и нет
+        двойников, затем одобрите — и древо появится у всех в разделе «Древа».
+        Исходные древа авторов не меняются.
       </p>
 
       {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
@@ -1066,7 +1246,10 @@ function PendingMergesQueue() {
       {loading ? (
         <p className="text-sand">Загрузка…</p>
       ) : items.length === 0 ? (
-        <p className="text-sand">Пока нет общих древ на проверке.</p>
+        <p className="text-sand">
+          ✓ Проверять нечего. Общие древа появляются здесь после объединения на
+          шаге 2.
+        </p>
       ) : (
         <div className="flex flex-col gap-2.5">
           {items.map((m) => (
@@ -1203,12 +1386,20 @@ function personWord(n: number): string {
 }
 
 /** Очередь правок опубликованных записей: старые данные публичны, новые ждут одобрения. */
-function EditQueue() {
+function EditQueue({ onCount }: { onCount: (n: number) => void }) {
   const [owners, setOwners] = useState<PendingTree[]>([]);
   const [changes, setChanges] = useState<Record<number, TreeChange[]>>({});
   const [busy, setBusy] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const total = owners.reduce(
+    (sum, o) => sum + (changes[o.owner_id]?.length ?? 0),
+    0,
+  );
+  useEffect(() => onCount(total), [total, onCount]);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const os = await api.moderation.editOwners();
       setOwners(os);
@@ -1226,6 +1417,8 @@ function EditQueue() {
       setChanges(map);
     } catch {
       setOwners([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -1243,54 +1436,76 @@ function EditQueue() {
     }
   }
 
-  if (owners.length === 0) return null;
-
   return (
-    <div className="mt-6 border-t border-line pt-4">
-      <h3 className="m-0 mb-3 text-lg font-semibold text-cream">
-        Правки опубликованных записей
-      </h3>
-      <div className="flex flex-col gap-3">
-        {owners.map((o) =>
-          (changes[o.owner_id] ?? []).map((c) => (
-            <div
-              key={c.person_id}
-              className="rounded-xl border border-line p-3"
-            >
-              <p className="m-0 text-[14px] font-bold text-gold-light">
-                {c.full_name}
-              </p>
-              <span className="text-[12px] text-sand">{o.owner_name}</span>
-              <ul className="m-0 mt-1.5 list-disc pl-5 text-[13px] text-sand">
-                {Object.entries(c.diff).map(([field, v]) => (
-                  <li key={field}>
-                    {FIELD_RU[field] ?? field}: <s>{String(v.from ?? "—")}</s> →{" "}
-                    <span className="text-cream">{String(v.to ?? "—")}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  className={`${BTN_PRIMARY} !px-3 !py-1 !text-[13px]`}
-                  disabled={busy === c.person_id}
-                  onClick={() => void act(c.person_id, "approveEdit")}
-                >
-                  ✓ Применить
-                </button>
-                <button
-                  type="button"
-                  className={`${LINK_DANGER}`}
-                  disabled={busy === c.person_id}
-                  onClick={() => void act(c.person_id, "rejectEdit")}
-                >
-                  ✖ Отклонить
-                </button>
-              </div>
-            </div>
-          )),
-        )}
+    <div id="mod-edits" className="mt-6 scroll-mt-4 border-t border-line pt-5">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
+          <StepBadge n={4} /> Правки опубликованных записей
+          <CountBadge n={total} />
+        </h3>
+        <button
+          type="button"
+          className={BTN_SECONDARY}
+          onClick={() => void load()}
+          disabled={loading}
+        >
+          Обновить
+        </button>
       </div>
+
+      <p className="mb-3 text-[13px] text-sand">
+        Автор изменил запись, которая уже опубликована. Все видят старые данные,
+        пока вы не примете правку. Зачёркнуто — как было, рядом — как станет.
+      </p>
+
+      {loading ? (
+        <p className="text-sand">Загрузка…</p>
+      ) : total === 0 ? (
+        <p className="text-sand">✓ Правок на проверке нет.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {owners.map((o) =>
+            (changes[o.owner_id] ?? []).map((c) => (
+              <div
+                key={c.person_id}
+                className="rounded-xl border border-line p-3"
+              >
+                <p className="m-0 text-[14px] font-bold text-gold-light">
+                  {c.full_name}
+                </p>
+                <span className="text-[12px] text-sand">{o.owner_name}</span>
+                <ul className="m-0 mt-1.5 list-disc pl-5 text-[13px] text-sand">
+                  {Object.entries(c.diff).map(([field, v]) => (
+                    <li key={field}>
+                      {FIELD_RU[field] ?? field}: <s>{String(v.from ?? "—")}</s>{" "}
+                      →{" "}
+                      <span className="text-cream">{String(v.to ?? "—")}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    className={`${BTN_PRIMARY} !px-3 !py-1 !text-[13px]`}
+                    disabled={busy === c.person_id}
+                    onClick={() => void act(c.person_id, "approveEdit")}
+                  >
+                    ✓ Применить
+                  </button>
+                  <button
+                    type="button"
+                    className={`${LINK_DANGER}`}
+                    disabled={busy === c.person_id}
+                    onClick={() => void act(c.person_id, "rejectEdit")}
+                  >
+                    ✖ Отклонить
+                  </button>
+                </div>
+              </div>
+            )),
+          )}
+        </div>
+      )}
     </div>
   );
 }
