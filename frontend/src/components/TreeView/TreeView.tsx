@@ -188,29 +188,30 @@ export function TreeView({
         { x: p.x - 2 * SLOT, y: p.y },
       ]);
     }
-    // Сын/дочь — под узлом; если дети уже есть — сбоку от крайних детей.
+    // Сын/дочь — под узлом; дочь СЛЕВА, сын СПРАВА.
+    // Если дети уже есть — сбоку от крайних детей.
     const kids = people.filter((k) => k.parentId === selected.id);
     if (kids.length) {
       const xs = kids
         .map((k) => layout.pos[k.id]?.x)
         .filter((v): v is number => v !== undefined);
       const rowY = p.y + ROW_PITCH;
-      pushFree("son", [
+      pushFree("daughter", [
         { x: Math.min(...xs) - SLOT, y: rowY },
         { x: Math.min(...xs) - 2 * SLOT, y: rowY },
       ]);
-      pushFree("daughter", [
+      pushFree("son", [
         { x: Math.max(...xs) + SLOT, y: rowY },
         { x: Math.max(...xs) + 2 * SLOT, y: rowY },
       ]);
     } else {
       const rowY = p.y + ROW_PITCH;
-      pushFree("son", [
+      pushFree("daughter", [
         { x: p.x - SLOT / 2 - 6, y: rowY },
         { x: p.x - SLOT, y: rowY },
         { x: p.x - 2 * SLOT, y: rowY },
       ]);
-      pushFree("daughter", [
+      pushFree("son", [
         { x: p.x + SLOT / 2 + 6, y: rowY },
         { x: p.x + SLOT, y: rowY },
         { x: p.x + 2 * SLOT, y: rowY },
