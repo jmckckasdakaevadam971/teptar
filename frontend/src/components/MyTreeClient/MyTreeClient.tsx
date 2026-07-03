@@ -16,6 +16,7 @@ import {
   Check,
   LogIn,
   Globe,
+  Pencil,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { getSpouses, isFemale } from "@/lib/demo-data";
@@ -103,6 +104,14 @@ export function MyTreeClient() {
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Диалог карточки жены (бургер на розовой карточке): инфо / переименование / удаление.
+  const [wifeDialog, setWifeDialog] = useState<{
+    personId: string;
+    index: number;
+    mode: "info" | "edit" | "delete";
+  } | null>(null);
+  const [wifeDraftName, setWifeDraftName] = useState("");
+  const [wifeError, setWifeError] = useState<string | null>(null);
   const [teipFocused, setTeipFocused] = useState(false);
   const [garFocused, setGarFocused] = useState(false);
   const [villageFocused, setVillageFocused] = useState(false);
@@ -294,6 +303,14 @@ export function MyTreeClient() {
   const editingPerson = editingId
     ? (people.find((p) => p.id === editingId) ?? null)
     : null;
+  // Данные для диалога жены (носитель карточки + имя жены по индексу).
+  const wifeHolder = wifeDialog
+    ? (people.find((p) => p.id === wifeDialog.personId) ?? null)
+    : null;
+  const wifeName =
+    wifeHolder && wifeDialog
+      ? (getSpouses(wifeHolder)[wifeDialog.index] ?? null)
+      : null;
   const minGen = people.length
     ? Math.min(...people.map((p) => p.generation))
     : 0;
@@ -360,6 +377,63 @@ export function MyTreeClient() {
     setSelectedId(id);
     setPanelOpen(true);
     setConfirmDelete(true);
+  }
+
+  /** Открыть диалог жены из бургера её карточки (info / edit / delete). */
+  function openWifeDialog(
+    personId: string,
+    index: number,
+    mode: "info" | "edit" | "delete",
+  ) {
+    const person = people.find((p) => p.id === personId);
+    if (!person) return;
+    const wives = getSpouses(person);
+    if (index < 0 || index >= wives.length) return;
+    setWifeDraftName(wives[index]);
+    setWifeError(null);
+    setWifeDialog({ personId, index, mode });
+  }
+
+  function closeWifeDialog() {
+    setWifeDialog(null);
+    setWifeDraftName("");
+    setWifeError(null);
+  }
+
+  /** Сохранить новое имя жены (режим edit диалога). */
+  function saveWifeName() {
+    if (!wifeDialog) return;
+    const name = wifeDraftName.trim();
+    if (name.length < 2) {
+      setWifeError("Укажите имя (не короче 2 символов).");
+      return;
+    }
+    setPeople((prev) =>
+      prev.map((p) => {
+        if (p.id !== wifeDialog.personId) return p;
+        const wives = [...getSpouses(p)];
+        wives[wifeDialog.index] = name;
+        return { ...p, spouseName: undefined, spouseNames: wives };
+      }),
+    );
+    closeWifeDialog();
+  }
+
+  /** Удалить жену из списка (режим delete диалога). */
+  function removeWife() {
+    if (!wifeDialog) return;
+    setPeople((prev) =>
+      prev.map((p) => {
+        if (p.id !== wifeDialog.personId) return p;
+        const wives = getSpouses(p).filter((_, i) => i !== wifeDialog.index);
+        return {
+          ...p,
+          spouseName: undefined,
+          spouseNames: wives.length ? wives : undefined,
+        };
+      }),
+    );
+    closeWifeDialog();
   }
 
   /** Закрыть панель, ОСТАВИВ узел выбранным — вокруг него остаются «+» для добавления родных. */
@@ -744,6 +818,9 @@ export function MyTreeClient() {
           onShowInfo={showInfo}
           onEdit={openEdit}
           onDelete={askDelete}
+          onWifeInfo={(id, i) => openWifeDialog(id, i, "info")}
+          onWifeEdit={(id, i) => openWifeDialog(id, i, "edit")}
+          onWifeDelete={(id, i) => openWifeDialog(id, i, "delete")}
         />
       )}
 
@@ -846,6 +923,164 @@ export function MyTreeClient() {
                   </div>
                 ) : null}
               </aside>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {/* Диалог карточки жены: информация / переименование / удаление.
+          Открывается из бургер-меню розовой карточки жены на древе. */}
+      {wifeDialog && wifeHolder && wifeName != null && mounted
+        ? createPortal(
+            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                onClick={closeWifeDialog}
+              />
+              <div className="relative w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl md:p-8">
+                <button
+                  type="button"
+                  onClick={closeWifeDialog}
+                  className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Закрыть"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+
+                {wifeDialog.mode === "info" ? (
+                  <>
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8a5560] font-serif text-xl font-bold text-[#f6e8ea]">
+                      {wifeName.charAt(0)}
+                    </span>
+                    <h2 className="mt-4 font-serif text-2xl font-bold text-foreground">
+                      {wifeName}
+                    </h2>
+                    <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Heart className="h-4 w-4 text-[#d8a7b1]" />
+                      {isFemale(wifeHolder)
+                        ? `Муж — ${wifeHolder.name}`
+                        : getSpouses(wifeHolder).length > 1
+                          ? `${wifeDialog.index + 1}-я жена — ${wifeHolder.name}`
+                          : `Жена — ${wifeHolder.name}`}
+                    </p>
+                    <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                      Супруги хранятся как имена на карточке{" "}
+                      {isFemale(wifeHolder) ? "жены" : "мужа"} и не образуют
+                      отдельную ветвь древа.
+                    </p>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWifeDialog({ ...wifeDialog, mode: "edit" })
+                        }
+                        className={BTN_SECONDARY}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Редактировать
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWifeDialog({ ...wifeDialog, mode: "delete" })
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#5b2c25] bg-transparent px-4 py-2.5 text-sm font-semibold text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Удалить
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+
+                {wifeDialog.mode === "edit" ? (
+                  <>
+                    <h2 className="pr-10 font-serif text-2xl font-bold text-foreground">
+                      Изменить имя
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {isFemale(wifeHolder) ? "Муж" : "Жена"} на карточке «
+                      {wifeHolder.name}».
+                    </p>
+                    <div className={`mt-5 ${FIELD}`}>
+                      <label className={LABEL} htmlFor="wife-name">
+                        Имя
+                      </label>
+                      <input
+                        id="wife-name"
+                        type="text"
+                        value={wifeDraftName}
+                        onChange={(e) => {
+                          setWifeDraftName(e.target.value);
+                          setWifeError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveWifeName();
+                          }
+                        }}
+                        autoFocus
+                        className={INPUT}
+                        placeholder="Имя супруги"
+                      />
+                      {wifeError ? (
+                        <p className={ERR_TEXT}>{wifeError}</p>
+                      ) : null}
+                    </div>
+                    <div className="mt-6 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={saveWifeName}
+                        className={BTN_PRIMARY}
+                      >
+                        <Save className="h-4 w-4" />
+                        Сохранить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={closeWifeDialog}
+                        className={BTN_SECONDARY}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+
+                {wifeDialog.mode === "delete" ? (
+                  <>
+                    <h2 className="pr-10 font-serif text-2xl font-bold text-foreground">
+                      Удалить с древа?
+                    </h2>
+                    <div className="mt-4 rounded-xl border border-[#5b2c25] bg-[#2a1714] p-4">
+                      <p className="text-sm text-[#e6c9c2]">
+                        Удалить «{wifeName}» с карточки «{wifeHolder.name}»?
+                        Действие нельзя отменить.
+                      </p>
+                    </div>
+                    <div className="mt-6 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={removeWife}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7a2f26] px-4 py-2.5 text-sm font-semibold text-[#ffd9d2] transition-colors hover:bg-[#8f372d]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Удалить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={closeWifeDialog}
+                        className={BTN_SECONDARY}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </div>,
             document.body,
           )

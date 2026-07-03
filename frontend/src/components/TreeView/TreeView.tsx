@@ -134,6 +134,9 @@ export function TreeView({
   onShowInfo,
   onEdit,
   onDelete,
+  onWifeInfo,
+  onWifeEdit,
+  onWifeDelete,
 }: {
   people: Person[];
   selectedId: string | null;
@@ -146,6 +149,13 @@ export function TreeView({
   onEdit?: (id: string) => void;
   /** Если передан — в бургер-меню карточки появляется пункт «Удалить». */
   onDelete?: (id: string) => void;
+  /** Если передан — на карточках жён появляется бургер-меню с пунктом «Информация».
+   *  wifeIndex — позиция жены в списке getSpouses(person). */
+  onWifeInfo?: (personId: string, wifeIndex: number) => void;
+  /** Пункт «Редактировать» в бургер-меню карточки жены. */
+  onWifeEdit?: (personId: string, wifeIndex: number) => void;
+  /** Пункт «Удалить» в бургер-меню карточки жены. */
+  onWifeDelete?: (personId: string, wifeIndex: number) => void;
 }) {
   const editable = Boolean(onAddRelative);
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -1059,32 +1069,103 @@ export function TreeView({
                 if (!pp) return [];
                 const female = isFemale(person);
                 const wives = wifeCardsOf(person, pp);
-                return wives.map((w, i) => (
-                  <div
-                    key={`${person.id}-wife-${i}`}
-                    style={{
-                      position: "absolute",
-                      left: w.x,
-                      top: w.y,
-                      width: NODE_W,
-                      height: NODE_H,
-                    }}
-                    className="rounded-2xl border border-[#8a5560]/60 bg-[#221619] p-4 text-left"
-                    title={w.name}
-                  >
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-[#d8a7b1]">
-                      ⚭{" "}
-                      {female
-                        ? "муж"
-                        : wives.length > 1
-                          ? `${i + 1}-я жена`
-                          : "жена"}
-                    </p>
-                    <p className="mt-1 line-clamp-3 break-words font-serif text-base font-semibold leading-snug text-foreground">
-                      {w.name}
-                    </p>
-                  </div>
-                ));
+                return wives.map((w, i) => {
+                  // составной ключ, чтобы бургер жены жил в том же state, что и у карточек
+                  const wifeKey = `${person.id}::wife::${i}`;
+                  return (
+                    <div
+                      key={`${person.id}-wife-${i}`}
+                      style={{
+                        position: "absolute",
+                        left: w.x,
+                        top: w.y,
+                        width: NODE_W,
+                        height: NODE_H,
+                        zIndex: menuId === wifeKey ? 40 : undefined,
+                      }}
+                      className="rounded-2xl border border-[#8a5560]/60 bg-[#221619] p-4 text-left"
+                      title={w.name}
+                    >
+                      {/* Бургер-меню карточки жены — та же механика, что у карточек людей */}
+                      {onWifeInfo ? (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Меню карточки жены"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuId((v) => (v === wifeKey ? null : wifeKey));
+                            }}
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                          {menuId === wifeKey ? (
+                            <div className="absolute left-full top-0 z-30 ml-2 min-w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuId(null);
+                                  onWifeInfo(person.id, i);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                              >
+                                <Info className="h-4 w-4 text-primary" />
+                                Информация
+                              </button>
+                              {onWifeEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuId(null);
+                                    onWifeEdit(person.id, i);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                                >
+                                  <Pencil className="h-4 w-4 text-primary" />
+                                  Редактировать
+                                </button>
+                              ) : null}
+                              {onWifeDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuId(null);
+                                    onWifeDelete(person.id, i);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Удалить
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      <p
+                        className={cn(
+                          "text-[10px] font-medium uppercase tracking-wider text-[#d8a7b1]",
+                          onWifeInfo && "pr-6",
+                        )}
+                      >
+                        ⚭{" "}
+                        {female
+                          ? "муж"
+                          : wives.length > 1
+                            ? `${i + 1}-я жена`
+                            : "жена"}
+                      </p>
+                      <p className="mt-1 line-clamp-3 break-words font-serif text-base font-semibold leading-snug text-foreground">
+                        {w.name}
+                      </p>
+                    </div>
+                  );
+                });
               })}
 
               {/* плейсхолдеры «добавить родственника» вокруг выбранного */}
