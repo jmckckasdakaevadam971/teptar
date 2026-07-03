@@ -643,12 +643,24 @@ export async function replaceTree(
   });
 }
 
+/** Существенное пересечение pending-древа с чужим древом (маркер дубликата). */
+export interface PendingTreeDuplicate {
+  owner_id: number;
+  owner_name: string;
+  /** Сколько людей из очереди совпало с людьми этого владельца. */
+  matched: number;
+  /** true — чужое древо уже опубликовано; false — тоже ждёт модерации. */
+  published: boolean;
+}
+
 export interface PendingTree {
   owner_id: number;
   owner_name: string;
   count: number;
   min_year: number | null;
   max_year: number | null;
+  /** Если древо во многом повторяет чужое — кого именно. */
+  duplicate?: PendingTreeDuplicate | null;
 }
 
 /** Владельцы, у кого есть ожидающие правки опубликованных записей. */
@@ -672,7 +684,7 @@ export function listEditOwners(
 export async function listPendingTrees(
   teipIds: number[] | null = null,
 ): Promise<PendingTree[]> {
-  return query<PendingTree>(
+  const trees = await query<PendingTree>(
     `SELECT u.id AS owner_id,
             u.display_name AS owner_name,
             COUNT(p.id)::int AS count,
@@ -686,6 +698,72 @@ export async function listPendingTrees(
      ORDER BY count DESC`,
     [teipIds],
   );
+  if (trees.length === 0) return trees;
+
+  // Помечаем древа, во многом повторяющие чужие (уже опубликованные или тоже
+  // в очереди): совпадение имени (pg_trgm), тот же тейп, год рождения ±2.
+  // Для каждого владельца берём чужое древо с наибольшим пересечением.
+  const overlaps = await query<{
+    owner_id: number;
+    dup_owner_id: number;
+    dup_owner_name: string;
+    matched: number;
+    published: boolean;
+  }>(
+    `WITH matches AS (
+       SELECT p.created_by AS owner_id,
+              p.id AS person_id,
+              o.created_by AS other_owner,
+              o.status AS other_status
+       FROM persons p
+       JOIN persons o
+         ON o.created_by <> p.created_by
+        AND o.visibility = 'public'
+        AND o.status IN ('approved', 'pending')
+        AND o.teip_id = p.teip_id
+        AND o.full_name % p.full_name
+        AND (p.birth_year IS NULL OR o.birth_year IS NULL
+             OR abs(o.birth_year - p.birth_year) <= 2)
+       WHERE p.visibility = 'public' AND p.status = 'pending'
+         AND p.teip_id IS NOT NULL
+         AND p.created_by = ANY($1)
+     ),
+     per_other AS (
+       SELECT owner_id, other_owner,
+              COUNT(DISTINCT person_id)::int AS matched,
+              bool_or(other_status = 'approved') AS published
+       FROM matches
+       GROUP BY owner_id, other_owner
+     )
+     SELECT DISTINCT ON (po.owner_id)
+            po.owner_id,
+            po.other_owner AS dup_owner_id,
+            u.display_name AS dup_owner_name,
+            po.matched,
+            po.published
+     FROM per_other po
+     JOIN users u ON u.id = po.other_owner
+     ORDER BY po.owner_id, po.matched DESC`,
+    [trees.map((t) => t.owner_id)],
+  );
+
+  const byOwner = new Map(overlaps.map((o) => [o.owner_id, o]));
+  for (const tree of trees) {
+    const o = byOwner.get(tree.owner_id);
+    // Дубликатом считаем, когда совпала хотя бы половина древа (и минимум 2
+    // человека) — частичный переклик предков это норма, его ловят объединения.
+    if (o && o.matched >= 2 && o.matched * 2 >= tree.count) {
+      tree.duplicate = {
+        owner_id: o.dup_owner_id,
+        owner_name: o.dup_owner_name,
+        matched: o.matched,
+        published: o.published,
+      };
+    } else {
+      tree.duplicate = null;
+    }
+  }
+  return trees;
 }
 
 /**

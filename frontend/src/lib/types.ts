@@ -83,6 +83,13 @@ export interface PendingTree {
   count: number;
   min_year: number | null;
   max_year: number | null;
+  /** Заполнено, если древо во многом повторяет чужое (возможный дубликат). */
+  duplicate?: {
+    owner_id: number;
+    owner_name: string;
+    matched: number;
+    published: boolean;
+  } | null;
 }
 
 /** Опубликованное древо в общем каталоге. */

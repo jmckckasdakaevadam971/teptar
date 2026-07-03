@@ -260,6 +260,15 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+/** Оранжевый чип «Возможный дубликат» на карточке древа в очереди. */
+function DuplicateChip() {
+  return (
+    <span className="rounded-full border border-[#8a5a1f] bg-[#2a1f0f] px-2 py-0.5 text-[11px] font-semibold text-[#f0b95e]">
+      ⚠ Возможный дубликат
+    </span>
+  );
+}
+
 /** Плашка «label: value» в раскрытой карточке. */
 function StatBox({ label, value }: { label: string; value: string }) {
   return (
@@ -585,6 +594,23 @@ function TreeBody({
         Автор отправил древо в общую базу. Откройте схему, проверьте имена и
         годы по чек-листу и примите решение.
       </p>
+      {tree.duplicate && (
+        <div className="mb-3 rounded-xl border border-[#8a5a1f] bg-[#f0b95e]/[0.07] px-3 py-2.5">
+          <p className="m-0 text-[13px] font-semibold text-[#f0b95e]">
+            ⚠ Похоже на дубликат древа «{tree.duplicate.owner_name}»
+          </p>
+          <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-sand">
+            Совпало {tree.duplicate.matched} из {tree.count}{" "}
+            {personWord(tree.count)} (имя, тейп, год рождения).{" "}
+            {tree.duplicate.published
+              ? "То древо уже опубликовано в общей базе."
+              : "То древо тоже ждёт модерации."}{" "}
+            Откройте схему и сравните: если это одно и то же древо — отклоните
+            с причиной «дубликат»; если это родственники — используйте
+            «Объединение древ».
+          </p>
+        </div>
+      )}
       <div className="mb-3 grid grid-cols-2 gap-2">
         <StatBox
           label="Человек в древе"
@@ -1407,6 +1433,9 @@ export function ModerationPanel() {
                 {KIND_LABEL[item.kind]}
               </span>
               <StatusChip status={status} />
+              {isPending && item.kind === "tree" && item.tree.duplicate && (
+                <DuplicateChip />
+              )}
             </span>
             <span className="mt-0.5 block truncate font-serif text-[16px] font-bold text-cream">
               {itemTitle(item)}
@@ -1561,6 +1590,7 @@ export function ModerationPanel() {
                   {viewer.tree.count} {personWord(viewer.tree.count)} ·{" "}
                   {yearsLabel(viewer.tree.min_year, viewer.tree.max_year)}
                 </span>
+                {viewer.tree.duplicate && <DuplicateChip />}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
