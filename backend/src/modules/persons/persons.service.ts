@@ -754,6 +754,10 @@ export interface SimilarPerson {
   created_by: number | null;
   owner_name: string | null;
   similarity: number;
+  /** Имя отца кандидата (если указан в его древе). */
+  father_name: string | null;
+  /** Сходство имён отцов, если отцы известны у ОБЕИХ сторон; иначе null. */
+  father_similarity: number | null;
 }
 
 /** Ключевые поля персоны для сопоставления. */
@@ -763,6 +767,8 @@ export interface MatchSeed {
   birth_year: number | null;
   teip_id: number | null;
   created_by: number | null;
+  /** Имя отца искомой персоны — для сверки отцов (опционально). */
+  father_name?: string | null;
 }
 
 /**
@@ -778,10 +784,17 @@ export async function findSimilar(
     `
     SELECT p.id, p.full_name, p.birth_year, p.death_year, p.teip_id,
            t.name AS teip_name, p.created_by, u.display_name AS owner_name,
-           similarity(p.full_name, $2) AS similarity
+           similarity(p.full_name, $2) AS similarity,
+           f.full_name AS father_name,
+           CASE
+             WHEN f.full_name IS NOT NULL AND $7::text IS NOT NULL
+             THEN similarity(f.full_name, $7::text)
+             ELSE NULL
+           END AS father_similarity
     FROM persons p
     LEFT JOIN users u ON u.id = p.created_by
     LEFT JOIN teips t ON t.id = p.teip_id
+    LEFT JOIN persons f ON f.id = p.father_id
     WHERE p.id <> $1
       AND p.created_by IS DISTINCT FROM $5
       AND p.visibility = 'public'
@@ -799,6 +812,7 @@ export async function findSimilar(
       seed.birth_year,
       seed.created_by,
       statuses,
+      seed.father_name ?? null,
     ],
   );
 }
@@ -1009,8 +1023,19 @@ export async function mergePersons(
 //  ОЧЕРЕДЬ ПРЕДЛОЖЕНИЙ ОБЪЕДИНЕНИЯ (авто-поиск + модерация)
 // ============================================================================
 
-/** Минимальная уверенность, чтобы считать двух людей общим предком (якорем). */
-const ANCHOR_MIN_SIMILARITY = 0.5;
+/**
+ * Пороги строгого подбора якоря (общего предка двух древ).
+ * Логика: сходство имени — базовый сигнал, отец и год рождения — подтверждения.
+ *  • есть хотя бы одно подтверждение (отец совпал ИЛИ оба года указаны и близки)
+ *    → достаточно ANCHOR_MIN_SIMILARITY;
+ *  • подтверждений нет (нет отцов для сверки и хотя бы один год не указан)
+ *    → имя должно совпадать почти точно: ANCHOR_STRICT_SIMILARITY;
+ *  • отцы известны у обеих сторон, но их имена НЕ похожи
+ *    → кандидат отбрасывается, какое бы похожее имя ни было (это разные люди).
+ */
+const ANCHOR_MIN_SIMILARITY = 0.62;
+const ANCHOR_STRICT_SIMILARITY = 0.82;
+const FATHER_MIN_SIMILARITY = 0.45;
 
 /**
  * Найти точки пересечения древа владельца с ЧУЖИМИ древами и поставить в
@@ -1034,13 +1059,26 @@ export async function generateMergeSuggestionsForOwner(
     [ownerId],
   );
 
-  // Лучший якорь на каждого чужого владельца: otherOwnerId → пара + сходство.
+  // Имя отца внутри своего же древа — для сверки отцов с кандидатами.
+  const nameById = new Map<number, string>(
+    persons.map((p) => [p.id, p.full_name]),
+  );
+
+  // Лучший якорь на каждого чужого владельца: otherOwnerId → пара + оценка.
+  // score = сходство имени + бонус за подтверждения (отец, год) — чтобы при
+  // равных именах побеждал кандидат с бо́льшим числом подтверждений.
   const best = new Map<
     number,
-    { ownerPersonId: number; otherPersonId: number; similarity: number }
+    {
+      ownerPersonId: number;
+      otherPersonId: number;
+      similarity: number;
+      score: number;
+    }
   >();
 
   for (const p of persons) {
+    const fatherName = p.father_id ? (nameById.get(p.father_id) ?? null) : null;
     const candidates = await findSimilar(
       {
         id: p.id,
@@ -1048,18 +1086,36 @@ export async function generateMergeSuggestionsForOwner(
         birth_year: p.birth_year,
         teip_id: p.teip_id,
         created_by: ownerId,
+        father_name: fatherName,
       },
       ["approved", "pending"],
     );
     for (const c of candidates) {
-      if (c.similarity < ANCHOR_MIN_SIMILARITY) continue;
       if (c.created_by == null) continue;
+
+      // Сверка отцов: оба известны, но не похожи → это разные люди.
+      const fatherChecked = c.father_similarity !== null;
+      const fatherOk =
+        fatherChecked && (c.father_similarity ?? 0) >= FATHER_MIN_SIMILARITY;
+      if (fatherChecked && !fatherOk) continue;
+
+      // Год рождения: SQL уже отсёк расхождение > 2 лет,
+      // подтверждением считаем только случай «оба года указаны».
+      const yearOk = p.birth_year !== null && c.birth_year !== null;
+
+      const confirmations = (fatherOk ? 1 : 0) + (yearOk ? 1 : 0);
+      const minSim =
+        confirmations > 0 ? ANCHOR_MIN_SIMILARITY : ANCHOR_STRICT_SIMILARITY;
+      if (c.similarity < minSim) continue;
+
+      const score = c.similarity + confirmations * 0.1;
       const cur = best.get(c.created_by);
-      if (!cur || c.similarity > cur.similarity) {
+      if (!cur || score > cur.score) {
         best.set(c.created_by, {
           ownerPersonId: p.id,
           otherPersonId: c.id,
           similarity: c.similarity,
+          score,
         });
       }
     }
