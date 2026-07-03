@@ -77,6 +77,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-Vorhda <info@vorhda.ru>}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-vorhda@yandex.com}
       # Инициализацию выполняет отдельный сервис db-init, поэтому здесь 0.
       RUN_DB_INIT: "0"
     expose:

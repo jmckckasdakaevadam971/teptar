@@ -94,10 +94,10 @@ export default function TermsPage() {
             Чтобы удалить свой аккаунт, свои данные или сведения о вас,
             размещённые другим пользователем, напишите на{" "}
             <a
-              href="mailto:info@vorhda.ru"
+              href="mailto:vorhda@yandex.com"
               className="text-primary hover:underline"
             >
-              info@vorhda.ru
+              vorhda@yandex.com
             </a>
             . Запросы рассматриваются в разумный срок, как правило — до 10 дней.
           </p>

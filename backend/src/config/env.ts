@@ -39,4 +39,6 @@ export const env = {
   smtpUser: process.env.SMTP_USER ?? "",
   smtpPass: process.env.SMTP_PASS ?? "",
   smtpFrom: process.env.SMTP_FROM ?? "Vorhda <info@vorhda.ru>",
+  // Куда уходят ответы на письма сайта (реальный ящик, в отличие от from).
+  smtpReplyTo: process.env.SMTP_REPLY_TO ?? "vorhda@yandex.com",
 } as const;

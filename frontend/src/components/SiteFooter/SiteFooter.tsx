@@ -57,10 +57,10 @@ export function SiteFooter() {
             <ul className="mt-4 space-y-3">
               <li>
                 <a
-                  href="mailto:info@vorhda.ru"
+                  href="mailto:vorhda@yandex.com"
                   className="text-sm text-muted-foreground transition-colors hover:text-primary"
                 >
-                  info@vorhda.ru
+                  vorhda@yandex.com
                 </a>
               </li>
             </ul>

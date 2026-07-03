@@ -63,6 +63,7 @@ export async function sendTreeApprovedEmail(
 
   await transporter.sendMail({
     from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
     to: email,
     subject: "Ваше древо опубликовано — Vorhda",
     text:
@@ -109,6 +110,7 @@ export async function sendTreeRejectedEmail(
 
   await transporter.sendMail({
     from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
     to: email,
     subject: "Ваше древо не прошло модерацию — Vorhda",
     text:
@@ -144,6 +146,7 @@ export async function sendKeeperApprovedEmail(
 
   await transporter.sendMail({
     from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
     to: email,
     subject: "Вы — хранитель тептара! — Vorhda",
     text:
@@ -179,6 +182,7 @@ export async function sendKeeperRejectedEmail(
 
   await transporter.sendMail({
     from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
     to: email,
     subject: "Ваша заявка хранителя — Vorhda",
     text:
@@ -215,6 +219,7 @@ export async function sendVerificationCode(
 
   await transporter.sendMail({
     from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
     to: email,
     subject: `${code} — код подтверждения Vorhda`,
     text:

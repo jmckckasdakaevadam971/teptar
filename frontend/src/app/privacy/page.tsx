@@ -31,10 +31,10 @@ export default function PrivacyPage() {
             Оператором персональных данных выступает администрация Сайта (далее
             — «Администрация», контакт:{" "}
             <a
-              href="mailto:info@vorhda.ru"
+              href="mailto:vorhda@yandex.com"
               className="text-primary hover:underline"
             >
-              info@vorhda.ru
+              vorhda@yandex.com
             </a>
             ).
           </p>
@@ -127,10 +127,10 @@ export default function PrivacyPage() {
           <p className={P}>
             По всем вопросам:{" "}
             <a
-              href="mailto:info@vorhda.ru"
+              href="mailto:vorhda@yandex.com"
               className="text-primary hover:underline"
             >
-              info@vorhda.ru
+              vorhda@yandex.com
             </a>
             .
           </p>
