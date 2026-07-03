@@ -12,7 +12,9 @@ import type { MetadataRoute } from "next";
 const SITE = "https://vorhda.ru";
 const API = process.env.INTERNAL_API_URL ?? "http://localhost:4000/api";
 
-export const revalidate = 3600;
+// force-dynamic: иначе sitemap пререндерится при docker build, когда backend
+// недоступен, и навсегда остаётся без древ. Кэш обеспечивает fetch-revalidate.
+export const dynamic = "force-dynamic";
 
 interface PublicTreeLite {
   root_person_id: number | null;
