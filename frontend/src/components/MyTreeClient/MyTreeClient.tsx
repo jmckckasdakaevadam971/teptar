@@ -310,9 +310,10 @@ export function MyTreeClient() {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
-  /** Клик по карточке — только выделение (показывает «+» вокруг), без панели. */
+  /** Клик по карточке — только выделение (показывает «+» вокруг), без панели.
+      Повторный клик по уже выбранной карточке снимает выделение — «+» исчезают. */
   function selectPerson(id: string) {
-    setSelectedId(id);
+    setSelectedId((prev) => (prev === id ? null : id));
     setConfirmDelete(false);
   }
 
