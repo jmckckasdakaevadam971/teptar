@@ -322,6 +322,13 @@ export function MyTreeClient() {
     setConfirmDelete(false);
   }
 
+  /** «Удалить» в бургере карточки — открывает панель сразу с подтверждением удаления. */
+  function askDelete(id: string) {
+    setSelectedId(id);
+    setPanelOpen(true);
+    setConfirmDelete(true);
+  }
+
   /** Закрыть панель, ОСТАВИВ узел выбранным — вокруг него остаются «+» для добавления родных. */
   function hidePanel() {
     setPanelOpen(false);
@@ -650,6 +657,7 @@ export function MyTreeClient() {
           onAddRelative={(rel) => openForm(rel)}
           onShowInfo={showInfo}
           onEdit={openEdit}
+          onDelete={askDelete}
         />
       )}
 
@@ -721,9 +729,9 @@ export function MyTreeClient() {
                 {/* Добавление родственников — только через «+» на самом древе,
                     из панели информации эта возможность убрана. */}
 
-                {/* Удаление человека */}
-                <div className="mt-6 border-t border-border pt-6">
-                  {confirmDelete ? (
+                {/* Подтверждение удаления — открывается пунктом «Удалить» в бургер-меню карточки. */}
+                {confirmDelete ? (
+                  <div className="mt-6 border-t border-border pt-6">
                     <div className="rounded-xl border border-[#5b2c25] bg-[#2a1714] p-4">
                       <p className="text-sm text-[#e6c9c2]">
                         Удалить «{selected.name}»? Его дети перейдут к родителю
@@ -747,17 +755,8 @@ export function MyTreeClient() {
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(true)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-[#5b2c25] px-4 py-2.5 text-sm font-semibold text-[#f0a0a0] transition-colors hover:border-[#7a2f26] hover:bg-[#2a1714]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Удалить человека
-                    </button>
-                  )}
-                </div>
+                  </div>
+                ) : null}
               </aside>
             </div>,
             document.body,

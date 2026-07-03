@@ -19,6 +19,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Trash2,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,7 @@ export function TreeView({
   onAddRelative,
   onShowInfo,
   onEdit,
+  onDelete,
 }: {
   people: Person[];
   selectedId: string | null;
@@ -68,6 +70,8 @@ export function TreeView({
   onShowInfo?: (id: string) => void;
   /** Если передан — в бургер-меню карточки появляется пункт «Редактировать». */
   onEdit?: (id: string) => void;
+  /** Если передан — в бургер-меню карточки появляется пункт «Удалить». */
+  onDelete?: (id: string) => void;
 }) {
   const editable = Boolean(onAddRelative);
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -802,6 +806,20 @@ export function TreeView({
                               >
                                 <Pencil className="h-4 w-4 text-primary" />
                                 Редактировать
+                              </button>
+                            ) : null}
+                            {onDelete ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuId(null);
+                                  onDelete(person.id);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Удалить
                               </button>
                             ) : null}
                           </div>
