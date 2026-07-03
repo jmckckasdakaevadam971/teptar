@@ -17,6 +17,7 @@ import {
   Minimize2,
   Minus,
   MoreVertical,
+  Pencil,
   Plus,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
@@ -56,6 +57,7 @@ export function TreeView({
   onSelect,
   onAddRelative,
   onShowInfo,
+  onEdit,
 }: {
   people: Person[];
   selectedId: string | null;
@@ -64,6 +66,8 @@ export function TreeView({
   onAddRelative?: (rel: AddRelation) => void;
   /** Если передан — на карточках появляется бургер-меню с пунктом «Информация». */
   onShowInfo?: (id: string) => void;
+  /** Если передан — в бургер-меню карточки появляется пункт «Редактировать». */
+  onEdit?: (id: string) => void;
 }) {
   const editable = Boolean(onAddRelative);
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -782,6 +786,20 @@ export function TreeView({
                               <Info className="h-4 w-4 text-primary" />
                               Информация
                             </button>
+                            {onEdit ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuId(null);
+                                  onEdit(person.id);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                              >
+                                <Pencil className="h-4 w-4 text-primary" />
+                                Редактировать
+                              </button>
+                            ) : null}
                           </div>
                         ) : null}
                       </>

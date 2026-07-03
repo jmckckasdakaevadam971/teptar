@@ -98,6 +98,7 @@ export function MyTreeClient() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [relation, setRelation] = useState<Relation | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [error, setError] = useState<string | null>(null);
@@ -379,6 +380,7 @@ export function MyTreeClient() {
 
   function openForm(rel: Relation) {
     setRelation(rel);
+    setEditingId(null);
     setDraft({ ...EMPTY_DRAFT, teip: lockedTeip ?? "" });
     setTeipFocused(false);
     setGarFocused(false);
@@ -387,11 +389,38 @@ export function MyTreeClient() {
     setFormOpen(true);
   }
 
+  /** Редактирование существующего человека — та же форма, но с заполненными полями. */
+  function openEdit(id: string) {
+    const person = people.find((p) => p.id === id);
+    if (!person) return;
+    setSelectedId(id);
+    setRelation(null);
+    setEditingId(id);
+    setDraft({
+      name: person.name,
+      birth: person.birth ?? "",
+      death: person.death ?? "",
+      role: person.role === "—" ? "" : person.role,
+      teip: person.teip === "—" ? "" : person.teip,
+      gar: person.gar ?? "",
+      village: person.village ?? "",
+      spouseName: person.spouseName ?? "",
+      bio: person.bio ?? "",
+    });
+    setTeipFocused(false);
+    setGarFocused(false);
+    setVillageFocused(false);
+    setError(null);
+    setPanelOpen(false);
+    setFormOpen(true);
+  }
+
   function closeForm() {
     setFormOpen(false);
     setDraft(EMPTY_DRAFT);
     setError(null);
     setRelation(null);
+    setEditingId(null);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -407,6 +436,29 @@ export function MyTreeClient() {
     const death = draft.death.trim();
     if (birth && death && Number(death) < Number(birth)) {
       setError("Год смерти не может быть раньше года рождения.");
+      return;
+    }
+
+    // Редактирование — обновляем поля существующего человека (связи не трогаем).
+    if (editingId) {
+      setPeople((prev) =>
+        prev.map((p) =>
+          p.id === editingId
+            ? {
+                ...p,
+                name,
+                birth: birth || undefined,
+                death: death || undefined,
+                teip: lockedTeip ?? (draft.teip.trim() || p.teip),
+                gar: draft.gar.trim() || undefined,
+                village: draft.village.trim() || undefined,
+                spouseName: draft.spouseName.trim() || undefined,
+                bio: draft.bio.trim() || undefined,
+              }
+            : p,
+        ),
+      );
+      closeForm();
       return;
     }
 
@@ -598,6 +650,7 @@ export function MyTreeClient() {
           onSelect={selectPerson}
           onAddRelative={(rel) => openForm(rel)}
           onShowInfo={showInfo}
+          onEdit={openEdit}
         />
       )}
 
@@ -754,13 +807,22 @@ export function MyTreeClient() {
                 <div className="flex items-start justify-between gap-4 border-b border-border px-8 py-5">
                   <div>
                     <h2 className="font-serif text-2xl font-bold text-foreground">
-                      {relation ? RELATION_LABEL[relation] : "Новый человек"}
-                      {relation && relation !== "founder" && selected
+                      {editingId
+                        ? `Редактирование — ${draft.name || "…"}`
+                        : relation
+                          ? RELATION_LABEL[relation]
+                          : "Новый человек"}
+                      {!editingId &&
+                      relation &&
+                      relation !== "founder" &&
+                      selected
                         ? ` — ${selected.name}`
                         : ""}
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {formSubtitle(relation, selected?.name)}
+                      {editingId
+                        ? "Измените данные и нажмите «Сохранить»."
+                        : formSubtitle(relation, selected?.name)}
                     </p>
                   </div>
                   <button
