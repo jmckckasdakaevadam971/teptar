@@ -3,9 +3,10 @@ import { PageShell } from '@/components/PageShell/PageShell'
 import { DirectoryView } from '@/components/DirectoryView/DirectoryView'
 
 export const metadata: Metadata = {
-  title: 'Справочник тейпов — Vorhda',
+  title: 'Справочник чеченских тейпов и тукхумов',
   description:
-    'Справочник чеченских тейпов и тукхумов: принадлежность родов и краткие сведения.',
+    'Полный справочник чеченских тейпов, тукхумов, гаров и родовых сёл: принадлежность родов, история и краткие сведения о каждом тейпе.',
+  alternates: { canonical: '/reference' },
 }
 
 export default function ReferencePage() {

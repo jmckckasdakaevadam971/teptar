@@ -3,9 +3,10 @@ import { PageShell } from "@/components/PageShell/PageShell";
 import { KeepersView } from "@/components/KeepersView/KeepersView";
 
 export const metadata: Metadata = {
-  title: "Хранители тептара — Vorhda",
+  title: "Хранители тептара",
   description:
-    "Хранители тептара — знатоки своих тейпов, которые проверяют родословные и берегут достоверность общей базы.",
+    "Хранители тептара — знатоки своих тейпов, которые проверяют родословные и берегут достоверность общей базы родовых древ.",
+  alternates: { canonical: "/keepers" },
 };
 
 export default function KeepersPage() {

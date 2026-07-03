@@ -3,9 +3,10 @@ import { AppFrame } from "@/components/AppFrame/AppFrame";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
 
 export const metadata: Metadata = {
-  title: "Политика конфиденциальности — Vorhda",
+  title: "Политика конфиденциальности",
   description:
     "Политика обработки персональных данных сайта vorhda.ru (Тептар · Ворх Да).",
+  alternates: { canonical: "/privacy" },
 };
 
 const H2 = "mt-10 font-serif text-2xl font-bold text-foreground";

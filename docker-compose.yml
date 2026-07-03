@@ -101,6 +101,8 @@ services:
       # (Docker задаёт HOSTNAME = ID контейнера, и Next слушает только его).
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
+      # Server-side запросы Next (sitemap, metadata) к API мимо nginx.
+      INTERNAL_API_URL: "http://backend:4000/api"
     expose:
       - "3000"
     healthcheck:

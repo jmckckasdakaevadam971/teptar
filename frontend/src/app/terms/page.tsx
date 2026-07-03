@@ -4,8 +4,9 @@ import { AppFrame } from "@/components/AppFrame/AppFrame";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
 
 export const metadata: Metadata = {
-  title: "Пользовательское соглашение — Vorhda",
+  title: "Пользовательское соглашение",
   description: "Условия использования сайта vorhda.ru (Тептар · Ворх Да).",
+  alternates: { canonical: "/terms" },
 };
 
 const H2 = "mt-10 font-serif text-2xl font-bold text-foreground";

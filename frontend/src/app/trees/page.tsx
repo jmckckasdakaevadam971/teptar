@@ -3,8 +3,10 @@ import { PageShell } from "@/components/PageShell/PageShell";
 import { PublicTreesView } from "@/components/PublicTreesView/PublicTreesView";
 
 export const metadata: Metadata = {
-  title: "Древа — Vorhda",
-  description: "Одобренные родовые древа с фильтрами по тейпу и поселению.",
+  title: "Родовые древа чеченских тейпов",
+  description:
+    "Каталог опубликованных родовых древ: семейные древа чеченских тейпов с фильтрами по тейпу и поселению. Найдите древо своего рода.",
+  alternates: { canonical: "/trees" },
 };
 
 export default function TreesPage() {

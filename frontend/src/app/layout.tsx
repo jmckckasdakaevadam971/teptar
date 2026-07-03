@@ -18,9 +18,72 @@ const display = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: 'Vorhda · Ворх Да — Родовая память чеченских тейпов',
+  metadataBase: new URL('https://vorhda.ru'),
+  title: {
+    default: 'Vorhda · Ворх Да — Родовое древо чеченских тейпов онлайн',
+    template: '%s — Vorhda · Ворх Да',
+  },
   description:
-    'Ворх Да (Семь Отцов) — платформа родовой памяти чеченских тейпов. Найдите человека, постройте древо и узнайте общих предков.',
+    'Постройте родовое древо онлайн бесплатно. Справочник чеченских тейпов, гаров и сёл, поиск предков, объединение семейных древ с родственниками. Ворх Да — платформа родовой памяти.',
+  keywords: [
+    'родовое древо',
+    'семейное древо',
+    'генеалогическое древо',
+    'построить древо онлайн',
+    'чеченские тейпы',
+    'справочник тейпов',
+    'тейпы и гары',
+    'найти предков',
+    'генеалогия',
+    'история рода',
+    'тептар',
+    'ворх да',
+  ],
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    locale: 'ru_RU',
+    url: 'https://vorhda.ru',
+    siteName: 'Vorhda · Ворх Да',
+    title: 'Vorhda — Родовое древо чеченских тейпов онлайн',
+    description:
+      'Постройте родовое древо, найдите общих предков и сохраните историю рода. Справочник тейпов, гаров и сёл — бесплатно.',
+    images: [
+      {
+        url: '/og.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Vorhda — родовая память чеченских тейпов',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Vorhda — Родовое древо чеченских тейпов онлайн',
+    description:
+      'Постройте родовое древо, найдите общих предков и сохраните историю рода.',
+    images: ['/og.jpg'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  // Коды подтверждения прав в Яндекс.Вебмастере / Google Search Console
+  // задаются переменными окружения при сборке (пустые — тег не выводится).
+  verification: {
+    ...(process.env.NEXT_PUBLIC_YANDEX_VERIFICATION
+      ? { yandex: process.env.NEXT_PUBLIC_YANDEX_VERIFICATION }
+      : {}),
+    ...(process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION
+      ? { google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION }
+      : {}),
+  },
   icons: {
     icon: '/icon.svg',
     apple: '/apple-icon.png',

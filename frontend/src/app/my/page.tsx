@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Моё древо — Vorhda",
   description:
     "Интерактивная схема родового древа: поколения, связи и сведения о каждом предке.",
+  robots: { index: false, follow: false },
 };
 
 export default function MyTreePage() {

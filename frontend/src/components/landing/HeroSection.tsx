@@ -77,7 +77,9 @@ export function HeroSection() {
 
         <Reveal delay={200}>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
-            Справочник тейпов, гаров и сёл чеченского народа — в одном месте.
+            Постройте родовое древо своей семьи, найдите общих предков и
+            сохраните историю рода. Справочник тейпов, гаров и сёл чеченского
+            народа — в одном месте.
           </p>
         </Reveal>
 
