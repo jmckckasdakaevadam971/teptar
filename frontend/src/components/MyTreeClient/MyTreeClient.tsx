@@ -10,8 +10,6 @@ import {
   Calendar,
   Users,
   MapPin,
-  User,
-  UserRound,
   Heart,
   Trash2,
   Save,
@@ -720,34 +718,8 @@ export function MyTreeClient() {
                   </div>
                 ) : null}
 
-                {/* Добавление родственника */}
-                <div className="mt-8 border-t border-border pt-6">
-                  <p className={LABEL}>Добавить родственника</p>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <RelationButton
-                      icon={<User className="h-4 w-4" />}
-                      label="Сын"
-                      onClick={() => openForm("son")}
-                    />
-                    <RelationButton
-                      icon={<UserRound className="h-4 w-4" />}
-                      label="Дочь"
-                      onClick={() => openForm("daughter")}
-                    />
-                    <RelationButton
-                      icon={<User className="h-4 w-4" />}
-                      label="Отец"
-                      disabled={!!selected.parentId}
-                      hint={selected.parentId ? "Уже добавлен" : undefined}
-                      onClick={() => openForm("father")}
-                    />
-                    <RelationButton
-                      icon={<Heart className="h-4 w-4" />}
-                      label="Жена"
-                      onClick={() => openForm("wife")}
-                    />
-                  </div>
-                </div>
+                {/* Добавление родственников — только через «+» на самом древе,
+                    из панели информации эта возможность убрана. */}
 
                 {/* Удаление человека */}
                 <div className="mt-6 border-t border-border pt-6">
@@ -1131,39 +1103,6 @@ function formSubtitle(relation: Relation | null, name?: string): string {
     default:
       return "";
   }
-}
-
-function RelationButton({
-  icon,
-  label,
-  hint,
-  disabled = false,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  hint?: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-border disabled:hover:text-foreground"
-    >
-      <span className="text-primary">{icon}</span>
-      <span className="flex flex-col items-start leading-tight">
-        {label}
-        {hint ? (
-          <span className="text-[10px] font-normal text-muted-foreground">
-            {hint}
-          </span>
-        ) : null}
-      </span>
-    </button>
-  );
 }
 
 function DetailRow({
