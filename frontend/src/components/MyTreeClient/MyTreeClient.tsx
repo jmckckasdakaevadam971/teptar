@@ -996,18 +996,21 @@ export function MyTreeClient() {
                         </div>
                       </div>
 
-                      <div className={FIELD}>
-                        <label className={LABEL} htmlFor="spouse">
-                          Супруга
-                        </label>
-                        <input
-                          id="spouse"
-                          className={INPUT}
-                          value={draft.spouseName}
-                          onChange={(e) => set("spouseName", e.target.value)}
-                          placeholder="Необязательно"
-                        />
-                      </div>
+                      {/* Супруга — не для дочери: у женского узла жену не вписывают. */}
+                      {relation !== "daughter" ? (
+                        <div className={FIELD}>
+                          <label className={LABEL} htmlFor="spouse">
+                            Супруга
+                          </label>
+                          <input
+                            id="spouse"
+                            className={INPUT}
+                            value={draft.spouseName}
+                            onChange={(e) => set("spouseName", e.target.value)}
+                            placeholder="Необязательно"
+                          />
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
 
