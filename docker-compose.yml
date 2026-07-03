@@ -76,7 +76,7 @@ services:
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-Vorhda <no-reply@vorhda.ru>}
+      SMTP_FROM: ${SMTP_FROM:-Vorhda <info@vorhda.ru>}
       # Инициализацию выполняет отдельный сервис db-init, поэтому здесь 0.
       RUN_DB_INIT: "0"
     expose:
