@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ShieldCheck } from "lucide-react";
 import { Reveal } from "@/components/Reveal/Reveal";
 import { StatsStrip } from "@/components/landing/StatsStrip";
 
@@ -40,13 +42,32 @@ export function HeroSection() {
 
       {/* Контент центрируется в свободном пространстве первого экрана */}
       <div className="mx-auto flex max-w-4xl flex-1 flex-col justify-center px-5 text-center md:px-8">
+        {/* Анонс программы хранителей — сразу на виду */}
         <Reveal>
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-primary md:text-sm">
+          <div className="flex justify-center">
+            <Link
+              href="/keepers"
+              className="group inline-flex items-center gap-2 rounded-full border border-primary/50 bg-background/40 px-4 py-1.5 text-xs font-medium text-primary backdrop-blur transition-colors hover:border-primary hover:bg-primary/10 md:text-sm"
+            >
+              <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />
+              Ищем хранителей тейпов
+              <span
+                aria-hidden="true"
+                className="transition-transform group-hover:translate-x-0.5"
+              >
+                →
+              </span>
+            </Link>
+          </div>
+        </Reveal>
+
+        <Reveal delay={60}>
+          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.32em] text-primary md:text-sm">
             Ворх Да · Семь Отцов
           </p>
         </Reveal>
 
-        <Reveal delay={80}>
+        <Reveal delay={120}>
           <h1 className="mt-6 font-serif text-4xl font-bold leading-[1.08] text-balance text-foreground sm:text-5xl md:text-6xl lg:text-7xl">
             Родовая память
             <br />
@@ -54,21 +75,28 @@ export function HeroSection() {
           </h1>
         </Reveal>
 
-        <Reveal delay={160}>
+        <Reveal delay={200}>
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
             Справочник тейпов, гаров и сёл чеченского народа — в одном месте.
           </p>
         </Reveal>
 
         {/* CTA */}
-        <Reveal delay={240}>
-          <div className="mt-10 flex justify-center">
+        <Reveal delay={280}>
+          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
               href="/reference"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground transition-all hover:-translate-y-0.5 hover:bg-accent sm:w-auto"
             >
               Открыть справочник
             </a>
+            <Link
+              href="/keepers/apply"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/50 bg-background/30 px-6 py-3 text-base font-semibold text-foreground backdrop-blur transition-all hover:-translate-y-0.5 hover:border-primary hover:text-primary sm:w-auto"
+            >
+              <ShieldCheck className="h-5 w-5" strokeWidth={1.5} />
+              Стать хранителем
+            </Link>
           </div>
         </Reveal>
       </div>
