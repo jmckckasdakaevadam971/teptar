@@ -15,7 +15,13 @@ export type Person = {
   generation: number;
   parentId?: string;
   spouseName?: string;
+  gender?: "m" | "f";
 };
+
+/** Женский узел: по полю gender или по роли «Дочь» (старые данные без gender). */
+export function isFemale(p: Person): boolean {
+  return p.gender === "f" || p.role.trim().toLowerCase() === "дочь";
+}
 
 // Родовое древо — узлы по поколениям (от предка к потомкам)
 export const TREE: Person[] = [

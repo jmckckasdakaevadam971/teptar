@@ -18,6 +18,7 @@ import {
   Globe,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
+import { isFemale } from "@/lib/demo-data";
 import { useAuth, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { TEIPS, GARS_BY_TEIP } from "@/lib/teips";
@@ -261,6 +262,10 @@ export function MyTreeClient() {
 
   const isFirst = people.length === 0;
   const selected = people.find((p) => p.id === selectedId) ?? null;
+  // Человек, открытый в форме редактирования (relation при этом null).
+  const editingPerson = editingId
+    ? (people.find((p) => p.id === editingId) ?? null)
+    : null;
   const minGen = people.length
     ? Math.min(...people.map((p) => p.generation))
     : 0;
@@ -500,6 +505,7 @@ export function MyTreeClient() {
       village: draft.village.trim() || undefined,
       spouseName: draft.spouseName.trim() || undefined,
       bio: draft.bio.trim() || undefined,
+      gender: relation === "daughter" ? "f" : "m",
       generation,
       parentId,
     };
@@ -996,8 +1002,9 @@ export function MyTreeClient() {
                         </div>
                       </div>
 
-                      {/* Супруга — не для дочери: у женского узла жену не вписывают. */}
-                      {relation !== "daughter" ? (
+                      {/* Супруга — не для дочери и не для женского узла: жену не вписывают. */}
+                      {relation !== "daughter" &&
+                      !(editingPerson && isFemale(editingPerson)) ? (
                         <div className={FIELD}>
                           <label className={LABEL} htmlFor="spouse">
                             Супруга

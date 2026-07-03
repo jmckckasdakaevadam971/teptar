@@ -22,6 +22,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
+import { isFemale } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
@@ -180,7 +181,8 @@ export function TreeView({
       ]);
     }
     // Жена — справа; если справа сосед, пробуем слева и дальше.
-    if (!selected.spouseName) {
+    // У женского узла (дочь) жену не предлагаем.
+    if (!selected.spouseName && !isFemale(selected)) {
       pushFree("wife", [
         { x: p.x + SLOT, y: p.y },
         { x: p.x - SLOT, y: p.y },
