@@ -3,6 +3,7 @@
 import { SiteHeader } from "@/components/SiteHeader/SiteHeader";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
+import { KeepersSection } from "@/components/landing/KeepersSection";
 import { AboutSection } from "@/components/landing/AboutSection";
 import { SiteFooter } from "@/components/SiteFooter/SiteFooter";
 
@@ -14,6 +15,7 @@ export default function Page() {
 
       <FeaturesSection />
       <AboutSection />
+      <KeepersSection />
       <SiteFooter />
     </main>
   );
