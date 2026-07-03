@@ -15,3 +15,8 @@ adminRouter.get('/stats', asyncHandler(controller.stats));
 adminRouter.get('/users', asyncHandler(controller.listUsers));
 adminRouter.patch('/users/:id/role', asyncHandler(controller.setRole));
 adminRouter.delete('/users/:id', asyncHandler(controller.removeUser));
+
+// Опубликованные древа: просмотр, снятие с публикации, полное удаление
+adminRouter.get('/trees', asyncHandler(controller.listTrees));
+adminRouter.post('/trees/:ownerId/unpublish', asyncHandler(controller.unpublishTree));
+adminRouter.delete('/trees/:ownerId', asyncHandler(controller.removeTree));

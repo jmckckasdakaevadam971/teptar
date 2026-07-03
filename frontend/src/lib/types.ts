@@ -272,6 +272,19 @@ export interface AdminUser extends User {
   teips: { id: number; name: string }[];
 }
 
+/** Опубликованное древо в админке (с контактами владельца). */
+export interface AdminTree {
+  owner_id: number;
+  owner_name: string;
+  owner_phone: string | null;
+  owner_email: string | null;
+  count: number;
+  teip_name: string | null;
+  root_person_id: number | null;
+  root_person_name: string | null;
+  published_at: string | null;
+}
+
 // ── Хранители тептара ──────────────────────────────────────────
 
 /** Публичная карточка хранителя. */

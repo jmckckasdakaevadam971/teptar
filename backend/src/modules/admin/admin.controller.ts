@@ -31,3 +31,20 @@ export async function removeUser(req: Request, res: Response): Promise<void> {
   await service.deleteUser(id, req.user!.userId);
   res.json(ok({ deleted: true }));
 }
+
+/** GET /api/admin/trees — все опубликованные древа. */
+export async function listTrees(_req: Request, res: Response): Promise<void> {
+  res.json(ok(await service.listPublishedTrees()));
+}
+
+/** POST /api/admin/trees/:ownerId/unpublish — снять древо с публикации. */
+export async function unpublishTree(req: Request, res: Response): Promise<void> {
+  const ownerId = Number(req.params.ownerId);
+  res.json(ok(await service.unpublishOwnerTree(ownerId, req.user!.userId)));
+}
+
+/** DELETE /api/admin/trees/:ownerId — полностью удалить древо пользователя. */
+export async function removeTree(req: Request, res: Response): Promise<void> {
+  const ownerId = Number(req.params.ownerId);
+  res.json(ok(await service.deleteOwnerTree(ownerId, req.user!.userId)));
+}

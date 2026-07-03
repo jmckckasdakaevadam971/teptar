@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
@@ -8,7 +9,7 @@ import { KeeperApplicationsCard, UserTeipsEditor } from '@/components/KeepersVie
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
-import type { AdminStats, AdminUser, Teip, UserRole } from '@/lib/types';
+import type { AdminStats, AdminTree, AdminUser, Teip, UserRole } from '@/lib/types';
 
 /** Человекочитаемые названия ролей. */
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -150,6 +151,9 @@ function AdminPageInner() {
           {/* Заявки в хранители */}
           <KeeperApplicationsCard onApproved={() => void load()} />
 
+          {/* Опубликованные древа */}
+          <PublishedTreesCard onChanged={() => void load()} />
+
           {/* Пользователи */}
           <div className={CARD}>
             <div className="mb-3 flex items-center justify-between">
@@ -249,6 +253,200 @@ function AdminPageInner() {
             )}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Карточка «Опубликованные древа»: список всех древ в общей базе с двумя
+ * действиями супер-админа — снять с публикации (мягко, данные владельца
+ * сохраняются) и удалить полностью (необратимо).
+ */
+function PublishedTreesCard({ onChanged }: { onChanged?: () => void }) {
+  const [trees, setTrees] = useState<AdminTree[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setTrees(await api.admin.trees());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка загрузки древ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function unpublish(t: AdminTree) {
+    if (
+      !confirm(
+        `Снять древо «${t.owner_name}» (${t.count} чел.) с публикации?\n\n` +
+          'Древо исчезнет из общей базы, но данные владельца сохранятся — ' +
+          'он сможет исправить их и отправить на модерацию заново.',
+      )
+    )
+      return;
+    setBusyId(t.owner_id);
+    setError(null);
+    try {
+      await api.admin.unpublishTree(t.owner_id);
+      setTrees((prev) => prev.filter((x) => x.owner_id !== t.owner_id));
+      onChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось снять с публикации');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function removeTree(t: AdminTree) {
+    if (
+      !confirm(
+        `ПОЛНОСТЬЮ удалить древо «${t.owner_name}» (${t.count} чел.)?\n\n` +
+          'Все персоны этого пользователя будут безвозвратно удалены из базы. ' +
+          'Это действие необратимо!',
+      )
+    )
+      return;
+    const answer = prompt(
+      `Для подтверждения введите число персон в древе (${t.count}):`,
+    );
+    if (answer === null) return;
+    if (answer.trim() !== String(t.count)) {
+      setError('Число не совпало — удаление отменено.');
+      return;
+    }
+    setBusyId(t.owner_id);
+    setError(null);
+    try {
+      await api.admin.deleteTree(t.owner_id);
+      setTrees((prev) => prev.filter((x) => x.owner_id !== t.owner_id));
+      onChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось удалить древо');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className={CARD}>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="m-0 font-serif text-xl font-semibold text-foreground">
+          Опубликованные древа
+          {trees.length > 0 && (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {trees.length}
+            </span>
+          )}
+        </h2>
+        <button
+          type="button"
+          className={BTN_SECONDARY}
+          onClick={() => void load()}
+          disabled={loading}
+        >
+          Обновить
+        </button>
+      </div>
+
+      <p className="mb-4 text-sm text-muted-foreground">
+        Все древа в общей базе. «Снять с публикации» возвращает древо владельцу
+        в личное пространство; «Удалить» стирает его из базы безвозвратно.
+      </p>
+
+      {error && (
+        <div className="mb-3 rounded border border-[#5b2c25] bg-[#2a1714] p-3 text-sm text-[#e08a7a]">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-muted-foreground">Загрузка…</p>
+      ) : trees.length === 0 ? (
+        <p className="text-muted-foreground">Опубликованных древ пока нет.</p>
+      ) : (
+        <div className={TABLE_WRAP}>
+          <table className={TABLE}>
+            <thead>
+              <tr>
+                <th>Древо</th>
+                <th>Владелец</th>
+                <th>Контакты</th>
+                <th>Тейп</th>
+                <th>Персон</th>
+                <th>Обновлено</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {trees.map((t) => (
+                <tr key={t.owner_id}>
+                  <td className="whitespace-nowrap">
+                    {t.root_person_id ? (
+                      <Link
+                        href={`/trees/${t.root_person_id}`}
+                        className="font-semibold text-accent hover:underline"
+                        target="_blank"
+                      >
+                        {t.root_person_name ?? `Древо #${t.owner_id}`}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-accent">
+                        {t.root_person_name ?? `Древо #${t.owner_id}`}
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap">{t.owner_name}</td>
+                  <td className="whitespace-nowrap text-muted-foreground">
+                    {t.owner_email ?? t.owner_phone ?? '—'}
+                  </td>
+                  <td className="whitespace-nowrap">{t.teip_name ?? '—'}</td>
+                  <td>{t.count}</td>
+                  <td className="whitespace-nowrap text-muted-foreground">
+                    {t.published_at
+                      ? new Date(t.published_at).toLocaleDateString('ru-RU', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        })
+                      : '—'}
+                  </td>
+                  <td className="whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        className="cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-muted-foreground transition hover:text-foreground hover:underline disabled:opacity-50"
+                        disabled={busyId === t.owner_id}
+                        onClick={() => void unpublish(t)}
+                        title="Древо вернётся владельцу в личное пространство"
+                      >
+                        Снять с публикации
+                      </button>
+                      <button
+                        type="button"
+                        className={LINK_DANGER}
+                        disabled={busyId === t.owner_id}
+                        onClick={() => void removeTree(t)}
+                        title="Безвозвратно удалить все персоны этого древа"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

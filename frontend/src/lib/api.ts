@@ -15,6 +15,7 @@ import type {
   UserProfile,
   AdminUser,
   AdminStats,
+  AdminTree,
   TreeStatus,
   PendingTree,
   PublicTree,
@@ -288,6 +289,18 @@ export const api = {
       }),
     deleteUser: (id: number) =>
       request<{ deleted: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
+    /** Все опубликованные древа (с контактами владельцев). */
+    trees: () => request<AdminTree[]>("/admin/trees"),
+    /** Снять древо с публикации (данные владельца сохраняются). */
+    unpublishTree: (ownerId: number) =>
+      request<{ count: number }>(`/admin/trees/${ownerId}/unpublish`, {
+        method: "POST",
+      }),
+    /** Полностью удалить древо пользователя (необратимо). */
+    deleteTree: (ownerId: number) =>
+      request<{ count: number }>(`/admin/trees/${ownerId}`, {
+        method: "DELETE",
+      }),
   },
 
   /** Модерация общей базы (teip_admin / super_admin). */
