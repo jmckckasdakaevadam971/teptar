@@ -9,14 +9,16 @@ export function HeroSection() {
       id="hero"
       className="grain relative isolate flex min-h-[100svh] flex-col overflow-hidden pt-28 md:pt-32"
     >
-      {/* Tower silhouette background */}
-      <div
-        className="absolute inset-0 -z-10 bg-cover bg-no-repeat"
-        style={{
-          backgroundImage: "url('/images/towers-sunset.png')",
-          backgroundPosition: "center 26%",
-        }}
+      {/* Tower silhouette background — <img> вместо CSS-фона, чтобы
+          preload-сканер браузера начал загрузку сразу (LCP). */}
+      <img
+        src="/images/towers-sunset.webp"
+        alt=""
         aria-hidden="true"
+        decoding="async"
+        fetchPriority="high"
+        className="absolute inset-0 -z-10 h-full w-full object-cover"
+        style={{ objectPosition: "center 26%" }}
       />
       {/* Sunset gradient + dark wash for readability */}
       <div

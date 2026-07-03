@@ -3,17 +3,16 @@ import type { Metadata, Viewport } from 'next';
 import { Manrope, Playfair_Display } from 'next/font/google';
 import './globals.css';
 
-// Современная двухшрифтовая система (обе с кириллицей)
+// Современная двухшрифтовая система (обе с кириллицей).
+// Вариативные шрифты: один файл на все начертания вместо файла на каждый вес.
 const sans = Manrope({
   subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '600', '700', '800'],
   variable: '--font-sans',
   display: 'swap',
 });
 
 const display = Playfair_Display({
   subsets: ['latin', 'cyrillic'],
-  weight: ['500', '600', '700', '800'],
   variable: '--font-display',
   display: 'swap',
 });
