@@ -11,6 +11,7 @@ const BASE_LINKS = [
   { label: "Главная", href: "/" },
   { label: "Древа", href: "/trees" },
   { label: "Справочник", href: "/reference" },
+  { label: "Хранители", href: "/keepers" },
 ];
 
 export function SiteHeader() {

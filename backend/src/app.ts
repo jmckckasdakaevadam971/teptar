@@ -13,6 +13,7 @@ import { ancestorsRouter } from "./modules/ancestors/ancestors.routes.js";
 import { exportRouter } from "./modules/export/export.routes.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
+import { keepersRouter } from "./modules/keepers/keepers.routes.js";
 import { referenceRouter } from "./modules/reference/reference.routes.js";
 
 /**
@@ -44,6 +45,7 @@ export function createApp() {
   app.use("/api/export", exportRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/keepers", keepersRouter);
   app.use("/api", referenceRouter);
 
   // Обработчики «в конце»

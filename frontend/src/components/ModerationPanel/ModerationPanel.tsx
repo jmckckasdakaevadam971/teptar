@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { TreeView } from "@/components/TreeView/TreeView";
 import {
   BTN_PRIMARY,
@@ -914,10 +915,12 @@ function EditBody({
 // ============================================================================
 
 export function ModerationPanel() {
+  const { user } = useAuth();
   const [trees, setTrees] = useState<PendingTree[]>([]);
   const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
   const [merges, setMerges] = useState<TreeMerge[]>([]);
   const [edits, setEdits] = useState<{ owner: PendingTree; change: TreeChange }[]>([]);
+  const [myTeips, setMyTeips] = useState<{ id: number; name: string }[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1004,6 +1007,15 @@ export function ModerationPanel() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  // Тейпы, закреплённые за хранителем — он видит заявки только по ним.
+  useEffect(() => {
+    if (user?.role !== "teip_admin") return;
+    api.keepers
+      .my()
+      .then((st) => setMyTeips(st.teips))
+      .catch(() => undefined);
+  }, [user?.role]);
 
   // ---------- лента ----------
 
@@ -1346,6 +1358,21 @@ export function ModerationPanel() {
   return (
     <div className={CARD}>
       <HowItWorks open={guideOpen} onToggle={toggleGuide} />
+
+      {user?.role === "teip_admin" && myTeips.length > 0 && (
+        <p className="mb-4 flex flex-wrap items-center gap-1.5 text-[13px] text-sand">
+          <span>Ваши тейпы:</span>
+          {myTeips.map((t) => (
+            <span
+              key={t.id}
+              className="rounded-full bg-gold/10 px-2.5 py-0.5 font-medium text-gold-light"
+            >
+              {t.name}
+            </span>
+          ))}
+          <span>— вы видите заявки только по ним.</span>
+        </p>
+      )}
 
       <div className="gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_280px]">
         {/* -------- Лента заявок -------- */}

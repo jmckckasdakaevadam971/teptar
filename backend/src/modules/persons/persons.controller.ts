@@ -121,13 +121,15 @@ export async function bulkReplaceTree(
 
 // ── Модерация (teip_admin / super_admin) ─────────────────────────────────
 
-export async function pending(_req: Request, res: Response): Promise<void> {
-  const trees = await service.listPendingTrees();
+export async function pending(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  const trees = await service.listPendingTrees(teipIds);
   res.json(ok(trees));
 }
 
-export async function editOwners(_req: Request, res: Response): Promise<void> {
-  const owners = await service.listEditOwners();
+export async function editOwners(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  const owners = await service.listEditOwners(teipIds);
   res.json(ok(owners));
 }
 
@@ -140,6 +142,8 @@ export async function pendingPersons(
 }
 
 export async function approve(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
   const result = await service.approveTree(
     Number(req.params.ownerId),
     req.user!.userId,
@@ -154,6 +158,8 @@ export async function approve(req: Request, res: Response): Promise<void> {
 }
 
 export async function reject(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
   const result = await service.rejectTree(
     Number(req.params.ownerId),
     req.user!.userId,
@@ -183,6 +189,8 @@ export async function changes(req: Request, res: Response): Promise<void> {
 }
 
 export async function approveEdit(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertPersonInTeips(Number(req.params.id), teipIds);
   const person = await service.approveEdit(
     Number(req.params.id),
     req.user!.userId,
@@ -191,6 +199,8 @@ export async function approveEdit(req: Request, res: Response): Promise<void> {
 }
 
 export async function rejectEdit(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertPersonInTeips(Number(req.params.id), teipIds);
   const result = await service.rejectEdit(
     Number(req.params.id),
     req.user!.userId,
@@ -207,10 +217,11 @@ export async function merge(req: Request, res: Response): Promise<void> {
 // ── Очередь предложений объединения древ (модератор) ──────────
 
 export async function mergeSuggestions(
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<void> {
-  const list = await service.listMergeSuggestions();
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  const list = await service.listMergeSuggestions(teipIds);
   res.json(ok(list));
 }
 
@@ -218,6 +229,8 @@ export async function resolveMergeSuggestion(
   req: Request,
   res: Response,
 ): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertSuggestionInTeips(Number(req.params.id), teipIds);
   const { keep_id, full_name, birth_year, death_year, note } =
     resolveMergeSchema.parse(req.body);
   const result = await service.resolveMergeSuggestion(
@@ -233,6 +246,8 @@ export async function dismissMergeSuggestion(
   req: Request,
   res: Response,
 ): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertSuggestionInTeips(Number(req.params.id), teipIds);
   const result = await service.dismissMergeSuggestion(
     Number(req.params.id),
     req.user!.userId,
@@ -243,14 +258,17 @@ export async function dismissMergeSuggestion(
 // ── Объединённые древа: очередь повторной модерации и каталог ──────────
 
 export async function pendingMerges(
-  _req: Request,
+  req: Request,
   res: Response,
 ): Promise<void> {
-  const list = await service.listPendingMerges();
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  const list = await service.listPendingMerges(teipIds);
   res.json(ok(list));
 }
 
 export async function approveMerge(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertTreeMergeInTeips(Number(req.params.id), teipIds);
   const result = await service.approveMerge(
     Number(req.params.id),
     req.user!.userId,
@@ -259,6 +277,8 @@ export async function approveMerge(req: Request, res: Response): Promise<void> {
 }
 
 export async function rejectMerge(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertTreeMergeInTeips(Number(req.params.id), teipIds);
   const result = await service.rejectMerge(
     Number(req.params.id),
     req.user!.userId,

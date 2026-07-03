@@ -12,6 +12,7 @@ export interface AdminUserRow {
   email: string | null;
   role: UserRole;
   created_at: string;
+  teips: { id: number; name: string }[];
 }
 
 export interface AdminStats {
@@ -42,9 +43,15 @@ export async function getStats(): Promise<AdminStats> {
 /** Все зарегистрированные пользователи (без хеша пароля), новые сверху. */
 export async function listUsers(): Promise<AdminUserRow[]> {
   return query<AdminUserRow>(
-    `SELECT id, display_name, phone, email, role, created_at
-     FROM users
-     ORDER BY created_at DESC, id DESC`,
+    `SELECT u.id, u.display_name, u.phone, u.email, u.role, u.created_at,
+            COALESCE(
+              (SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY t.name)
+               FROM (SELECT DISTINCT aa.teip_id FROM admin_assignments aa WHERE aa.user_id = u.id) x
+               JOIN teips t ON t.id = x.teip_id),
+              '[]'::json
+            ) AS teips
+     FROM users u
+     ORDER BY u.created_at DESC, u.id DESC`,
   );
 }
 

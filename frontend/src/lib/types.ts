@@ -257,6 +257,42 @@ export interface CommonAncestor {
 /** Пользователь в админке (с датой регистрации). */
 export interface AdminUser extends User {
   created_at: string;
+  /** Закреплённые тейпы (для хранителей). */
+  teips: { id: number; name: string }[];
+}
+
+// ── Хранители тептара ──────────────────────────────────────────
+
+/** Публичная карточка хранителя. */
+export interface Keeper {
+  user_id: number;
+  display_name: string;
+  teips: string[];
+  since: string;
+}
+
+export type KeeperApplicationStatus = "pending" | "approved" | "rejected";
+
+/** Заявка «Стать хранителем». */
+export interface KeeperApplication {
+  id: number;
+  user_id: number;
+  display_name?: string;
+  email?: string | null;
+  teip_id: number | null;
+  teip_name: string;
+  village: string | null;
+  experience: string;
+  contact: string | null;
+  status: KeeperApplicationStatus;
+  created_at: string;
+}
+
+/** Мой статус в программе хранителей. */
+export interface KeeperStatus {
+  is_keeper: boolean;
+  teips: { id: number; name: string }[];
+  application: KeeperApplication | null;
 }
 
 /** Сводные счётчики для обзора. */

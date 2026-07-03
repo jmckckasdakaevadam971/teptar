@@ -105,6 +105,77 @@ export async function sendTreeRejectedEmail(
   });
 }
 
+/** Письмо заявителю: заявка «Стать хранителем» одобрена. */
+export async function sendKeeperApprovedEmail(
+  email: string,
+  displayName: string,
+  teipName: string,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «хранитель одобрен» для ${email}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    to: email,
+    subject: "Вы — хранитель тептара! — Vorhda",
+    text:
+      `Здравствуйте, ${displayName}!\n\n` +
+      `Ваша заявка одобрена — теперь вы хранитель тептара тейпа ${teipName} ` +
+      `на vorhda.ru.\n\n` +
+      `Вам открыт доступ к панели модерации: https://vorhda.ru/admin\n` +
+      `Там вы будете проверять древа своего тейпа перед публикацией.\n\n` +
+      `Спасибо, что помогаете сохранять родовую память.`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${displayName}</strong>!</p>` +
+        `<p>Ваша заявка одобрена — теперь вы <strong style="color:#2e7d32">хранитель ` +
+        `тептара</strong> тейпа <strong>${teipName}</strong> на vorhda.ru.</p>` +
+        `<p>Вам открыт доступ к панели модерации: там вы будете проверять ` +
+        `древа своего тейпа перед публикацией.</p>` +
+        `<p style="margin:24px 0"><a href="https://vorhda.ru/admin" ` +
+        `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +
+        `text-decoration:none;font-weight:bold">Открыть панель модерации</a></p>` +
+        `<p style="color:#666">Спасибо, что помогаете сохранять родовую память.</p>`,
+    ),
+  });
+}
+
+/** Письмо заявителю: заявка «Стать хранителем» отклонена. */
+export async function sendKeeperRejectedEmail(
+  email: string,
+  displayName: string,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «хранитель отклонён» для ${email}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    to: email,
+    subject: "Ваша заявка хранителя — Vorhda",
+    text:
+      `Здравствуйте, ${displayName}!\n\n` +
+      `К сожалению, сейчас мы не можем одобрить вашу заявку на роль ` +
+      `хранителя тептара.\n\n` +
+      `Вы можете дополнить рассказ о своих знаниях тейпа и подать заявку ` +
+      `повторно: https://vorhda.ru/keepers/apply\n\n` +
+      `Спасибо за желание помочь проекту.`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${displayName}</strong>!</p>` +
+        `<p>К сожалению, сейчас мы не можем одобрить вашу заявку на роль ` +
+        `хранителя тептара.</p>` +
+        `<p>Вы можете дополнить рассказ о своих знаниях тейпа и подать ` +
+        `заявку повторно.</p>` +
+        `<p style="margin:24px 0"><a href="https://vorhda.ru/keepers/apply" ` +
+        `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +
+        `text-decoration:none;font-weight:bold">Подать заявку ещё раз</a></p>` +
+        `<p style="color:#666">Спасибо за желание помочь проекту.</p>`,
+    ),
+  });
+}
+
 /** Отправить код подтверждения на почту. */
 export async function sendVerificationCode(
   email: string,

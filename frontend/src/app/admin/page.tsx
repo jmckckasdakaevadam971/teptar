@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
+import { KeeperApplicationsCard, UserTeipsEditor } from '@/components/KeepersView/AdminKeepers';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
-import type { AdminStats, AdminUser, UserRole } from '@/lib/types';
+import type { AdminStats, AdminUser, Teip, UserRole } from '@/lib/types';
 
 /** Человекочитаемые названия ролей. */
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -38,6 +39,7 @@ function AdminPageInner() {
   const { user, ready } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [allTeips, setAllTeips] = useState<Teip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -49,9 +51,14 @@ function AdminPageInner() {
     setLoading(true);
     setError(null);
     try {
-      const [s, u] = await Promise.all([api.admin.stats(), api.admin.users()]);
+      const [s, u, t] = await Promise.all([
+        api.admin.stats(),
+        api.admin.users(),
+        api.teips.list(),
+      ]);
       setStats(s);
       setUsers(u);
+      setAllTeips(t);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка загрузки');
     } finally {
@@ -140,6 +147,9 @@ function AdminPageInner() {
             ))}
           </div>
 
+          {/* Заявки в хранители */}
+          <KeeperApplicationsCard onApproved={() => void load()} />
+
           {/* Пользователи */}
           <div className={CARD}>
             <div className="mb-3 flex items-center justify-between">
@@ -162,6 +172,7 @@ function AdminPageInner() {
                       <th>Телефон</th>
                       <th>E-mail</th>
                       <th>Роль</th>
+                      <th>Тейпы</th>
                       <th>Регистрация</th>
                       <th></th>
                     </tr>
@@ -191,6 +202,22 @@ function AdminPageInner() {
                                 </option>
                               ))}
                             </select>
+                          </td>
+                          <td>
+                            {u.role === 'teip_admin' ? (
+                              <UserTeipsEditor
+                                userId={u.id}
+                                teips={u.teips ?? []}
+                                allTeips={allTeips}
+                                onChange={(teips) =>
+                                  setUsers((prev) =>
+                                    prev.map((x) => (x.id === u.id ? { ...x, teips } : x)),
+                                  )
+                                }
+                              />
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
                           </td>
                           <td className="whitespace-nowrap text-muted-foreground">
                             {new Date(u.created_at).toLocaleDateString('ru-RU', {

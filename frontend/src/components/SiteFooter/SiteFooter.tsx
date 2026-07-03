@@ -3,6 +3,7 @@ import Link from "next/link";
 const SECTION_LINKS = [
   { label: "Главная", href: "/" },
   { label: "Справочник", href: "/reference" },
+  { label: "Хранители", href: "/keepers" },
 ];
 
 const LEGAL_LINKS = [

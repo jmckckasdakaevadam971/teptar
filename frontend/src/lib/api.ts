@@ -23,6 +23,9 @@ import type {
   MergeSuggestion,
   TreeMerge,
   TreeChange,
+  Keeper,
+  KeeperApplication,
+  KeeperStatus,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
@@ -364,6 +367,42 @@ export const api = {
       request<{ rejected: boolean }>(
         `/persons/moderation/tree-merges/${id}/reject`,
         { method: "POST" },
+      ),
+  },
+
+  /** Программа «Хранители тептара». */
+  keepers: {
+    /** Публичный список хранителей. */
+    list: () => request<Keeper[]>("/keepers"),
+    /** Мой статус: хранитель? заявка? */
+    my: () => request<KeeperStatus>("/keepers/my"),
+    /** Подать заявку. */
+    apply: (input: {
+      teip_id?: number | null;
+      teip_name?: string;
+      village?: string;
+      experience: string;
+      contact?: string;
+    }) =>
+      request<KeeperApplication>("/keepers/apply", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    /** Заявки на рассмотрении (super_admin). */
+    applications: () => request<KeeperApplication[]>("/keepers/applications"),
+    approveApplication: (id: number) =>
+      request<{ approved: boolean }>(`/keepers/applications/${id}/approve`, {
+        method: "POST",
+      }),
+    rejectApplication: (id: number) =>
+      request<{ rejected: boolean }>(`/keepers/applications/${id}/reject`, {
+        method: "POST",
+      }),
+    /** Задать список тейпов пользователя (super_admin). */
+    setUserTeips: (userId: number, teipIds: number[]) =>
+      request<{ teips: { id: number; name: string }[] }>(
+        `/keepers/users/${userId}/teips`,
+        { method: "PUT", body: JSON.stringify({ teip_ids: teipIds }) },
       ),
   },
 

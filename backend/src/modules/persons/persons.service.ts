@@ -22,6 +22,87 @@ export function isAdmin(viewer: Viewer): boolean {
   return viewer.role === "teip_admin" || viewer.role === "super_admin";
 }
 
+// ============================================================================
+//  МОДЕРАЦИЯ ПО ТЕЙПАМ
+//  Хранитель (teip_admin) с закреплёнными тейпами видит и решает только
+//  заявки своих тейпов. Без закреплений — общий модератор (видит всё).
+// ============================================================================
+
+/** Тейпы модератора. null = без ограничений (супер-админ или общий модератор). */
+export async function getModeratorTeipIds(
+  viewer: Viewer,
+): Promise<number[] | null> {
+  if (viewer.role !== "teip_admin" || viewer.userId == null) return null;
+  const rows = await query<{ teip_id: number }>(
+    "SELECT DISTINCT teip_id FROM admin_assignments WHERE user_id = $1",
+    [viewer.userId],
+  );
+  if (rows.length === 0) return null;
+  return rows.map((r) => r.teip_id);
+}
+
+const TEIP_SCOPE_ERROR = "Этот тейп не закреплён за вами";
+
+/** Древо владельца относится к тейпам модератора? (хотя бы одна персона) */
+export async function assertOwnerInTeips(
+  ownerId: number,
+  teipIds: number[] | null,
+): Promise<void> {
+  if (!teipIds) return;
+  const rows = await query(
+    "SELECT 1 FROM persons WHERE created_by = $1 AND teip_id = ANY($2) LIMIT 1",
+    [ownerId, teipIds],
+  );
+  if (rows.length === 0) throw new ApiError(403, TEIP_SCOPE_ERROR);
+}
+
+/** Персона относится к тейпам модератора? */
+export async function assertPersonInTeips(
+  personId: number,
+  teipIds: number[] | null,
+): Promise<void> {
+  if (!teipIds) return;
+  const rows = await query(
+    "SELECT 1 FROM persons WHERE id = $1 AND teip_id = ANY($2) LIMIT 1",
+    [personId, teipIds],
+  );
+  if (rows.length === 0) throw new ApiError(403, TEIP_SCOPE_ERROR);
+}
+
+/** Предложение объединения затрагивает тейпы модератора? */
+export async function assertSuggestionInTeips(
+  suggestionId: number,
+  teipIds: number[] | null,
+): Promise<void> {
+  if (!teipIds) return;
+  const rows = await query(
+    `SELECT 1 FROM merge_suggestions ms
+     JOIN persons pa ON pa.id = ms.person_a_id
+     JOIN persons pb ON pb.id = ms.person_b_id
+     WHERE ms.id = $1 AND (pa.teip_id = ANY($2) OR pb.teip_id = ANY($2))
+     LIMIT 1`,
+    [suggestionId, teipIds],
+  );
+  if (rows.length === 0) throw new ApiError(403, TEIP_SCOPE_ERROR);
+}
+
+/** Объединённое древо затрагивает тейпы модератора? */
+export async function assertTreeMergeInTeips(
+  mergeId: number,
+  teipIds: number[] | null,
+): Promise<void> {
+  if (!teipIds) return;
+  const rows = await query(
+    `SELECT 1 FROM tree_merges tm
+     JOIN persons pa ON pa.id = tm.anchor_a_id
+     JOIN persons pb ON pb.id = tm.anchor_b_id
+     WHERE tm.id = $1 AND (pa.teip_id = ANY($2) OR pb.teip_id = ANY($2))
+     LIMIT 1`,
+    [mergeId, teipIds],
+  );
+  if (rows.length === 0) throw new ApiError(403, TEIP_SCOPE_ERROR);
+}
+
 /** Может ли зритель видеть конкретную персону. */
 function canView(p: PersonRow, viewer: Viewer): boolean {
   if (isAdmin(viewer)) return true;
@@ -544,19 +625,26 @@ export interface PendingTree {
 }
 
 /** Владельцы, у кого есть ожидающие правки опубликованных записей. */
-export function listEditOwners(): Promise<PendingTree[]> {
+export function listEditOwners(
+  teipIds: number[] | null = null,
+): Promise<PendingTree[]> {
   return query<PendingTree>(
     `SELECT u.id AS owner_id, u.display_name AS owner_name,
             COUNT(p.id)::int AS count,
             MIN(p.birth_year) AS min_year, MAX(p.birth_year) AS max_year
      FROM persons p JOIN users u ON u.id = p.created_by
      WHERE p.pending_diff IS NOT NULL
-     GROUP BY u.id, u.display_name ORDER BY count DESC`,
+     GROUP BY u.id, u.display_name
+     HAVING $1::bigint[] IS NULL OR bool_or(p.teip_id = ANY($1))
+     ORDER BY count DESC`,
+    [teipIds],
   );
 }
 
 /** Очередь модерации: древа, ожидающие одобрения, сгруппированы по владельцу. */
-export async function listPendingTrees(): Promise<PendingTree[]> {
+export async function listPendingTrees(
+  teipIds: number[] | null = null,
+): Promise<PendingTree[]> {
   return query<PendingTree>(
     `SELECT u.id AS owner_id,
             u.display_name AS owner_name,
@@ -567,7 +655,9 @@ export async function listPendingTrees(): Promise<PendingTree[]> {
      JOIN users u ON u.id = p.created_by
      WHERE p.visibility = 'public' AND p.status = 'pending'
      GROUP BY u.id, u.display_name
+     HAVING $1::bigint[] IS NULL OR bool_or(p.teip_id = ANY($1))
      ORDER BY count DESC`,
+    [teipIds],
   );
 }
 
@@ -1180,7 +1270,9 @@ export interface MergeSuggestion {
 }
 
 /** Список необработанных предложений объединения древ (для модератора). */
-export async function listMergeSuggestions(): Promise<MergeSuggestion[]> {
+export async function listMergeSuggestions(
+  teipIds: number[] | null = null,
+): Promise<MergeSuggestion[]> {
   const rows = await query<Record<string, unknown>>(
     `
     SELECT ms.id, ms.similarity,
@@ -1202,9 +1294,12 @@ export async function listMergeSuggestions(): Promise<MergeSuggestion[]> {
     LEFT JOIN persons fa ON fa.id = pa.father_id
     LEFT JOIN persons fb ON fb.id = pb.father_id
     WHERE ms.status = 'pending'
+      AND ($1::bigint[] IS NULL
+           OR pa.teip_id = ANY($1) OR pb.teip_id = ANY($1))
     ORDER BY ms.similarity DESC, ms.id DESC
     LIMIT 200
     `,
+    [teipIds],
   );
 
   // Одним запросом подтягиваем прямых детей всех якорей (ветка вниз).
@@ -1414,6 +1509,7 @@ export interface TreeMerge {
 /** Собрать карточки объединённых древ с указанным статусом. */
 async function listTreeMerges(
   status: "pending" | "approved" | "rejected",
+  teipIds: number[] | null = null,
 ): Promise<TreeMerge[]> {
   const rows = await query<Record<string, unknown>>(
     `
@@ -1433,10 +1529,12 @@ async function listTreeMerges(
     LEFT JOIN teips ta ON ta.id = pa.teip_id
     LEFT JOIN teips tb ON tb.id = pb.teip_id
     WHERE tm.status = $1
+      AND ($2::bigint[] IS NULL
+           OR pa.teip_id = ANY($2) OR pb.teip_id = ANY($2))
     ORDER BY tm.created_at DESC, tm.id DESC
     LIMIT 200
     `,
-    [status],
+    [status, teipIds],
   );
 
   // Размер каждой ветки (предок + потомки) одним обходом на якорь.
@@ -1498,8 +1596,10 @@ async function branchSize(anchorId: number): Promise<number> {
 }
 
 /** Очередь объединённых древ на повторной модерации. */
-export function listPendingMerges(): Promise<TreeMerge[]> {
-  return listTreeMerges("pending");
+export function listPendingMerges(
+  teipIds: number[] | null = null,
+): Promise<TreeMerge[]> {
+  return listTreeMerges("pending", teipIds);
 }
 
 /** Публичный каталог одобренных объединённых древ. */
