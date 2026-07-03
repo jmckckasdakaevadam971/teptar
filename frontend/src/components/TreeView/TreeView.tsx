@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
 const NODE_W = 176; // w-44
-const NODE_H = 116; // вмещает имя в 2 строки + годы + супругу
+const NODE_H = 116; // вмещает имя в 2 строки + годы
 const H_GAP = 24;
 const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
@@ -55,6 +55,7 @@ type Connector = {
 };
 
 /** Чистая древовидная раскладка: каждый родитель центрируется над детьми.
+ *  Жёны занимают собственные слоты справа от мужа (карточки-сателлиты).
  *  Вынесена из компонента, чтобы PNG-экспорт мог построить раскладку
  *  ПОЛНОГО древа независимо от свёрнутых ветвей. */
 function computeTreeLayout(people: Person[], editable: boolean) {
@@ -81,13 +82,18 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   // дети раскладываются справа налево: первый добавленный — правее
   const place = (node: Person): number => {
     const kids = childrenMap.get(node.id);
+    // узел с жёнами занимает 1 + N слотов (карточки жён — справа)
+    const unitSlots = 1 + getSpouses(node).length;
     let x: number;
     if (!kids || kids.length === 0) {
       x = cursor * SLOT;
-      cursor += 1;
+      cursor += unitSlots;
     } else {
       const xs = [...kids].reverse().map(place);
       x = (Math.min(...xs) + Math.max(...xs)) / 2;
+      // карточки жён торчат вправо — сдвигаем курсор, чтобы следующая
+      // ветвь не наехала на них
+      cursor = Math.max(cursor, x / SLOT + unitSlots);
     }
     pos[node.id] = { x, y: (node.generation - minGen) * ROW_PITCH };
     return x;
@@ -106,6 +112,18 @@ function computeTreeLayout(people: Person[], editable: boolean) {
     height += 2 * ROW_PITCH;
   }
   return { pos, width, height };
+}
+
+/** Позиции карточек жён: подряд справа от карточки мужа. */
+function wifeCardsOf(
+  person: Person,
+  p: { x: number; y: number },
+): { name: string; x: number; y: number }[] {
+  return getSpouses(person).map((name, i) => ({
+    name,
+    x: p.x + SLOT * (i + 1),
+    y: p.y,
+  }));
 }
 
 export function TreeView({
@@ -215,10 +233,17 @@ export function TreeView({
     const p = layout.pos[selected.id];
     if (!p) return [];
 
-    // Занята ли позиция существующим узлом или уже добавленным слотом.
+    // Занята ли позиция существующим узлом, карточкой жены или слотом.
     const taken: { x: number; y: number }[] = Object.values(layout.pos).map(
       (q) => ({ x: q.x, y: q.y }),
     );
+    for (const person of visiblePeople) {
+      const pp = layout.pos[person.id];
+      if (!pp) continue;
+      for (const w of wifeCardsOf(person, pp)) {
+        taken.push({ x: w.x, y: w.y });
+      }
+    }
     const occupied = (x: number, y: number) =>
       taken.some(
         (q) =>
@@ -245,14 +270,15 @@ export function TreeView({
         { x: p.x - SLOT, y: p.y - ROW_PITCH },
       ]);
     }
-    // Жена — справа; если справа сосед, пробуем слева и дальше.
+    // Жена — сразу за последней женой справа; если занято — слева и дальше.
     // У женского узла (дочь) жену не предлагаем.
     // Жён может быть несколько, поэтому слот доступен всегда.
     if (!isFemale(selected)) {
+      const wives = getSpouses(selected).length;
       pushFree("wife", [
-        { x: p.x + SLOT, y: p.y },
+        { x: p.x + SLOT * (wives + 1), y: p.y },
         { x: p.x - SLOT, y: p.y },
-        { x: p.x + 2 * SLOT, y: p.y },
+        { x: p.x + SLOT * (wives + 2), y: p.y },
         { x: p.x - 2 * SLOT, y: p.y },
       ]);
     }
@@ -291,7 +317,7 @@ export function TreeView({
       ]);
     }
     return slots;
-  }, [editable, selected, people, layout, collapsed]);
+  }, [editable, selected, people, visiblePeople, layout, collapsed]);
 
   // вычисляем уголковые связи родитель → дети.
   // Координаты X/Y берём из layout (надёжно), высоту карточки — из DOM.
@@ -581,29 +607,49 @@ export function TreeView({
       ctx.stroke();
     });
 
-    // Узлы: компактная карточка — полное имя (с переносами), годы, супруга
+    // Линии брака: муж — жена (рисуем до карточек, чтобы линия шла под ними)
+    ctx.strokeStyle = "#9c6b74";
+    ctx.lineWidth = 2;
     for (const person of people) {
       const p = full.pos[person.id];
       if (!p) continue;
+      const wives = getSpouses(person);
+      if (!wives.length) continue;
+      ctx.beginPath();
+      ctx.moveTo(p.x + NODE_W - 8, p.y + NODE_H / 2);
+      ctx.lineTo(p.x + SLOT * wives.length + 8, p.y + NODE_H / 2);
+      ctx.stroke();
+    }
 
-      // перенос имени по словам под ширину карточки (максимум 2 строки)
-      ctx.font = "600 13px Georgia, serif";
-      const maxTextW = NODE_W - 32;
-      let nameLines: string[] = [];
+    // перенос текста по словам под ширину карточки (максимум maxLines строк)
+    const wrapText = (text: string, maxW: number, maxLines: number) => {
+      let lines: string[] = [];
       let line = "";
-      for (const word of person.name.split(" ")) {
+      for (const word of text.split(" ")) {
         const probe = line ? `${line} ${word}` : word;
-        if (ctx.measureText(probe).width > maxTextW && line) {
-          nameLines.push(line);
+        if (ctx.measureText(probe).width > maxW && line) {
+          lines.push(line);
           line = word;
         } else {
           line = probe;
         }
       }
-      if (line) nameLines.push(line);
-      if (nameLines.length > 2) {
-        nameLines = [nameLines[0], `${nameLines[1]}…`];
+      if (line) lines.push(line);
+      if (lines.length > maxLines) {
+        lines = lines.slice(0, maxLines);
+        lines[maxLines - 1] = `${lines[maxLines - 1]}…`;
       }
+      return lines;
+    };
+
+    // Узлы: компактная карточка — полное имя (с переносами) и годы
+    for (const person of people) {
+      const p = full.pos[person.id];
+      if (!p) continue;
+
+      ctx.font = "600 13px Georgia, serif";
+      const maxTextW = NODE_W - 32;
+      const nameLines = wrapText(person.name, maxTextW, 2);
 
       const years = person.birth
         ? `${person.birth}${person.death ? `–${person.death}` : ""}`
@@ -627,19 +673,42 @@ export function TreeView({
       ctx.font = "600 13px Georgia, serif";
       nameLines.forEach((l, i) => ctx.fillText(l, tx, p.y + 14 + i * 16));
 
-      let cursorY = p.y + 14 + nameLines.length * 16 + 4;
+      const cursorY = p.y + 14 + nameLines.length * 16 + 4;
       if (years) {
         ctx.fillStyle = "#a99a78";
         ctx.font = "11px Arial, sans-serif";
         ctx.fillText(years, tx, cursorY);
-        cursorY += 16;
       }
+
+      // карточки жён — сателлиты справа от карточки мужа
       const spouses = getSpouses(person);
-      if (spouses.length) {
-        ctx.fillStyle = "#a99a78";
-        ctx.font = "10px Arial, sans-serif";
-        ctx.fillText(`⚭ ${spouses.join(", ")}`, tx, cursorY, maxTextW);
-      }
+      const female = isFemale(person);
+      spouses.forEach((wifeName, i) => {
+        const wx = p.x + SLOT * (i + 1);
+        ctx.beginPath();
+        ctx.roundRect(wx, p.y, NODE_W, cardH, r);
+        ctx.fillStyle = "#221619";
+        ctx.fill();
+        ctx.strokeStyle = "#8a5560";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        const wtx = wx + 16;
+        ctx.fillStyle = "#d8a7b1";
+        ctx.font = "600 9px Arial, sans-serif";
+        const label = female
+          ? "МУЖ"
+          : spouses.length > 1
+            ? `${i + 1}-Я ЖЕНА`
+            : "ЖЕНА";
+        ctx.fillText(`⚭ ${label}`, wtx, p.y + 14);
+
+        ctx.fillStyle = "#f2ecdd";
+        ctx.font = "600 13px Georgia, serif";
+        wrapText(wifeName, maxTextW, 3).forEach((l, j) =>
+          ctx.fillText(l, wtx, p.y + 30 + j * 16),
+        );
+      });
     }
 
     const a = document.createElement("a");
@@ -774,6 +843,27 @@ export function TreeView({
                   ))}
                 </g>
               ))}
+
+              {/* линии брака: муж — жена (жёны справа от мужа) */}
+              {visiblePeople.map((person) => {
+                const pp = layout.pos[person.id];
+                if (!pp) return null;
+                const wives = getSpouses(person);
+                if (!wives.length) return null;
+                const midY = pp.y + NODE_H / 2;
+                return (
+                  <line
+                    key={`marriage-${person.id}`}
+                    x1={pp.x + NODE_W - 8}
+                    y1={midY}
+                    x2={pp.x + SLOT * wives.length + 8}
+                    y2={midY}
+                    stroke="#9c6b74"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  />
+                );
+              })}
 
               {/* пунктирные связи к плейсхолдерам «+» */}
               {selected && layout.pos[selected.id]
@@ -926,13 +1016,6 @@ export function TreeView({
                         </span>
                       ) : null}
                     </div>
-                    {/* Жёны видны прямо в карточке (может быть несколько). */}
-                    {getSpouses(person).length ? (
-                      <p className="mt-1 truncate text-[11px] leading-snug text-muted-foreground">
-                        ⚭ {getSpouses(person).join(", ")}
-                      </p>
-                    ) : null}
-
                     {/* Кнопка сворачивания ветви — на нижней кромке карточки.
                         Показывается только у узлов с потомками. */}
                     {kidsCount > 0 ? (
@@ -968,6 +1051,40 @@ export function TreeView({
                     ) : null}
                   </div>
                 );
+              })}
+
+              {/* карточки жён — сателлиты справа от карточки мужа */}
+              {visiblePeople.flatMap((person) => {
+                const pp = layout.pos[person.id];
+                if (!pp) return [];
+                const female = isFemale(person);
+                const wives = wifeCardsOf(person, pp);
+                return wives.map((w, i) => (
+                  <div
+                    key={`${person.id}-wife-${i}`}
+                    style={{
+                      position: "absolute",
+                      left: w.x,
+                      top: w.y,
+                      width: NODE_W,
+                      height: NODE_H,
+                    }}
+                    className="rounded-2xl border border-[#8a5560]/60 bg-[#221619] p-4 text-left"
+                    title={w.name}
+                  >
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-[#d8a7b1]">
+                      ⚭{" "}
+                      {female
+                        ? "муж"
+                        : wives.length > 1
+                          ? `${i + 1}-я жена`
+                          : "жена"}
+                    </p>
+                    <p className="mt-1 line-clamp-3 break-words font-serif text-base font-semibold leading-snug text-foreground">
+                      {w.name}
+                    </p>
+                  </div>
+                ));
               })}
 
               {/* плейсхолдеры «добавить родственника» вокруг выбранного */}

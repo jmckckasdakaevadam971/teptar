@@ -44,6 +44,8 @@ export interface TreeNode {
   father_id: number | null;
   mother_id: number | null;
   depth: number;
+  /** Имена жён (жён может быть несколько); хранятся строками при муже. */
+  spouse_names?: string[] | null;
 }
 
 export interface CommonAncestorResult {
@@ -70,17 +72,17 @@ export async function getAncestors(
     `
     WITH RECURSIVE ancestors AS (
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, 0 AS depth, ARRAY[p.id] AS path
+             p.father_id, p.mother_id, p.spouse_names, 0 AS depth, ARRAY[p.id] AS path
       FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, a.depth + 1, a.path || p.id
+             p.father_id, p.mother_id, p.spouse_names, a.depth + 1, a.path || p.id
       FROM persons p
       JOIN ancestors a ON p.id = a.father_id OR p.id = a.mother_id
       WHERE a.depth < $2 AND NOT p.id = ANY(a.path)${vis.sql}
     )
     SELECT id, full_name, gender, birth_year, death_year,
-           father_id, mother_id, depth
+           father_id, mother_id, spouse_names, depth
     FROM ancestors
     ORDER BY depth
     `,
@@ -101,17 +103,17 @@ export async function getDescendants(
     `
     WITH RECURSIVE descendants AS (
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, 0 AS depth, ARRAY[p.id] AS path
+             p.father_id, p.mother_id, p.spouse_names, 0 AS depth, ARRAY[p.id] AS path
       FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, d.depth + 1, d.path || p.id
+             p.father_id, p.mother_id, p.spouse_names, d.depth + 1, d.path || p.id
       FROM persons p
       JOIN descendants d ON p.father_id = d.id OR p.mother_id = d.id
       WHERE d.depth < $2 AND NOT p.id = ANY(d.path)${vis.sql}
     )
     SELECT id, full_name, gender, birth_year, death_year,
-           father_id, mother_id, depth
+           father_id, mother_id, spouse_names, depth
     FROM descendants
     ORDER BY depth
     `,

@@ -248,17 +248,7 @@ export function MyTreeClient() {
       // Формируем весь пакет и отправляем одним запросом: бэкенд в одной
       // транзакции удалит прежнее древо и создаст новое (родитель — по temp_id).
       const payload = people.map((p) => {
-        const noteParts: string[] = [];
-        if (p.bio) noteParts.push(p.bio);
-        {
-          const spouses = getSpouses(p);
-          if (spouses.length)
-            noteParts.push(
-              spouses.length > 1
-                ? `Жёны: ${spouses.join(", ")}`
-                : `Супруга: ${spouses[0]}`,
-            );
-        }
+        const spouses = getSpouses(p);
         return {
           temp_id: p.id,
           full_name: p.name,
@@ -279,7 +269,8 @@ export function MyTreeClient() {
             (p.village
               ? villageMap.get(p.village.trim().toLowerCase())
               : undefined) ?? null,
-          note: noteParts.join(". ") || null,
+          note: p.bio?.trim() || null,
+          spouse_names: spouses.length ? spouses : null,
         };
       });
 

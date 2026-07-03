@@ -608,8 +608,8 @@ export async function replaceTree(
         INSERT INTO persons
           (full_name, gender, birth_year, death_year,
            father_id, mother_id, teip_id, gar_id, village_id,
-           note, visibility, status, created_by, approved_by, is_alive)
-        VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,'public','pending',$10,NULL,$11)
+           note, spouse_names, visibility, status, created_by, approved_by, is_alive)
+        VALUES ($1,$2,$3,$4,$5,NULL,$6,$7,$8,$9,$10,'public','pending',$11,NULL,$12)
         RETURNING id
         `,
         [
@@ -622,6 +622,7 @@ export async function replaceTree(
           p.gar_id ?? null,
           p.village_id ?? null,
           p.note ?? null,
+          p.spouse_names && p.spouse_names.length ? p.spouse_names : null,
           userId,
           p.death_year == null,
         ],

@@ -14,6 +14,8 @@ export interface PersonRow {
   gar_id: number | null;
   village_id: number | null;
   note: string | null;
+  /** Имена жён (жён может быть несколько); хранятся строками при муже. */
+  spouse_names?: string[] | null;
   visibility: "private" | "public";
   status: "pending" | "approved" | "rejected";
   created_by: number | null;
@@ -114,6 +116,11 @@ export const bulkPersonSchema = z.object({
   gar_id: z.number().int().positive().nullable().optional(),
   village_id: z.number().int().positive().nullable().optional(),
   note: z.string().max(5000).nullable().optional(),
+  spouse_names: z
+    .array(z.string().trim().min(1).max(120))
+    .max(20)
+    .nullable()
+    .optional(),
 });
 export const bulkTreeSchema = z.object({
   persons: z.array(bulkPersonSchema).min(1).max(2000),

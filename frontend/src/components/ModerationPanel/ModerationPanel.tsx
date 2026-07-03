@@ -83,6 +83,7 @@ function toTreePeople(persons: Person[]): TreePerson[] {
     teip: "",
     bio: p.note ?? undefined,
     generation: genOf(p),
+    spouseNames: p.spouse_names ?? undefined,
     parentId:
       p.father_id != null && byId.has(p.father_id)
         ? String(p.father_id)

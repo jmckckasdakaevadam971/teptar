@@ -38,6 +38,8 @@ export interface Person {
   gar_id: number | null;
   village_id: number | null;
   note: string | null;
+  /** Имена жён (жён может быть несколько); хранятся строками при муже. */
+  spouse_names?: string[] | null;
   status: PersonStatus;
   visibility: Visibility;
   created_by: number | null;
@@ -213,6 +215,8 @@ export interface TreeNode {
   father_id: number | null;
   mother_id: number | null;
   depth: number;
+  /** Имена жён (жён может быть несколько). */
+  spouse_names?: string[] | null;
 }
 
 export interface Teip {

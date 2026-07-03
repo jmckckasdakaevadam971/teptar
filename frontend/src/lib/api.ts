@@ -131,6 +131,7 @@ export const api = {
         gar_id: number | null;
         village_id: number | null;
         note: string | null;
+        spouse_names: string[] | null;
       }>,
     ) =>
       request<{ count: number }>("/persons/tree/bulk", {

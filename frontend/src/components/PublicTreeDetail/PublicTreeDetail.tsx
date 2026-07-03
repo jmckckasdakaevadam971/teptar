@@ -20,6 +20,7 @@ export function toTreePeople(nodes: TreeNode[]): TreePerson[] {
     role: "",
     teip: "",
     generation: n.depth,
+    spouseNames: n.spouse_names ?? undefined,
     parentId:
       n.father_id != null && ids.has(n.father_id)
         ? String(n.father_id)
