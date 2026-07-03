@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import { TreeView } from "@/components/TreeView/TreeView";
@@ -25,6 +25,10 @@ import type {
 } from "@/lib/types";
 import type { Person as TreePerson } from "@/lib/demo-data";
 
+// ============================================================================
+//  Вспомогательные функции
+// ============================================================================
+
 /** Описание диапазона лет древа. */
 function yearsLabel(min: number | null, max: number | null): string {
   if (min == null && max == null) return "годы не указаны";
@@ -36,6 +40,23 @@ function yearsLabel(min: number | null, max: number | null): string {
 function personYears(p: Person): string {
   if (!p.birth_year && !p.death_year) return "—";
   return `${p.birth_year ?? "?"} – ${p.death_year ?? (p.is_alive ? "н.в." : "?")}`;
+}
+
+/** Годы жизни человека одной строкой. */
+function anchorYears(birth: number | null, death: number | null): string {
+  return birth || death
+    ? `${birth ?? "?"} – ${death ?? "?"}`
+    : "годы не указаны";
+}
+
+/** Склонение слова «человек» по числу. */
+function personWord(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "человек";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20))
+    return "человека";
+  return "человек";
 }
 
 /** Преобразовать персоны из бэкенда в формат визуального древа TreeView. */
@@ -100,555 +121,296 @@ const FIELD_RU: Record<string, string> = {
   mother_id: "Мать",
 };
 
-/** Ключ localStorage: показывать ли инструкцию модератора. */
+/** Предложение уже неактуально (слито/пересоздано/персона удалена). */
+function isStale(e: unknown): boolean {
+  const status = (e as { status?: number } | null)?.status;
+  const msg = e instanceof Error ? e.message.toLowerCase() : "";
+  return status === 404 || msg.includes("не найдено");
+}
+
+/** «Только что», «5 мин назад», «2 ч назад» — для обработанных заявок. */
+function timeAgo(ts: number): string {
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (sec < 60) return "только что";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.floor(min / 60);
+  return `${h} ч назад`;
+}
+
+// ============================================================================
+//  Модель единой ленты заявок
+// ============================================================================
+
+type FeedKind = "tree" | "suggestion" | "merge" | "edit";
+
+type FeedItem =
+  | { kind: "tree"; key: string; tree: PendingTree }
+  | { kind: "suggestion"; key: string; s: MergeSuggestion }
+  | { kind: "merge"; key: string; m: TreeMerge }
+  | { kind: "edit"; key: string; ownerName: string; change: TreeChange };
+
+/** Итог обработки — для чипа статуса. */
+type DoneStatus = "approved" | "rejected" | "merged" | "dismissed";
+
+interface HistoryEntry {
+  item: FeedItem;
+  status: DoneStatus;
+  at: number;
+}
+
+const KIND_LABEL: Record<FeedKind, string> = {
+  tree: "Публикация древа",
+  suggestion: "Объединение древ",
+  merge: "Общее древо",
+  edit: "Данные человека",
+};
+
+const DONE_LABEL: Record<DoneStatus, string> = {
+  approved: "Одобрено",
+  rejected: "Отклонено",
+  merged: "Объединено",
+  dismissed: "Не совпадают",
+};
+
+/** Заголовок карточки в ленте. */
+function itemTitle(item: FeedItem): string {
+  switch (item.kind) {
+    case "tree":
+      return `Древо — ${item.tree.owner_name}`;
+    case "suggestion":
+      return `Общий предок: ${item.s.anchor_a.full_name}`;
+    case "merge":
+      return item.m.merged_name;
+    case "edit":
+      return `${item.change.full_name} — правка данных`;
+  }
+}
+
+/** Строка с автором и краткой сводкой. */
+function itemMeta(item: FeedItem): string {
+  switch (item.kind) {
+    case "tree":
+      return `${item.tree.owner_name} · ${item.tree.count} ${personWord(item.tree.count)} · ${yearsLabel(item.tree.min_year, item.tree.max_year)}`;
+    case "suggestion":
+      return `${item.s.owner_a.owner_name ?? "—"} ⇄ ${item.s.owner_b.owner_name ?? "—"} · совпадение ~${Math.round(item.s.similarity * 100)}%`;
+    case "merge":
+      return `${item.m.total} ${personWord(item.m.total)} · ${item.m.branch_a.owner_name ?? "—"} + ${item.m.branch_b.owner_name ?? "—"}`;
+    case "edit": {
+      const n = Object.keys(item.change.diff).length;
+      return `${item.ownerName} · изменений: ${n}`;
+    }
+  }
+}
+
+// ============================================================================
+//  Мелкие UI-элементы
+// ============================================================================
+
+/** Ключ localStorage: показывать ли блок «Как работает модерация». */
 const GUIDE_KEY = "vorhda_moderation_guide";
 
-/** Кружок с номером шага конвейера модерации. */
-function StepBadge({ n }: { n: number }) {
+/** Иконка типа заявки в круге. */
+function KindIcon({ kind }: { kind: FeedKind }) {
+  const glyph =
+    kind === "tree" ? "🌳" : kind === "suggestion" ? "⇄" : kind === "merge" ? "🔗" : "✎";
   return (
-    <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border border-gold-soft bg-gold/10 text-[12px] font-bold text-gold-light">
-      {n}
+    <span
+      aria-hidden
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gold-soft bg-gold/10 text-[15px] text-gold-light"
+    >
+      {glyph}
     </span>
   );
 }
 
-/** Золотой счётчик элементов, ожидающих действия модератора. */
-function CountBadge({ n }: { n: number }) {
-  if (n <= 0) return null;
+/** Чип статуса заявки. */
+function StatusChip({ status }: { status: "pending" | DoneStatus }) {
+  if (status === "pending") {
+    return (
+      <span className="rounded-full border border-gold-soft bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-gold-light">
+        Ждёт решения
+      </span>
+    );
+  }
+  const good = status === "approved" || status === "merged";
   return (
-    <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-bold leading-[18px] text-background">
-      {n}
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        good
+          ? "border-[#2f6b3f] bg-[#122416] text-[#7ed99b]"
+          : "border-[#6b2f2f] bg-[#241212] text-[#e08a7a]"
+      }`}
+    >
+      {DONE_LABEL[status]}
     </span>
   );
 }
 
-/** Сводка очередей: сколько где ждёт решения. Клик — прокрутка к разделу. */
-function SummaryChips({
-  items,
-}: {
-  items: { id: string; label: string; count: number | null }[];
-}) {
+/** Стрелка раскрытия карточки. */
+function Chevron({ open }: { open: boolean }) {
   return (
-    <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          title="Перейти к разделу"
-          onClick={() =>
-            document
-              .getElementById(it.id)
-              ?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
-          className="rounded-xl border border-line bg-background/40 px-3 py-2.5 text-left transition-colors hover:border-gold-soft"
-        >
-          <span
-            className={`block font-serif text-[22px] font-bold leading-none ${
-              (it.count ?? 0) > 0 ? "text-gold-light" : "text-sand"
-            }`}
-          >
-            {it.count ?? "…"}
-          </span>
-          <span className="mt-1 block text-[12px] text-sand">{it.label}</span>
-        </button>
-      ))}
+    <span
+      aria-hidden
+      className={`text-sand transition-transform ${open ? "rotate-180" : ""}`}
+    >
+      ⌄
+    </span>
+  );
+}
+
+/** Плашка «label: value» в раскрытой карточке. */
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-background/40 px-3 py-2">
+      <div className="text-[11px] text-sand">{label}</div>
+      <div className="mt-0.5 text-[14px] text-cream">{value}</div>
     </div>
   );
 }
 
-/** Пошаговая инструкция для модератора: путь древа от автора до общей базы. */
-function ModerationGuide() {
-  const steps: { title: string; text: string }[] = [
+// ============================================================================
+//  Блок «Как работает модерация — 3 шага» (сворачиваемый)
+// ============================================================================
+
+function HowItWorks({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const steps = [
     {
-      title: "Новые древа",
-      text: "Автор отправил своё древо в общую базу. Откройте его, просмотрите имена и годы. «Одобрить» — древо увидят все в разделе «Древа». «Отклонить» — древо вернётся автору на доработку. В обоих случаях автор получит письмо.",
+      title: "Откройте заявку",
+      text: "Нажмите на карточку в очереди — внутри сводка изменений и данные автора.",
     },
     {
-      title: "Предложения объединить древа",
-      text: "Система сама сравнивает опубликованные древа и находит общих предков. Если в двух древах действительно один и тот же человек — нажмите «Объединить древа», и из двух веток соберётся общее древо. Если люди разные — «Не совпадают».",
+      title: "Проверьте по чек-листу",
+      text: "Даты не противоречат друг другу, имена реальные, тейп указан верно.",
     },
     {
-      title: "Общие древа на проверке",
-      text: "Проверьте собранное общее древо целиком: правильно ли срослись ветки, нет ли двойников. «Одобрить и опубликовать» — древо появится у всех. Исходные древа авторов при этом не меняются.",
-    },
-    {
-      title: "Правки опубликованных записей",
-      text: "Автор изменил запись, которая уже видна всем. Пока правку не одобрили, все видят старые данные. Посмотрите, что меняется, и примите или отклоните.",
+      title: "Примите решение",
+      text: "«Одобрить» — данные попадут в общую базу. «Отклонить» — заявка вернётся автору, он получит письмо.",
     },
   ];
   return (
-    <div className="mb-4 rounded-xl border border-gold-soft bg-gold/[0.04] p-4">
-      <p className="m-0 mb-3 text-[13px] font-semibold uppercase tracking-wide text-gold-light">
-        Путь древа: от автора до общей базы
-      </p>
-      <ol className="m-0 flex list-none flex-col gap-3 p-0">
-        {steps.map((s, i) => (
-          <li key={s.title} className="flex gap-2.5">
-            <StepBadge n={i + 1} />
-            <div>
-              <p className="m-0 text-[14px] font-semibold text-cream">
-                {s.title}
-              </p>
-              <p className="m-0 mt-0.5 text-[13px] leading-relaxed text-sand">
-                {s.text}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ol>
-      <p className="m-0 mt-3 border-t border-line pt-3 text-[13px] leading-relaxed text-sand">
-        Сомневаетесь — отклоняйте: автор сможет исправить и отправить снова,
-        ничего не потеряется.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Очередь модерации общей базы: древа, отправленные пользователями.
- * Модератор может развернуть древо и посмотреть персоны перед решением.
- * Одобрение/отклонение применяется ко всему древу пользователя сразу.
- */
-export function ModerationPanel() {
-  const [trees, setTrees] = useState<PendingTree[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  // Счётчики дочерних очередей — для сводки вверху панели.
-  const [sugCount, setSugCount] = useState<number | null>(null);
-  const [mergeCount, setMergeCount] = useState<number | null>(null);
-  const [editCount, setEditCount] = useState<number | null>(null);
-
-  // Инструкция модератора: по умолчанию раскрыта, выбор запоминается.
-  const [guideOpen, setGuideOpen] = useState(false);
-  useEffect(() => {
-    try {
-      setGuideOpen(localStorage.getItem(GUIDE_KEY) !== "hidden");
-    } catch {
-      setGuideOpen(true);
-    }
-  }, []);
-
-  function toggleGuide() {
-    const next = !guideOpen;
-    setGuideOpen(next);
-    try {
-      localStorage.setItem(GUIDE_KEY, next ? "shown" : "hidden");
-    } catch {
-      /* например, приватный режим — просто не запоминаем выбор */
-    }
-  }
-
-  // Просмотр: какое древо открыто в модальном окне и кэш загруженных персон.
-  const [viewerId, setViewerId] = useState<number | null>(null);
-  const [viewerSelected, setViewerSelected] = useState<string | null>(null);
-  const [confirmReject, setConfirmReject] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [preview, setPreview] = useState<Record<number, Person[]>>({});
-  const [previewLoading, setPreviewLoading] = useState(false);
-  // Возможные дубли с другими древами (по владельцу).
-  const [duplicates, setDuplicates] = useState<Record<number, DuplicatePair[]>>(
-    {},
-  );
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setTrees(await api.moderation.pending());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => setMounted(true), []);
-
-  async function openViewer(ownerId: number) {
-    setViewerId(ownerId);
-    setViewerSelected(null);
-    setConfirmReject(false);
-    setError(null);
-    if (!preview[ownerId]) {
-      setPreviewLoading(true);
-      try {
-        const [persons, dups] = await Promise.all([
-          api.moderation.persons(ownerId),
-          api.moderation.duplicates(ownerId).catch(() => [] as DuplicatePair[]),
-        ]);
-        setPreview((prev) => ({ ...prev, [ownerId]: persons }));
-        setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Не удалось загрузить древо");
-        setViewerId(null);
-      } finally {
-        setPreviewLoading(false);
-      }
-    }
-  }
-
-  async function decide(
-    ownerId: number,
-    action: "approve" | "reject",
-    _name: string,
-  ) {
-    setBusyId(ownerId);
-    setError(null);
-    try {
-      await api.moderation[action](ownerId);
-      setTrees((prev) => prev.filter((t) => t.owner_id !== ownerId));
-      if (viewerId === ownerId) {
-        setViewerId(null);
-        setConfirmReject(false);
-      }
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Не удалось выполнить действие",
-      );
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  /** Объединить две записи: keep остаётся, drop удаляется и перепривязывается. */
-  async function merge(ownerId: number, keepId: number, dropId: number) {
-    if (!confirm("Объединить эти две записи? Действие необратимо.")) return;
-    setBusyId(ownerId);
-    setError(null);
-    try {
-      await api.moderation.merge(keepId, dropId);
-      const [persons, dups] = await Promise.all([
-        api.moderation.persons(ownerId),
-        api.moderation.duplicates(ownerId).catch(() => [] as DuplicatePair[]),
-      ]);
-      setPreview((prev) => ({ ...prev, [ownerId]: persons }));
-      setDuplicates((prev) => ({ ...prev, [ownerId]: dups }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось объединить");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  return (
-    <div className={CARD}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="m-0 text-xl font-semibold text-cream">Модерация</h2>
-        <button
-          type="button"
-          className={BTN_SECONDARY}
-          onClick={toggleGuide}
-          title="Краткая инструкция для модератора"
-        >
-          {guideOpen ? "Скрыть инструкцию" : "❔ Как это работает"}
-        </button>
-      </div>
-
-      {guideOpen && <ModerationGuide />}
-
-      <SummaryChips
-        items={[
-          {
-            id: "mod-pending",
-            label: "Новые древа",
-            count: loading ? null : trees.length,
-          },
-          { id: "mod-suggestions", label: "Объединения", count: sugCount },
-          { id: "mod-merges", label: "Общие древа", count: mergeCount },
-          { id: "mod-edits", label: "Правки", count: editCount },
-        ]}
-      />
-
-      <div
-        id="mod-pending"
-        className="mb-2 flex items-center justify-between scroll-mt-4"
+    <div className="mb-4 rounded-xl border border-gold-soft bg-gold/[0.04]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
       >
-        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
-          <StepBadge n={1} /> Новые древа
-          <CountBadge n={trees.length} />
-        </h3>
-        <button
-          type="button"
-          className={BTN_SECONDARY}
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          Обновить
-        </button>
-      </div>
-
-      <p className="mb-3 text-[13px] text-sand">
-        Древа, отправленные авторами в общую базу. Откройте, просмотрите и
-        решите: одобрить или вернуть автору.
-      </p>
-
-      {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
-
-      {loading ? (
-        <p className="text-sand">Загрузка…</p>
-      ) : trees.length === 0 ? (
-        <p className="text-sand">
-          ✓ Всё проверено — новых древ нет. Когда автор отправит древо, оно
-          появится здесь.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {trees.map((t) => (
-            <div
-              key={t.owner_id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-2.5"
-            >
-              <div className="flex min-w-[200px] flex-1 items-center gap-2.5 text-cream">
-                <span className="text-[15px] font-bold text-gold-light">
-                  {t.owner_name}
-                </span>
-                <span className="text-[13px] text-sand">
-                  {t.count} {t.count === 1 ? "персона" : "персон"} ·{" "}
-                  {yearsLabel(t.min_year, t.max_year)}
-                </span>
+        <span className="flex items-center gap-2 font-serif text-[15px] font-bold text-cream">
+          <span aria-hidden className="text-gold-light">
+            ✓
+          </span>
+          Как работает модерация — 3 шага
+        </span>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div className="grid gap-4 border-t border-gold-soft/40 px-4 py-4 sm:grid-cols-3">
+          {steps.map((s, i) => (
+            <div key={s.title} className="flex gap-2.5">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gold text-[12px] font-bold text-background">
+                {i + 1}
+              </span>
+              <div>
+                <p className="m-0 text-[14px] font-semibold text-cream">
+                  {s.title}
+                </p>
+                <p className="m-0 mt-0.5 text-[12.5px] leading-relaxed text-sand">
+                  {s.text}
+                </p>
               </div>
-              <button
-                type="button"
-                className={BTN_PRIMARY}
-                disabled={busyId === t.owner_id}
-                onClick={() => void openViewer(t.owner_id)}
-              >
-                Просмотреть древо
-              </button>
             </div>
           ))}
         </div>
       )}
-
-      {mounted &&
-        viewerId != null &&
-        createPortal(
-          (() => {
-            const t = trees.find((x) => x.owner_id === viewerId);
-            if (!t) return null;
-            const persons = preview[viewerId];
-            const dups = duplicates[viewerId] ?? [];
-            return (
-              <div className="fixed inset-0 z-[70] flex flex-col bg-background">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-                  <div className="flex min-w-[200px] items-center gap-2.5">
-                    <button
-                      type="button"
-                      className={BTN_SECONDARY}
-                      onClick={() => {
-                        setViewerId(null);
-                        setConfirmReject(false);
-                      }}
-                    >
-                      ← Назад
-                    </button>
-                    <span className="text-[16px] font-bold text-gold-light">
-                      {t.owner_name}
-                    </span>
-                    <span className="text-[13px] text-sand">
-                      {t.count} {t.count === 1 ? "персона" : "персон"} ·{" "}
-                      {yearsLabel(t.min_year, t.max_year)}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={BTN_PRIMARY}
-                      disabled={busyId === t.owner_id}
-                      onClick={() =>
-                        void decide(t.owner_id, "approve", t.owner_name)
-                      }
-                    >
-                      ✓ Одобрить
-                    </button>
-                    {confirmReject ? (
-                      <span className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
-                        Отклонить и вернуть автору?
-                        <button
-                          type="button"
-                          className={LINK_DANGER}
-                          disabled={busyId === t.owner_id}
-                          onClick={() =>
-                            void decide(t.owner_id, "reject", t.owner_name)
-                          }
-                        >
-                          {busyId === t.owner_id
-                            ? "Отклоняем…"
-                            : "Да, отклонить"}
-                        </button>
-                        <button
-                          type="button"
-                          className={BTN_SECONDARY}
-                          disabled={busyId === t.owner_id}
-                          onClick={() => setConfirmReject(false)}
-                        >
-                          Отмена
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className={LINK_DANGER}
-                        disabled={busyId === t.owner_id}
-                        onClick={() => setConfirmReject(true)}
-                      >
-                        ✖ Отклонить
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-auto p-4">
-                  {error && (
-                    <p className="mb-3 text-sm text-[#b91c1c]">{error}</p>
-                  )}
-                  {previewLoading && !persons ? (
-                    <p className="text-sand">Загрузка древа…</p>
-                  ) : persons && persons.length > 0 ? (
-                    <>
-                      <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
-                        <TreeView
-                          people={toTreePeople(persons)}
-                          selectedId={viewerSelected}
-                          onSelect={setViewerSelected}
-                        />
-                      </div>
-
-                      <div className="mt-4">
-                        <span className="text-[13px] text-sand">
-                          Персоны древа ({persons.length})
-                        </span>
-                        <div className={`${TABLE_WRAP} mt-2`}>
-                          <table className={TABLE}>
-                            <thead>
-                              <tr>
-                                <th>ФИО</th>
-                                <th>Пол</th>
-                                <th>Годы</th>
-                                <th>Примечание</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {persons.map((p) => (
-                                <tr key={p.id}>
-                                  <td>{p.full_name}</td>
-                                  <td>{p.gender === "f" ? "жен." : "муж."}</td>
-                                  <td className="whitespace-nowrap">
-                                    {personYears(p)}
-                                  </td>
-                                  <td className="whitespace-normal text-sand">
-                                    {p.note ?? "—"}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {dups.length > 0 && (
-                        <div className="mt-4 rounded-lg border border-gold-soft bg-gold/[0.06] p-3">
-                          <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
-                            ⚠ Возможные совпадения с другими древами (
-                            {dups.length})
-                          </p>
-                          <div className="flex flex-col gap-2">
-                            {dups.map((d, i) => (
-                              <div
-                                key={`${d.person.id}-${d.candidate.id}-${i}`}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-2.5 py-2"
-                              >
-                                <div className="min-w-[220px] flex-1 text-[13px] text-cream">
-                                  <span className="text-gold-light">
-                                    {d.person.full_name}
-                                  </span>
-                                  <span className="text-sand">
-                                    {" "}
-                                    ({d.person.birth_year ?? "?"})
-                                  </span>
-                                  <span className="text-sand"> ↔ </span>
-                                  <span className="text-gold-light">
-                                    {d.candidate.full_name}
-                                  </span>
-                                  <span className="text-sand">
-                                    {" "}
-                                    ({d.candidate.birth_year ?? "?"})
-                                  </span>
-                                  <span className="text-sand">
-                                    {" · "}
-                                    {d.candidate.owner_name ?? "другой автор"} ·
-                                    ~{Math.round(d.candidate.similarity * 100)}%
-                                  </span>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    className={`${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`}
-                                    disabled={busyId === t.owner_id}
-                                    onClick={() =>
-                                      void merge(
-                                        t.owner_id,
-                                        d.candidate.id,
-                                        d.person.id,
-                                      )
-                                    }
-                                  >
-                                    Оставить чужую
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`}
-                                    disabled={busyId === t.owner_id}
-                                    onClick={() =>
-                                      void merge(
-                                        t.owner_id,
-                                        d.person.id,
-                                        d.candidate.id,
-                                      )
-                                    }
-                                  >
-                                    Оставить эту
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sand">
-                      В этом древе нет персон на модерации.
-                    </p>
-                  )}
-                </div>
-              </div>
-            );
-          })(),
-          document.body,
-        )}
-
-      <MergeSuggestionsQueue onCount={setSugCount} />
-
-      <PendingMergesQueue onCount={setMergeCount} />
-
-      <EditQueue onCount={setEditCount} />
     </div>
   );
 }
 
-/** Годы жизни человека одной строкой. */
-function anchorYears(birth: number | null, death: number | null): string {
-  return birth || death
-    ? `${birth ?? "?"} – ${death ?? "?"}`
-    : "годы не указаны";
+// ============================================================================
+//  Правая колонка: чек-лист и расшифровка решений
+// ============================================================================
+
+function Checklist() {
+  const items = [
+    "Даты рождения и смерти не противоречат поколениям",
+    "Имена реальные, без ошибок и посторонних символов",
+    "Нет оскорблений и непроверяемых утверждений",
+    "Тейп и село соответствуют справочнику",
+    "При объединении древ: это точно один человек (отец и годы совпадают)",
+  ];
+  return (
+    <div className="rounded-2xl border border-line bg-card p-4">
+      <p className="m-0 mb-3 flex items-center gap-2 font-serif text-[16px] font-bold text-cream">
+        <span aria-hidden className="text-gold-light">
+          ☰
+        </span>
+        Чек-лист проверки
+      </p>
+      <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+        {items.map((t) => (
+          <li key={t} className="flex gap-2 text-[13px] leading-snug text-sand">
+            <span aria-hidden className="mt-px shrink-0 text-gold-light">
+              ✓
+            </span>
+            {t}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
+
+function DecisionsHelp() {
+  const items = [
+    {
+      icon: "✓",
+      title: "Одобрить",
+      text: "Данные сразу появятся в общей базе и станут видны всем.",
+    },
+    {
+      icon: "↩",
+      title: "Отклонить",
+      text: "Заявка вернётся автору: он сможет исправить и отправить снова. Автор получит письмо.",
+    },
+    {
+      icon: "⇄",
+      title: "Не совпадают",
+      text: "Для объединений: пометить, что это разные люди — предложение больше не появится.",
+    },
+  ];
+  return (
+    <div className="rounded-2xl border border-line bg-card p-4">
+      <p className="m-0 mb-3 font-serif text-[16px] font-bold text-cream">
+        Что означают решения
+      </p>
+      <div className="flex flex-col gap-3">
+        {items.map((d) => (
+          <div key={d.title}>
+            <p className="m-0 flex items-center gap-1.5 text-[13px] font-semibold text-cream">
+              <span aria-hidden className="text-gold-light">
+                {d.icon}
+              </span>
+              {d.title}
+            </p>
+            <p className="m-0 mt-0.5 text-[12.5px] leading-relaxed text-sand">
+              {d.text}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+//  Тела карточек по типам заявок
+// ============================================================================
 
 /** Мини-схема одного древа вокруг общего предка: отец → предок → дети. */
 function AnchorTree({
@@ -713,12 +475,88 @@ function completeness(a: MergeAnchor): number {
   );
 }
 
-/**
- * Карточка одного предложения: две мини-схемы древ, общий предок и форма
- * объединения. Модератор выбирает основу и итоговые поля предка, затем
- * «Объединить древа» — обе ветки срастаются под одним предком.
- */
-function MergeCard({
+/** Раскрытая карточка «Публикация древа». */
+function TreeBody({
+  tree,
+  busy,
+  onView,
+  onApprove,
+  onReject,
+}: {
+  tree: PendingTree;
+  busy: boolean;
+  onView: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const [confirmReject, setConfirmReject] = useState(false);
+  return (
+    <div>
+      <p className="m-0 mb-3 text-[13px] leading-relaxed text-sand">
+        Автор отправил древо в общую базу. Откройте схему, проверьте имена и
+        годы по чек-листу и примите решение.
+      </p>
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <StatBox
+          label="Человек в древе"
+          value={`${tree.count} ${personWord(tree.count)}`}
+        />
+        <StatBox label="Годы" value={yearsLabel(tree.min_year, tree.max_year)} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={`${BTN_SECONDARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy}
+          onClick={onView}
+        >
+          Просмотреть древо
+        </button>
+        <button
+          type="button"
+          className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy}
+          onClick={onApprove}
+        >
+          ✓ Одобрить
+        </button>
+        {confirmReject ? (
+          <span className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
+            Вернуть автору?
+            <button
+              type="button"
+              className={LINK_DANGER}
+              disabled={busy}
+              onClick={onReject}
+            >
+              Да, отклонить
+            </button>
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              disabled={busy}
+              onClick={() => setConfirmReject(false)}
+            >
+              Отмена
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={LINK_DANGER}
+            disabled={busy}
+            onClick={() => setConfirmReject(true)}
+          >
+            ✖ Отклонить
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Раскрытая карточка «Объединение древ»: схемы якорей + форма объединения. */
+function SuggestionBody({
   s,
   busy,
   onMerge,
@@ -782,12 +620,13 @@ function MergeCard({
     "w-full rounded-md border border-line bg-background/60 px-2 py-1 text-[13px] text-cream outline-none focus:border-gold-soft";
 
   return (
-    <div className="rounded-xl border border-gold-soft bg-gold/[0.05] p-3">
-      <div className="mb-2 text-[12px] text-sand">
-        Похоже, это одно древо — общий предок{" "}
-        <b className="text-gold-light">{s.anchor_a.full_name}</b> (совпадение ~
-        {Math.round(s.similarity * 100)}%)
-      </div>
+    <div>
+      <p className="m-0 mb-2 text-[13px] leading-relaxed text-sand">
+        Ваш вопрос здесь один:{" "}
+        <b className="text-cream">это один и тот же человек?</b> Да —
+        объедините: создастся общее древо, исходные не меняются. Нет — «Не
+        совпадают».
+      </p>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
         <AnchorTree owner={s.owner_a} anchor={s.anchor_a} />
@@ -934,42 +773,227 @@ function MergeCard({
   );
 }
 
-/**
- * Очередь авто-предложений срастить два древа по общему предку.
- * Одно предложение на пару древ — по самому надёжному совпадению.
- */
-/** Предложение уже неактуально (слито/пересоздано/персона удалена). */
-function isStale(e: unknown): boolean {
-  const status = (e as { status?: number } | null)?.status;
-  const msg = e instanceof Error ? e.message.toLowerCase() : "";
-  return status === 404 || msg.includes("не найдено");
+/** Раскрытая карточка «Общее древо на проверке». */
+function MergeBody({
+  m,
+  busy,
+  onPreview,
+  onApprove,
+  onReject,
+}: {
+  m: TreeMerge;
+  busy: boolean;
+  onPreview: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const [confirmReject, setConfirmReject] = useState(false);
+  return (
+    <div>
+      <p className="m-0 mb-3 text-[13px] leading-relaxed text-sand">
+        Финальная проверка: общее древо уже собрано из двух веток. Убедитесь,
+        что ветки срослись правильно и нет двойников, затем одобрите — древо
+        появится у всех в разделе «Древа». Исходные древа авторов не меняются.
+      </p>
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <StatBox
+          label="Общий предок"
+          value={`${m.merged_name}${m.merged_birth_year != null ? ` (${m.merged_birth_year}${m.merged_death_year != null ? `–${m.merged_death_year}` : ""})` : ""}`}
+        />
+        <StatBox
+          label={`Ветка A — ${m.branch_a.owner_name ?? "—"}`}
+          value={`${m.branch_a.size} ${personWord(m.branch_a.size)}`}
+        />
+        <StatBox
+          label={`Ветка B — ${m.branch_b.owner_name ?? "—"}`}
+          value={`${m.branch_b.size} ${personWord(m.branch_b.size)}`}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={`${BTN_SECONDARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy}
+          onClick={onPreview}
+        >
+          Показать древо
+        </button>
+        <button
+          type="button"
+          className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy}
+          onClick={onApprove}
+        >
+          ✓ Одобрить и опубликовать
+        </button>
+        {confirmReject ? (
+          <span className="flex items-center gap-2 text-[13px] text-sand">
+            Точно отклонить?
+            <button
+              type="button"
+              className={LINK_DANGER}
+              disabled={busy}
+              onClick={onReject}
+            >
+              Да
+            </button>
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              disabled={busy}
+              onClick={() => setConfirmReject(false)}
+            >
+              Отмена
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={LINK_DANGER}
+            disabled={busy}
+            onClick={() => setConfirmReject(true)}
+          >
+            ✖ Отклонить
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function MergeSuggestionsQueue({
-  onCount,
+/** Раскрытая карточка «Данные человека» (правка опубликованной записи). */
+function EditBody({
+  change,
+  busy,
+  onApprove,
+  onReject,
 }: {
-  onCount: (n: number) => void;
+  change: TreeChange;
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
 }) {
-  const [items, setItems] = useState<MergeSuggestion[]>([]);
+  return (
+    <div>
+      <p className="m-0 mb-2 text-[13px] leading-relaxed text-sand">
+        Запись уже опубликована — все видят старые данные, пока вы не примете
+        правку. Зачёркнуто — как было, рядом — как станет.
+      </p>
+      <ul className="m-0 mb-3 list-disc pl-5 text-[13px] text-sand">
+        {Object.entries(change.diff).map(([field, v]) => (
+          <li key={field}>
+            {FIELD_RU[field] ?? field}: <s>{String(v.from ?? "—")}</s> →{" "}
+            <span className="text-cream">{String(v.to ?? "—")}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={`${BTN_PRIMARY} !px-3 !py-1 !text-[13px]`}
+          disabled={busy}
+          onClick={onApprove}
+        >
+          ✓ Применить
+        </button>
+        <button
+          type="button"
+          className={LINK_DANGER}
+          disabled={busy}
+          onClick={onReject}
+        >
+          ✖ Отклонить
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+//  Главная панель модерации: единая лента + фильтры + правая колонка
+// ============================================================================
+
+export function ModerationPanel() {
+  const [trees, setTrees] = useState<PendingTree[]>([]);
+  const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
+  const [merges, setMerges] = useState<TreeMerge[]>([]);
+  const [edits, setEdits] = useState<{ owner: PendingTree; change: TreeChange }[]>([]);
+
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"pending" | "done" | "all">("pending");
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [mounted, setMounted] = useState(false);
-  const [preview, setPreview] = useState<{
+
+  // Блок «Как работает» — по умолчанию раскрыт, выбор запоминается.
+  const [guideOpen, setGuideOpen] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    try {
+      setGuideOpen(localStorage.getItem(GUIDE_KEY) !== "hidden");
+    } catch {
+      setGuideOpen(true);
+    }
+  }, []);
+
+  function toggleGuide() {
+    const next = !guideOpen;
+    setGuideOpen(next);
+    try {
+      localStorage.setItem(GUIDE_KEY, next ? "shown" : "hidden");
+    } catch {
+      /* приватный режим — не запоминаем */
+    }
+  }
+
+  // Полноэкранный просмотр древа автора (для заявок «Публикация древа»).
+  const [viewer, setViewer] = useState<{
+    tree: PendingTree;
+    persons: Person[] | null;
+    dups: DuplicatePair[];
+    loading: boolean;
+    selectedId: string | null;
+    confirmReject: boolean;
+  } | null>(null);
+
+  // Полноэкранный просмотр общего древа (для объединений).
+  const [mergePreview, setMergePreview] = useState<{
     mergeId: number;
+    title: string;
+    subtitle: string;
+    approveId: number | null; // если задан — в шапке есть кнопка «Одобрить»
     nodes: TreeNode[] | null;
     loading: boolean;
     selectedId: string | null;
   } | null>(null);
 
-  useEffect(() => setMounted(true), []);
-  useEffect(() => onCount(items.length), [items.length, onCount]);
-
-  const load = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await api.moderation.mergeSuggestions());
+      const [ts, ss, ms, editOwners] = await Promise.all([
+        api.moderation.pending(),
+        api.moderation.mergeSuggestions().catch(() => [] as MergeSuggestion[]),
+        api.moderation.pendingMerges().catch(() => [] as TreeMerge[]),
+        api.moderation.editOwners().catch(() => [] as PendingTree[]),
+      ]);
+      setTrees(ts);
+      setSuggestions(ss);
+      setMerges(ms);
+      const pairs: { owner: PendingTree; change: TreeChange }[] = [];
+      await Promise.all(
+        editOwners.map((o) =>
+          api.moderation
+            .changes(o.owner_id)
+            .then((cs) => {
+              for (const c of cs) pairs.push({ owner: o, change: c });
+            })
+            .catch(() => undefined),
+        ),
+      );
+      setEdits(pairs);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
@@ -978,20 +1002,123 @@ function MergeSuggestionsQueue({
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadAll();
+  }, [loadAll]);
 
-  async function openPreview(mergeId: number) {
-    setPreview({ mergeId, nodes: null, loading: true, selectedId: null });
+  // ---------- лента ----------
+
+  const pendingItems: FeedItem[] = useMemo(() => {
+    const list: FeedItem[] = [];
+    for (const t of trees)
+      list.push({ kind: "tree", key: `tree-${t.owner_id}`, tree: t });
+    for (const s of suggestions)
+      list.push({ kind: "suggestion", key: `sug-${s.id}`, s });
+    for (const m of merges)
+      list.push({ kind: "merge", key: `merge-${m.id}`, m });
+    for (const e of edits)
+      list.push({
+        kind: "edit",
+        key: `edit-${e.change.person_id}`,
+        ownerName: e.owner.owner_name,
+        change: e.change,
+      });
+    return list;
+  }, [trees, suggestions, merges, edits]);
+
+  const doneCount = history.length;
+  const allCount = pendingItems.length + doneCount;
+
+  /** Пометить заявку обработанной (уходит во вкладку «Обработанные»). */
+  function finish(item: FeedItem, status: DoneStatus) {
+    setHistory((prev) => [{ item, status, at: Date.now() }, ...prev]);
+    setExpandedKey(null);
+  }
+
+  // ---------- действия ----------
+
+  async function decideTree(item: Extract<FeedItem, { kind: "tree" }>, action: "approve" | "reject") {
+    setBusyKey(item.key);
+    setError(null);
+    try {
+      await api.moderation[action](item.tree.owner_id);
+      setTrees((prev) => prev.filter((t) => t.owner_id !== item.tree.owner_id));
+      finish(item, action === "approve" ? "approved" : "rejected");
+      if (viewer?.tree.owner_id === item.tree.owner_id) setViewer(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось выполнить действие");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function openTreeViewer(tree: PendingTree) {
+    setViewer({
+      tree,
+      persons: null,
+      dups: [],
+      loading: true,
+      selectedId: null,
+      confirmReject: false,
+    });
+    try {
+      const [persons, dups] = await Promise.all([
+        api.moderation.persons(tree.owner_id),
+        api.moderation.duplicates(tree.owner_id).catch(() => [] as DuplicatePair[]),
+      ]);
+      setViewer((prev) =>
+        prev && prev.tree.owner_id === tree.owner_id
+          ? { ...prev, persons, dups, loading: false }
+          : prev,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось загрузить древо");
+      setViewer(null);
+    }
+  }
+
+  /** Объединить дубли внутри просматриваемого древа: keep остаётся, drop удаляется. */
+  async function mergeDuplicate(ownerId: number, keepId: number, dropId: number) {
+    if (!confirm("Объединить эти две записи? Действие необратимо.")) return;
+    setBusyKey(`tree-${ownerId}`);
+    setError(null);
+    try {
+      await api.moderation.merge(keepId, dropId);
+      const [persons, dups] = await Promise.all([
+        api.moderation.persons(ownerId),
+        api.moderation.duplicates(ownerId).catch(() => [] as DuplicatePair[]),
+      ]);
+      setViewer((prev) =>
+        prev && prev.tree.owner_id === ownerId
+          ? { ...prev, persons, dups }
+          : prev,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось объединить");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function openMergedPreview(
+    mergeId: number,
+    opts: { title: string; subtitle: string; approveId: number | null },
+  ) {
+    setMergePreview({
+      mergeId,
+      ...opts,
+      nodes: null,
+      loading: true,
+      selectedId: null,
+    });
     try {
       const nodes = await api.tree.mergedTree(mergeId);
-      setPreview((prev) =>
+      setMergePreview((prev) =>
         prev && prev.mergeId === mergeId
           ? { ...prev, nodes, loading: false }
           : prev,
       );
     } catch {
-      setPreview((prev) =>
+      setMergePreview((prev) =>
         prev && prev.mergeId === mergeId
           ? { ...prev, nodes: [], loading: false }
           : prev,
@@ -999,8 +1126,8 @@ function MergeSuggestionsQueue({
     }
   }
 
-  async function merge(
-    id: number,
+  async function resolveSuggestion(
+    item: Extract<FeedItem, { kind: "suggestion" }>,
     keepId: number,
     fields: {
       full_name: string;
@@ -1009,356 +1136,578 @@ function MergeSuggestionsQueue({
       note: string | null;
     },
   ) {
-    setBusy(id);
+    setBusyKey(item.key);
     setError(null);
     try {
-      const res = await api.moderation.resolveMerge(id, keepId, fields);
-      setItems((prev) => prev.filter((x) => x.id !== id));
-      void openPreview(res.tree_merge_id);
+      const res = await api.moderation.resolveMerge(item.s.id, keepId, fields);
+      setSuggestions((prev) => prev.filter((x) => x.id !== item.s.id));
+      finish(item, "merged");
+      // Появилось новое общее древо на проверке — обновим и покажем его.
+      try {
+        setMerges(await api.moderation.pendingMerges());
+      } catch {
+        /* не критично */
+      }
+      void openMergedPreview(res.tree_merge_id, {
+        title: "Общее древо отправлено на проверку",
+        subtitle:
+          "Так оно будет выглядеть. Найдите его в очереди «Общее древо» и одобрите после проверки.",
+        approveId: null,
+      });
     } catch (e) {
       if (isStale(e)) {
-        setItems((prev) => prev.filter((x) => x.id !== id));
-        setError(
-          "Это предложение уже неактуально (древо изменилось). Список обновлён.",
-        );
-        void load();
+        setSuggestions((prev) => prev.filter((x) => x.id !== item.s.id));
+        setError("Это предложение уже неактуально (древо изменилось). Список обновлён.");
+        void loadAll();
       } else {
         setError(e instanceof Error ? e.message : "Не удалось объединить");
       }
     } finally {
-      setBusy(null);
+      setBusyKey(null);
     }
   }
 
-  async function dismiss(id: number) {
-    setBusy(id);
+  async function dismissSuggestion(item: Extract<FeedItem, { kind: "suggestion" }>) {
+    setBusyKey(item.key);
     setError(null);
     try {
-      await api.moderation.dismissMerge(id);
-      setItems((prev) => prev.filter((x) => x.id !== id));
+      await api.moderation.dismissMerge(item.s.id);
+      setSuggestions((prev) => prev.filter((x) => x.id !== item.s.id));
+      finish(item, "dismissed");
     } catch (e) {
       if (isStale(e)) {
-        setItems((prev) => prev.filter((x) => x.id !== id));
+        setSuggestions((prev) => prev.filter((x) => x.id !== item.s.id));
         setError("Это предложение уже неактуально. Список обновлён.");
-        void load();
+        void loadAll();
       } else {
         setError(e instanceof Error ? e.message : "Не удалось отклонить");
       }
     } finally {
-      setBusy(null);
+      setBusyKey(null);
     }
   }
 
-  return (
-    <div id="mod-suggestions" className="mt-6 scroll-mt-4 border-t border-line pt-5">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
-          <StepBadge n={2} /> Предложения объединить древа
-          <CountBadge n={items.length} />
-        </h3>
+  async function decideMerge(
+    item: Extract<FeedItem, { kind: "merge" }>,
+    action: "approveMerge" | "rejectMerge",
+  ) {
+    setBusyKey(item.key);
+    setError(null);
+    try {
+      await api.moderation[action](item.m.id);
+      setMerges((prev) => prev.filter((x) => x.id !== item.m.id));
+      finish(item, action === "approveMerge" ? "approved" : "rejected");
+      if (mergePreview?.mergeId === item.m.id) setMergePreview(null);
+    } catch (e) {
+      if (isStale(e)) {
+        setMerges((prev) => prev.filter((x) => x.id !== item.m.id));
+        setError("Это объединение уже неактуально. Список обновлён.");
+        void loadAll();
+      } else {
+        setError(e instanceof Error ? e.message : "Не удалось выполнить");
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function decideEdit(
+    item: Extract<FeedItem, { kind: "edit" }>,
+    action: "approveEdit" | "rejectEdit",
+  ) {
+    setBusyKey(item.key);
+    setError(null);
+    try {
+      await api.moderation[action](item.change.person_id);
+      setEdits((prev) =>
+        prev.filter((e) => e.change.person_id !== item.change.person_id),
+      );
+      finish(item, action === "approveEdit" ? "approved" : "rejected");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось выполнить");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  // ---------- рендер карточки ----------
+
+  function renderBody(item: FeedItem) {
+    const busy = busyKey === item.key;
+    switch (item.kind) {
+      case "tree":
+        return (
+          <TreeBody
+            tree={item.tree}
+            busy={busy}
+            onView={() => void openTreeViewer(item.tree)}
+            onApprove={() => void decideTree(item, "approve")}
+            onReject={() => void decideTree(item, "reject")}
+          />
+        );
+      case "suggestion":
+        return (
+          <SuggestionBody
+            s={item.s}
+            busy={busy}
+            onMerge={(keepId, fields) =>
+              void resolveSuggestion(item, keepId, fields)
+            }
+            onDismiss={() => void dismissSuggestion(item)}
+          />
+        );
+      case "merge":
+        return (
+          <MergeBody
+            m={item.m}
+            busy={busy}
+            onPreview={() =>
+              void openMergedPreview(item.m.id, {
+                title: "Общее древо (на проверке)",
+                subtitle: "Проверьте целиком, затем одобрите или отклоните.",
+                approveId: item.m.id,
+              })
+            }
+            onApprove={() => void decideMerge(item, "approveMerge")}
+            onReject={() => void decideMerge(item, "rejectMerge")}
+          />
+        );
+      case "edit":
+        return (
+          <EditBody
+            change={item.change}
+            busy={busy}
+            onApprove={() => void decideEdit(item, "approveEdit")}
+            onReject={() => void decideEdit(item, "rejectEdit")}
+          />
+        );
+    }
+  }
+
+  function FeedCardShell({
+    item,
+    status,
+    at,
+  }: {
+    item: FeedItem;
+    status: "pending" | DoneStatus;
+    at?: number;
+  }) {
+    const isPending = status === "pending";
+    const open = isPending && expandedKey === item.key;
+    return (
+      <div
+        className={`rounded-xl border transition-colors ${
+          open ? "border-gold-soft bg-gold/[0.04]" : "border-line bg-gold/[0.02]"
+        }`}
+      >
         <button
           type="button"
-          className={BTN_SECONDARY}
-          onClick={() => void load()}
-          disabled={loading}
+          onClick={() =>
+            isPending && setExpandedKey(open ? null : item.key)
+          }
+          className={`flex w-full items-start gap-3 px-3.5 py-3 text-left ${isPending ? "" : "cursor-default"}`}
         >
-          Обновить
+          <KindIcon kind={item.kind} />
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-sand">
+                {KIND_LABEL[item.kind]}
+              </span>
+              <StatusChip status={status} />
+            </span>
+            <span className="mt-0.5 block truncate font-serif text-[16px] font-bold text-cream">
+              {itemTitle(item)}
+            </span>
+            <span className="mt-0.5 block text-[12.5px] text-sand">
+              {itemMeta(item)}
+              {at != null && ` · ${timeAgo(at)}`}
+            </span>
+          </span>
+          {isPending && <Chevron open={open} />}
         </button>
+        {open && (
+          <div className="border-t border-line px-3.5 py-3">
+            {renderBody(item)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ---------- вкладки ----------
+
+  const tabs: { id: typeof filter; label: string; count: number }[] = [
+    { id: "pending", label: "Ждут решения", count: pendingItems.length },
+    { id: "done", label: "Обработанные", count: doneCount },
+    { id: "all", label: "Все", count: allCount },
+  ];
+
+  return (
+    <div className={CARD}>
+      <HowItWorks open={guideOpen} onToggle={toggleGuide} />
+
+      <div className="gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_280px]">
+        {/* -------- Лента заявок -------- */}
+        <div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {tabs.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setFilter(t.id)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
+                    filter === t.id
+                      ? "border-gold-soft bg-gold/10 font-semibold text-gold-light"
+                      : "border-line text-sand hover:border-gold-soft/60"
+                  }`}
+                >
+                  {t.label}
+                  <span
+                    className={`rounded-full px-1.5 text-[11px] leading-[18px] ${
+                      filter === t.id
+                        ? "bg-gold/20 text-gold-light"
+                        : "bg-background/60 text-sand"
+                    }`}
+                  >
+                    {t.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              onClick={() => void loadAll()}
+              disabled={loading}
+            >
+              Обновить
+            </button>
+          </div>
+
+          {error && <p className="mb-2 text-sm text-[#b91c1c]">{error}</p>}
+
+          {loading ? (
+            <p className="text-sand">Загрузка…</p>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {(filter === "pending" || filter === "all") &&
+                pendingItems.map((item) => (
+                  <FeedCardShell key={item.key} item={item} status="pending" />
+                ))}
+              {(filter === "done" || filter === "all") &&
+                history.map((h) => (
+                  <FeedCardShell
+                    key={`done-${h.item.key}-${h.at}`}
+                    item={h.item}
+                    status={h.status}
+                    at={h.at}
+                  />
+                ))}
+
+              {filter === "pending" && pendingItems.length === 0 && (
+                <p className="m-0 rounded-xl border border-line px-4 py-6 text-center text-sand">
+                  ✓ Всё проверено — заявок нет. Новые появятся здесь, когда
+                  авторы отправят древа или правки.
+                </p>
+              )}
+              {filter === "done" && doneCount === 0 && (
+                <p className="m-0 rounded-xl border border-line px-4 py-6 text-center text-sand">
+                  Здесь появятся заявки, обработанные в этой сессии.
+                </p>
+              )}
+              {filter === "all" && allCount === 0 && (
+                <p className="m-0 rounded-xl border border-line px-4 py-6 text-center text-sand">
+                  Заявок пока нет.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* -------- Правая колонка -------- */}
+        <div className="mt-5 flex flex-col gap-4 lg:mt-0">
+          <Checklist />
+          <DecisionsHelp />
+        </div>
       </div>
 
-      <p className="mb-3 text-[13px] text-sand">
-        Система нашла древа с общим предком. Ваш вопрос здесь один:{" "}
-        <b className="text-cream">это один и тот же человек?</b> Да —
-        «Объединить древа» (создастся общее древо, исходные не меняются). Нет —
-        «Не совпадают».
-      </p>
-
-      {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
-
-      {loading ? (
-        <p className="text-sand">Загрузка…</p>
-      ) : items.length === 0 ? (
-        <p className="text-sand">
-          ✓ Предложений нет. Система сравнивает древа автоматически при каждой
-          публикации — совпадения появятся здесь сами.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {items.map((s) => (
-            <MergeCard
-              key={s.id}
-              s={s}
-              busy={busy === s.id}
-              onMerge={(keepId, fields) => void merge(s.id, keepId, fields)}
-              onDismiss={() => void dismiss(s.id)}
-            />
-          ))}
-        </div>
-      )}
-
+      {/* -------- Полноэкранный просмотр древа автора -------- */}
       {mounted &&
-        preview &&
+        viewer &&
         createPortal(
           <div className="fixed inset-0 z-[70] flex flex-col bg-background">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
               <div className="flex min-w-[200px] items-center gap-2.5">
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  onClick={() => setViewer(null)}
+                >
+                  ← Назад
+                </button>
                 <span className="text-[16px] font-bold text-gold-light">
-                  Общее древо отправлено на проверку
+                  {viewer.tree.owner_name}
                 </span>
                 <span className="text-[13px] text-sand">
-                  Так оно будет выглядеть. Появится у всех после одобрения в
-                  разделе «Объединённые древа на проверке» ниже.
+                  {viewer.tree.count} {personWord(viewer.tree.count)} ·{" "}
+                  {yearsLabel(viewer.tree.min_year, viewer.tree.max_year)}
                 </span>
               </div>
-              <button
-                type="button"
-                className={BTN_PRIMARY}
-                onClick={() => setPreview(null)}
-              >
-                Готово
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {preview.loading && !preview.nodes ? (
-                <p className="text-sand">Строим общее древо…</p>
-              ) : preview.nodes && preview.nodes.length > 0 ? (
-                <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
-                  <TreeView
-                    people={fullTreeToPeople(preview.nodes)}
-                    selectedId={preview.selectedId}
-                    onSelect={(id) =>
-                      setPreview((prev) =>
-                        prev ? { ...prev, selectedId: id } : prev,
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={BTN_PRIMARY}
+                  disabled={busyKey === `tree-${viewer.tree.owner_id}`}
+                  onClick={() =>
+                    void decideTree(
+                      {
+                        kind: "tree",
+                        key: `tree-${viewer.tree.owner_id}`,
+                        tree: viewer.tree,
+                      },
+                      "approve",
+                    )
+                  }
+                >
+                  ✓ Одобрить
+                </button>
+                {viewer.confirmReject ? (
+                  <span className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
+                    Отклонить и вернуть автору?
+                    <button
+                      type="button"
+                      className={LINK_DANGER}
+                      disabled={busyKey === `tree-${viewer.tree.owner_id}`}
+                      onClick={() =>
+                        void decideTree(
+                          {
+                            kind: "tree",
+                            key: `tree-${viewer.tree.owner_id}`,
+                            tree: viewer.tree,
+                          },
+                          "reject",
+                        )
+                      }
+                    >
+                      Да, отклонить
+                    </button>
+                    <button
+                      type="button"
+                      className={BTN_SECONDARY}
+                      onClick={() =>
+                        setViewer((prev) =>
+                          prev ? { ...prev, confirmReject: false } : prev,
+                        )
+                      }
+                    >
+                      Отмена
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className={LINK_DANGER}
+                    onClick={() =>
+                      setViewer((prev) =>
+                        prev ? { ...prev, confirmReject: true } : prev,
                       )
                     }
-                  />
-                </div>
+                  >
+                    ✖ Отклонить
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {error && <p className="mb-3 text-sm text-[#b91c1c]">{error}</p>}
+              {viewer.loading ? (
+                <p className="text-sand">Загрузка древа…</p>
+              ) : viewer.persons && viewer.persons.length > 0 ? (
+                <>
+                  <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
+                    <TreeView
+                      people={toTreePeople(viewer.persons)}
+                      selectedId={viewer.selectedId}
+                      onSelect={(id) =>
+                        setViewer((prev) =>
+                          prev ? { ...prev, selectedId: id } : prev,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4">
+                    <span className="text-[13px] text-sand">
+                      Персоны древа ({viewer.persons.length})
+                    </span>
+                    <div className={`${TABLE_WRAP} mt-2`}>
+                      <table className={TABLE}>
+                        <thead>
+                          <tr>
+                            <th>ФИО</th>
+                            <th>Пол</th>
+                            <th>Годы</th>
+                            <th>Примечание</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewer.persons.map((p) => (
+                            <tr key={p.id}>
+                              <td>{p.full_name}</td>
+                              <td>{p.gender === "f" ? "жен." : "муж."}</td>
+                              <td className="whitespace-nowrap">
+                                {personYears(p)}
+                              </td>
+                              <td className="whitespace-normal text-sand">
+                                {p.note ?? "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {viewer.dups.length > 0 && (
+                    <div className="mt-4 rounded-lg border border-gold-soft bg-gold/[0.06] p-3">
+                      <p className="m-0 mb-2 text-[13px] font-bold text-gold-light">
+                        ⚠ Возможные совпадения с другими древами (
+                        {viewer.dups.length})
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {viewer.dups.map((d, i) => (
+                          <div
+                            key={`${d.person.id}-${d.candidate.id}-${i}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-2.5 py-2"
+                          >
+                            <div className="min-w-[220px] flex-1 text-[13px] text-cream">
+                              <span className="text-gold-light">
+                                {d.person.full_name}
+                              </span>
+                              <span className="text-sand">
+                                {" "}
+                                ({d.person.birth_year ?? "?"})
+                              </span>
+                              <span className="text-sand"> ↔ </span>
+                              <span className="text-gold-light">
+                                {d.candidate.full_name}
+                              </span>
+                              <span className="text-sand">
+                                {" "}
+                                ({d.candidate.birth_year ?? "?"})
+                              </span>
+                              <span className="text-sand">
+                                {" · "}
+                                {d.candidate.owner_name ?? "другой автор"} · ~
+                                {Math.round(d.candidate.similarity * 100)}%
+                              </span>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                className={`${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`}
+                                disabled={
+                                  busyKey === `tree-${viewer.tree.owner_id}`
+                                }
+                                onClick={() =>
+                                  void mergeDuplicate(
+                                    viewer.tree.owner_id,
+                                    d.candidate.id,
+                                    d.person.id,
+                                  )
+                                }
+                              >
+                                Оставить чужую
+                              </button>
+                              <button
+                                type="button"
+                                className={`${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`}
+                                disabled={
+                                  busyKey === `tree-${viewer.tree.owner_id}`
+                                }
+                                onClick={() =>
+                                  void mergeDuplicate(
+                                    viewer.tree.owner_id,
+                                    d.person.id,
+                                    d.candidate.id,
+                                  )
+                                }
+                              >
+                                Оставить эту
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <p className="text-sand">
-                  Отправлено на проверку, но построить схему не удалось.
-                </p>
+                <p className="text-sand">В этом древе нет персон на модерации.</p>
               )}
             </div>
           </div>,
           document.body,
         )}
-    </div>
-  );
-}
 
-/**
- * Очередь объединённых (общих) древ на повторной проверке.
- * Модератор смотрит собранное общее древо целиком и одобряет (публикует)
- * либо отклоняет. Исходные древа при этом не затрагиваются.
- */
-function PendingMergesQueue({ onCount }: { onCount: (n: number) => void }) {
-  const [items, setItems] = useState<TreeMerge[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const [preview, setPreview] = useState<{
-    id: number;
-    nodes: TreeNode[] | null;
-    loading: boolean;
-    selectedId: string | null;
-  } | null>(null);
-
-  useEffect(() => setMounted(true), []);
-  useEffect(() => onCount(items.length), [items.length, onCount]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await api.moderation.pendingMerges());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function openPreview(id: number) {
-    setPreview({ id, nodes: null, loading: true, selectedId: null });
-    try {
-      const nodes = await api.tree.mergedTree(id);
-      setPreview((prev) =>
-        prev && prev.id === id ? { ...prev, nodes, loading: false } : prev,
-      );
-    } catch {
-      setPreview((prev) =>
-        prev && prev.id === id ? { ...prev, nodes: [], loading: false } : prev,
-      );
-    }
-  }
-
-  async function decide(id: number, action: "approveMerge" | "rejectMerge") {
-    setBusy(id);
-    setError(null);
-    try {
-      await api.moderation[action](id);
-      setItems((prev) => prev.filter((x) => x.id !== id));
-      if (preview?.id === id) setPreview(null);
-    } catch (e) {
-      if (isStale(e)) {
-        setItems((prev) => prev.filter((x) => x.id !== id));
-        setError("Это объединение уже неактуально. Список обновлён.");
-        void load();
-      } else {
-        setError(e instanceof Error ? e.message : "Не удалось выполнить");
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div id="mod-merges" className="mt-6 scroll-mt-4 border-t border-line pt-5">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
-          <StepBadge n={3} /> Общие древа на проверке
-          <CountBadge n={items.length} />
-        </h3>
-        <button
-          type="button"
-          className={BTN_SECONDARY}
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          Обновить
-        </button>
-      </div>
-
-      <p className="mb-3 text-[13px] text-sand">
-        Финальная проверка после шага 2: общее древо уже собрано из двух веток.
-        Нажмите «Показать древо», убедитесь, что ветки срослись правильно и нет
-        двойников, затем одобрите — и древо появится у всех в разделе «Древа».
-        Исходные древа авторов не меняются.
-      </p>
-
-      {error && <p className="text-sm text-[#b91c1c]">{error}</p>}
-
-      {loading ? (
-        <p className="text-sand">Загрузка…</p>
-      ) : items.length === 0 ? (
-        <p className="text-sand">
-          ✓ Проверять нечего. Общие древа появляются здесь после объединения на
-          шаге 2.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {items.map((m) => (
-            <div
-              key={m.id}
-              className="rounded-xl border border-line bg-gold/[0.03] p-3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-[220px]">
-                  <p className="m-0 text-[15px] font-semibold text-cream">
-                    {m.merged_name}
-                    {m.merged_birth_year != null && (
-                      <span className="ml-2 text-[13px] font-normal text-sand">
-                        {m.merged_birth_year}
-                        {m.merged_death_year != null
-                          ? `–${m.merged_death_year}`
-                          : ""}{" "}
-                        гг.
-                      </span>
-                    )}
-                  </p>
-                  <p className="m-0 mt-1 text-[13px] text-sand">
-                    Общий предок двух древ · всего {m.total}{" "}
-                    {personWord(m.total)}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-[12px]">
-                    <span className="rounded-md border border-line px-2 py-1 text-sand">
-                      Ветка A: {m.branch_a.owner_name ?? "—"} ({m.branch_a.size}
-                      )
-                    </span>
-                    <span className="rounded-md border border-line px-2 py-1 text-sand">
-                      Ветка B: {m.branch_b.owner_name ?? "—"} ({m.branch_b.size}
-                      )
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className={`${BTN_SECONDARY} !px-3 !py-1.5 !text-[13px]`}
-                    disabled={busy === m.id}
-                    onClick={() => void openPreview(m.id)}
-                  >
-                    Показать древо
-                  </button>
-                  <button
-                    type="button"
-                    className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-                    disabled={busy === m.id}
-                    onClick={() => void decide(m.id, "approveMerge")}
-                  >
-                    Одобрить и опубликовать
-                  </button>
-                  <button
-                    type="button"
-                    className={LINK_DANGER}
-                    disabled={busy === m.id}
-                    onClick={() => void decide(m.id, "rejectMerge")}
-                  >
-                    Отклонить
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {/* -------- Полноэкранный просмотр общего древа -------- */}
       {mounted &&
-        preview &&
+        mergePreview &&
         createPortal(
           <div className="fixed inset-0 z-[70] flex flex-col bg-background">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
               <div className="flex min-w-[200px] items-center gap-2.5">
                 <span className="text-[16px] font-bold text-gold-light">
-                  Общее древо (на проверке)
+                  {mergePreview.title}
                 </span>
                 <span className="text-[13px] text-sand">
-                  Проверьте целиком, затем одобрите или отклоните.
+                  {mergePreview.subtitle}
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                {mergePreview.approveId != null && (
+                  <button
+                    type="button"
+                    className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
+                    disabled={busyKey === `merge-${mergePreview.approveId}`}
+                    onClick={() => {
+                      const m = merges.find(
+                        (x) => x.id === mergePreview.approveId,
+                      );
+                      if (m)
+                        void decideMerge(
+                          { kind: "merge", key: `merge-${m.id}`, m },
+                          "approveMerge",
+                        );
+                    }}
+                  >
+                    ✓ Одобрить
+                  </button>
+                )}
                 <button
                   type="button"
-                  className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-                  disabled={busy === preview.id}
-                  onClick={() => void decide(preview.id, "approveMerge")}
+                  className={
+                    mergePreview.approveId != null ? BTN_SECONDARY : BTN_PRIMARY
+                  }
+                  onClick={() => setMergePreview(null)}
                 >
-                  Одобрить
-                </button>
-                <button
-                  type="button"
-                  className={BTN_SECONDARY}
-                  onClick={() => setPreview(null)}
-                >
-                  Закрыть
+                  {mergePreview.approveId != null ? "Закрыть" : "Готово"}
                 </button>
               </div>
             </div>
             <div className="flex-1 overflow-auto p-4">
-              {preview.loading && !preview.nodes ? (
+              {mergePreview.loading && !mergePreview.nodes ? (
                 <p className="text-sand">Строим общее древо…</p>
-              ) : preview.nodes && preview.nodes.length > 0 ? (
+              ) : mergePreview.nodes && mergePreview.nodes.length > 0 ? (
                 <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
                   <TreeView
-                    people={fullTreeToPeople(preview.nodes)}
-                    selectedId={preview.selectedId}
+                    people={fullTreeToPeople(mergePreview.nodes)}
+                    selectedId={mergePreview.selectedId}
                     onSelect={(id) =>
-                      setPreview((prev) =>
+                      setMergePreview((prev) =>
                         prev ? { ...prev, selectedId: id } : prev,
                       )
                     }
@@ -1371,141 +1720,6 @@ function PendingMergesQueue({ onCount }: { onCount: (n: number) => void }) {
           </div>,
           document.body,
         )}
-    </div>
-  );
-}
-
-/** Склонение слова «человек» по числу. */
-function personWord(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "человек";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20))
-    return "человека";
-  return "человек";
-}
-
-/** Очередь правок опубликованных записей: старые данные публичны, новые ждут одобрения. */
-function EditQueue({ onCount }: { onCount: (n: number) => void }) {
-  const [owners, setOwners] = useState<PendingTree[]>([]);
-  const [changes, setChanges] = useState<Record<number, TreeChange[]>>({});
-  const [busy, setBusy] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const total = owners.reduce(
-    (sum, o) => sum + (changes[o.owner_id]?.length ?? 0),
-    0,
-  );
-  useEffect(() => onCount(total), [total, onCount]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const os = await api.moderation.editOwners();
-      setOwners(os);
-      const map: Record<number, TreeChange[]> = {};
-      await Promise.all(
-        os.map((o) =>
-          api.moderation
-            .changes(o.owner_id)
-            .then((c) => {
-              map[o.owner_id] = c;
-            })
-            .catch(() => undefined),
-        ),
-      );
-      setChanges(map);
-    } catch {
-      setOwners([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function act(personId: number, action: "approveEdit" | "rejectEdit") {
-    setBusy(personId);
-    try {
-      await api.moderation[action](personId);
-      await load();
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <div id="mod-edits" className="mt-6 scroll-mt-4 border-t border-line pt-5">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="m-0 flex items-center gap-2 text-lg font-semibold text-cream">
-          <StepBadge n={4} /> Правки опубликованных записей
-          <CountBadge n={total} />
-        </h3>
-        <button
-          type="button"
-          className={BTN_SECONDARY}
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          Обновить
-        </button>
-      </div>
-
-      <p className="mb-3 text-[13px] text-sand">
-        Автор изменил запись, которая уже опубликована. Все видят старые данные,
-        пока вы не примете правку. Зачёркнуто — как было, рядом — как станет.
-      </p>
-
-      {loading ? (
-        <p className="text-sand">Загрузка…</p>
-      ) : total === 0 ? (
-        <p className="text-sand">✓ Правок на проверке нет.</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {owners.map((o) =>
-            (changes[o.owner_id] ?? []).map((c) => (
-              <div
-                key={c.person_id}
-                className="rounded-xl border border-line p-3"
-              >
-                <p className="m-0 text-[14px] font-bold text-gold-light">
-                  {c.full_name}
-                </p>
-                <span className="text-[12px] text-sand">{o.owner_name}</span>
-                <ul className="m-0 mt-1.5 list-disc pl-5 text-[13px] text-sand">
-                  {Object.entries(c.diff).map(([field, v]) => (
-                    <li key={field}>
-                      {FIELD_RU[field] ?? field}: <s>{String(v.from ?? "—")}</s>{" "}
-                      →{" "}
-                      <span className="text-cream">{String(v.to ?? "—")}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    className={`${BTN_PRIMARY} !px-3 !py-1 !text-[13px]`}
-                    disabled={busy === c.person_id}
-                    onClick={() => void act(c.person_id, "approveEdit")}
-                  >
-                    ✓ Применить
-                  </button>
-                  <button
-                    type="button"
-                    className={`${LINK_DANGER}`}
-                    disabled={busy === c.person_id}
-                    onClick={() => void act(c.person_id, "rejectEdit")}
-                  >
-                    ✖ Отклонить
-                  </button>
-                </div>
-              </div>
-            )),
-          )}
-        </div>
-      )}
     </div>
   );
 }
