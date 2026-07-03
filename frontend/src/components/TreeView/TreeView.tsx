@@ -33,6 +33,8 @@ const H_GAP = 24;
 const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
 const ROW_PITCH = NODE_H + V_GAP;
+// вертикальный шаг карточек в стопке листьев (дети без потомков)
+const STACK_PITCH = NODE_H + 34;
 
 /** Плейсхолдер «добавить родственника» рядом с выбранным узлом. */
 type AddRelation = "father" | "wife" | "son" | "daughter";
@@ -52,9 +54,13 @@ type Connector = {
   minX: number;
   maxX: number;
   children: { x: number; topY: number }[];
+  // хребет стопки листьев и отводы к карточкам: произвольные отрезки
+  extra: { x1: number; y1: number; x2: number; y2: number }[];
 };
 
 /** Чистая древовидная раскладка: каждый родитель центрируется над детьми.
+ *  Дети БЕЗ потомков (листья) складываются вертикальной стопкой в одну
+ *  колонку — иначе широкие семьи растягивают древо по горизонтали.
  *  Жёны занимают собственные слоты справа от мужа (карточки-сателлиты).
  *  Вынесена из компонента, чтобы PNG-экспорт мог построить раскладку
  *  ПОЛНОГО древа независимо от свёрнутых ветвей. */
@@ -76,8 +82,9 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   if (!people.length) return { pos, width: NODE_W, height: NODE_H };
 
   const minGen = Math.min(...people.map((p) => p.generation));
-  const maxGen = Math.max(...people.map((p) => p.generation));
   let cursor = 0;
+
+  const hasKids = (p: Person) => (childrenMap.get(p.id)?.length ?? 0) > 0;
 
   // дети раскладываются справа налево: первый добавленный — правее
   const place = (node: Person): number => {
@@ -89,7 +96,30 @@ function computeTreeLayout(people: Person[], editable: boolean) {
       x = cursor * SLOT;
       cursor += unitSlots;
     } else {
-      const xs = [...kids].reverse().map(place);
+      // листья семьи — одной вертикальной стопкой в одну колонку
+      const leaves = kids.filter((k) => !hasKids(k));
+      const xs: number[] = [];
+      let stackPlaced = false;
+      for (const kid of [...kids].reverse()) {
+        if (!hasKids(kid)) {
+          if (stackPlaced) continue;
+          stackPlaced = true;
+          const stackX = cursor * SLOT;
+          // колонка стопки резервирует место под жён самого «жёнистого» листа
+          const stackSlots =
+            1 + Math.max(...leaves.map((l) => getSpouses(l).length));
+          leaves.forEach((leaf, i) => {
+            pos[leaf.id] = {
+              x: stackX,
+              y: (leaf.generation - minGen) * ROW_PITCH + i * STACK_PITCH,
+            };
+          });
+          cursor += stackSlots;
+          xs.push(stackX);
+        } else {
+          xs.push(place(kid));
+        }
+      }
       x = (Math.min(...xs) + Math.max(...xs)) / 2;
       // карточки жён торчат вправо — сдвигаем курсор, чтобы следующая
       // ветвь не наехала на них
@@ -101,7 +131,9 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   [...roots].reverse().forEach(place);
 
   let width = cursor > 0 ? (cursor - 1) * SLOT + NODE_W : NODE_W;
-  let height = (maxGen - minGen) * ROW_PITCH + NODE_H;
+  // стопки листьев уходят ниже своего ряда — высоту считаем по факту
+  const maxY = Math.max(...Object.values(pos).map((q) => q.y));
+  let height = maxY + NODE_H;
 
   // Запас по краям под плейсхолдеры «+» (отец сверху, жена справа, дети снизу).
   if (editable) {
@@ -124,6 +156,83 @@ function wifeCardsOf(
     x: p.x + SLOT * (i + 1),
     y: p.y,
   }));
+}
+
+/** Строит связи родитель → дети по готовой раскладке.
+ *  Дети, лежащие в одной колонке (стопка листьев), подключаются через
+ *  вертикальный «хребет» слева от карточек с отводом к каждой — так стопка
+ *  читается как братья/сёстры, а не как цепочка поколений.
+ *  Используется и интерактивным SVG, и PNG-экспортом. */
+function buildConnectors(
+  people: Person[],
+  pos: Record<string, { x: number; y: number }>,
+  bottomOf: (id: string) => number,
+): Connector[] {
+  const byParent = new Map<string, Person[]>();
+  for (const person of people) {
+    if (!person.parentId) continue;
+    const arr = byParent.get(person.parentId) ?? [];
+    arr.push(person);
+    byParent.set(person.parentId, arr);
+  }
+
+  const result: Connector[] = [];
+  byParent.forEach((kids, parentId) => {
+    const pPos = pos[parentId];
+    if (!pPos) return;
+    const px = pPos.x + NODE_W / 2;
+    const py = pPos.y + bottomOf(parentId);
+
+    // группируем детей по колонке X: колонка с несколькими — стопка листьев
+    const cols = new Map<number, { topY: number; midY: number }[]>();
+    for (const kid of kids) {
+      const cPos = pos[kid.id];
+      if (!cPos) continue;
+      const arr = cols.get(cPos.x) ?? [];
+      arr.push({ topY: cPos.y, midY: cPos.y + NODE_H / 2 });
+      cols.set(cPos.x, arr);
+    }
+    if (!cols.size) return;
+
+    let topMin = Infinity;
+    cols.forEach((list) => {
+      list.sort((a, b) => a.topY - b.topY);
+      topMin = Math.min(topMin, list[0].topY);
+    });
+    const busY = py + (topMin - py) / 2;
+
+    const children: { x: number; topY: number }[] = [];
+    const extra: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    const busXs = [px];
+    cols.forEach((list, colX) => {
+      if (list.length === 1) {
+        children.push({ x: colX + NODE_W / 2, topY: list[0].topY });
+        busXs.push(colX + NODE_W / 2);
+      } else {
+        const spineX = colX - 14;
+        busXs.push(spineX);
+        extra.push({
+          x1: spineX,
+          y1: busY,
+          x2: spineX,
+          y2: list[list.length - 1].midY,
+        });
+        for (const item of list) {
+          extra.push({ x1: spineX, y1: item.midY, x2: colX + 2, y2: item.midY });
+        }
+      }
+    });
+    result.push({
+      px,
+      py,
+      busY,
+      minX: Math.min(...busXs),
+      maxX: Math.max(...busXs),
+      children,
+      extra,
+    });
+  });
+  return result;
 }
 
 export function TreeView({
@@ -266,7 +375,10 @@ export function TreeView({
       rel: AddRelation,
       candidates: { x: number; y: number }[],
     ) => {
-      const spot = candidates.find((c) => !occupied(c.x, c.y));
+      // отрицательные координаты — за холстом, такие кандидаты пропускаем
+      const spot = candidates.find(
+        (c) => c.x >= 0 && c.y >= 0 && !occupied(c.x, c.y),
+      );
       if (!spot) return;
       slots.push({ rel, ...spot });
       taken.push(spot); // чтобы следующие слоты не сели на то же место
@@ -326,20 +438,36 @@ export function TreeView({
       const rowY = p.y + ROW_PITCH;
       const minX = Math.min(...xs);
       const maxX = Math.max(...xs);
-      pushFree(
-        "daughter",
-        interleave(
+      // Листья семьи лежат вертикальной стопкой — новый ребёнок (тоже лист)
+      // продолжит её вниз, поэтому превью ставим в хвост стопки.
+      const leafKids = kids.filter(
+        (k) =>
+          layout.pos[k.id] &&
+          !visiblePeople.some((q) => q.parentId === k.id),
+      );
+      const stackTail: { x: number; y: number }[] = [];
+      if (leafKids.length) {
+        const sx = layout.pos[leafKids[0].id].x;
+        const bottom = Math.max(...leafKids.map((k) => layout.pos[k.id].y));
+        stackTail.push(
+          { x: sx, y: bottom + STACK_PITCH },
+          { x: sx, y: bottom + 2 * STACK_PITCH },
+        );
+      }
+      pushFree("daughter", [
+        ...stackTail,
+        ...interleave(
           seq(12, (j) => ({ x: minX - SLOT * (j + 1), y: rowY })),
           seq(12, (j) => ({ x: maxX + SLOT * (j + 2), y: rowY })),
         ),
-      );
-      pushFree(
-        "son",
-        interleave(
+      ]);
+      pushFree("son", [
+        ...stackTail,
+        ...interleave(
           seq(12, (j) => ({ x: maxX + SLOT * (j + 1), y: rowY })),
           seq(12, (j) => ({ x: minX - SLOT * (j + 2), y: rowY })),
         ),
-      );
+      ]);
     } else {
       const rowY = p.y + ROW_PITCH;
       pushFree(
@@ -369,44 +497,13 @@ export function TreeView({
   // вычисляем уголковые связи родитель → дети.
   // Координаты X/Y берём из layout (надёжно), высоту карточки — из DOM.
   const computeConnectors = useCallback(() => {
-    // группируем детей по родителю (только видимые узлы)
-    const byParent = new Map<string, Person[]>();
-    for (const person of visiblePeople) {
-      if (!person.parentId) continue;
-      const arr = byParent.get(person.parentId) ?? [];
-      arr.push(person);
-      byParent.set(person.parentId, arr);
-    }
-
-    const next: Connector[] = [];
-    byParent.forEach((kids, parentId) => {
-      const pPos = layout.pos[parentId];
-      const parentEl = nodeRefs.current[parentId];
-      if (!pPos || !parentEl) return;
-      const px = pPos.x + NODE_W / 2;
-      const py = pPos.y + parentEl.offsetHeight;
-
-      const children: { x: number; topY: number }[] = [];
-      for (const kid of kids) {
-        const cPos = layout.pos[kid.id];
-        if (!cPos) continue;
-        children.push({ x: cPos.x + NODE_W / 2, topY: cPos.y });
-      }
-      if (!children.length) return;
-
-      const childTopMin = Math.min(...children.map((c) => c.topY));
-      const busY = py + (childTopMin - py) / 2;
-      const xs = [px, ...children.map((c) => c.x)];
-      next.push({
-        px,
-        py,
-        busY,
-        minX: Math.min(...xs),
-        maxX: Math.max(...xs),
-        children,
-      });
-    });
-    setConnectors(next);
+    setConnectors(
+      buildConnectors(
+        visiblePeople,
+        layout.pos,
+        (id) => nodeRefs.current[id]?.offsetHeight ?? NODE_H,
+      ),
+    );
   }, [visiblePeople, layout]);
 
   useEffect(() => {
@@ -620,39 +717,25 @@ export function TreeView({
     ctx.fillRect(0, 0, full.width + PAD * 2, full.height + PAD * 2);
     ctx.translate(PAD, PAD);
 
-    // Связи родитель → дети (та же логика, что в computeConnectors)
+    // Связи родитель → дети (общая логика с интерактивным SVG)
     ctx.strokeStyle = "rgba(201,162,39,0.5)";
     ctx.lineWidth = 2;
-    const byParent = new Map<string, Person[]>();
-    for (const person of people) {
-      if (!person.parentId) continue;
-      const arr = byParent.get(person.parentId) ?? [];
-      arr.push(person);
-      byParent.set(person.parentId, arr);
-    }
-    byParent.forEach((kids, parentId) => {
-      const pPos = full.pos[parentId];
-      if (!pPos) return;
-      const px = pPos.x + NODE_W / 2;
-      const py = pPos.y + NODE_H;
-      const kidPts = kids
-        .map((k) => full.pos[k.id])
-        .filter(Boolean)
-        .map((q) => ({ x: q.x + NODE_W / 2, topY: q.y }));
-      if (!kidPts.length) return;
-      const busY = py + (Math.min(...kidPts.map((k) => k.topY)) - py) / 2;
-      const xs = [px, ...kidPts.map((k) => k.x)];
+    for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
       ctx.beginPath();
-      ctx.moveTo(px, py);
-      ctx.lineTo(px, busY);
-      ctx.moveTo(Math.min(...xs), busY);
-      ctx.lineTo(Math.max(...xs), busY);
-      for (const k of kidPts) {
-        ctx.moveTo(k.x, busY);
+      ctx.moveTo(c.px, c.py);
+      ctx.lineTo(c.px, c.busY);
+      ctx.moveTo(c.minX, c.busY);
+      ctx.lineTo(c.maxX, c.busY);
+      for (const k of c.children) {
+        ctx.moveTo(k.x, c.busY);
         ctx.lineTo(k.x, k.topY);
       }
+      for (const s of c.extra) {
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x2, s.y2);
+      }
       ctx.stroke();
-    });
+    }
 
     // Линии брака: муж — жена (рисуем до карточек, чтобы линия шла под ними)
     ctx.strokeStyle = "#9c6b74";
@@ -886,6 +969,16 @@ export function TreeView({
                       y1={c.busY}
                       x2={ch.x}
                       y2={ch.topY}
+                    />
+                  ))}
+                  {/* хребет стопки листьев + отводы к карточкам */}
+                  {c.extra.map((s, j) => (
+                    <line
+                      key={`e${j}`}
+                      x1={s.x1}
+                      y1={s.y1}
+                      x2={s.x2}
+                      y2={s.y2}
                     />
                   ))}
                 </g>
