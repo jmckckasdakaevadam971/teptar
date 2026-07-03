@@ -272,28 +272,47 @@ export function TreeView({
       taken.push(spot); // чтобы следующие слоты не сели на то же место
     };
 
-    // Отец — над узлом (если занято — чуть в сторону).
+    /** Серия кандидатов: j = 0..n-1. */
+    const seq = (n: number, fn: (j: number) => { x: number; y: number }) =>
+      Array.from({ length: n }, (_, j) => fn(j));
+    /** Чередование двух списков: близкие кандидаты идут раньше дальних. */
+    const interleave = (
+      a: { x: number; y: number }[],
+      b: { x: number; y: number }[],
+    ) => {
+      const out: { x: number; y: number }[] = [];
+      for (let j = 0; j < Math.max(a.length, b.length); j++) {
+        if (a[j]) out.push(a[j]);
+        if (b[j]) out.push(b[j]);
+      }
+      return out;
+    };
+
+    // Отец — над узлом; если занято — в сторону, пока не найдётся место.
     if (!selected.parentId) {
-      pushFree("father", [
+      const above: { x: number; y: number }[] = [
         { x: p.x, y: p.y - ROW_PITCH },
-        { x: p.x + SLOT, y: p.y - ROW_PITCH },
-        { x: p.x - SLOT, y: p.y - ROW_PITCH },
-      ]);
+      ];
+      for (let j = 1; j <= 6; j++) {
+        above.push({ x: p.x + SLOT * j, y: p.y - ROW_PITCH });
+        above.push({ x: p.x - SLOT * j, y: p.y - ROW_PITCH });
+      }
+      pushFree("father", above);
     }
-    // Жена — сразу за последней женой справа; если занято — слева и дальше.
+    // Жена — только СПРАВА (после добавления она встаёт справа от мужа,
+    // поэтому превью слева только запутает). Сканируем вправо до первой
+    // свободной позиции — слот никогда не пропадает.
     // У женского узла (дочь) жену не предлагаем.
-    // Жён может быть несколько, поэтому слот доступен всегда.
     if (!isFemale(selected)) {
       const wives = getSpouses(selected).length;
-      pushFree("wife", [
-        { x: p.x + SLOT * (wives + 1), y: p.y },
-        { x: p.x - SLOT, y: p.y },
-        { x: p.x + SLOT * (wives + 2), y: p.y },
-        { x: p.x - 2 * SLOT, y: p.y },
-      ]);
+      pushFree(
+        "wife",
+        seq(12, (j) => ({ x: p.x + SLOT * (wives + 1 + j), y: p.y })),
+      );
     }
     // Сын/дочь — под узлом; дочь СЛЕВА, сын СПРАВА.
-    // Если дети уже есть — сбоку от крайних детей.
+    // Если каноничная сторона занята соседней ветвью — ставим слот с другой
+    // стороны рядом (близость важнее стороны), слоты никогда не пропадают.
     // У свёрнутой ветви детей не добавляют — сначала нужно раскрыть.
     const isCollapsed = collapsed.has(selected.id);
     const kids = people.filter((k) => k.parentId === selected.id);
@@ -305,26 +324,44 @@ export function TreeView({
         .map((k) => layout.pos[k.id]?.x)
         .filter((v): v is number => v !== undefined);
       const rowY = p.y + ROW_PITCH;
-      pushFree("daughter", [
-        { x: Math.min(...xs) - SLOT, y: rowY },
-        { x: Math.min(...xs) - 2 * SLOT, y: rowY },
-      ]);
-      pushFree("son", [
-        { x: Math.max(...xs) + SLOT, y: rowY },
-        { x: Math.max(...xs) + 2 * SLOT, y: rowY },
-      ]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      pushFree(
+        "daughter",
+        interleave(
+          seq(12, (j) => ({ x: minX - SLOT * (j + 1), y: rowY })),
+          seq(12, (j) => ({ x: maxX + SLOT * (j + 2), y: rowY })),
+        ),
+      );
+      pushFree(
+        "son",
+        interleave(
+          seq(12, (j) => ({ x: maxX + SLOT * (j + 1), y: rowY })),
+          seq(12, (j) => ({ x: minX - SLOT * (j + 2), y: rowY })),
+        ),
+      );
     } else {
       const rowY = p.y + ROW_PITCH;
-      pushFree("daughter", [
-        { x: p.x - SLOT / 2 - 6, y: rowY },
-        { x: p.x - SLOT, y: rowY },
-        { x: p.x - 2 * SLOT, y: rowY },
-      ]);
-      pushFree("son", [
-        { x: p.x + SLOT / 2 + 6, y: rowY },
-        { x: p.x + SLOT, y: rowY },
-        { x: p.x + 2 * SLOT, y: rowY },
-      ]);
+      pushFree(
+        "daughter",
+        interleave(
+          [
+            { x: p.x - SLOT / 2 - 6, y: rowY },
+            ...seq(11, (j) => ({ x: p.x - SLOT / 2 - 6 - SLOT * (j + 1), y: rowY })),
+          ],
+          seq(11, (j) => ({ x: p.x + SLOT / 2 + 6 + SLOT * (j + 1), y: rowY })),
+        ),
+      );
+      pushFree(
+        "son",
+        interleave(
+          [
+            { x: p.x + SLOT / 2 + 6, y: rowY },
+            ...seq(11, (j) => ({ x: p.x + SLOT / 2 + 6 + SLOT * (j + 1), y: rowY })),
+          ],
+          seq(11, (j) => ({ x: p.x - SLOT / 2 - 6 - SLOT * (j + 1), y: rowY })),
+        ),
+      );
     }
     return slots;
   }, [editable, selected, people, visiblePeople, layout, collapsed]);
