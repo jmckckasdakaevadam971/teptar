@@ -51,32 +51,28 @@ function publicUser(u: UserRow) {
   };
 }
 
+/**
+ * Прямая регистрация по e-mail (без кода подтверждения — используется,
+ * когда SMTP недоступен). Регистрация по телефону запрещена полностью.
+ */
 export async function register(input: {
   display_name: string;
-  phone?: string;
-  email?: string;
+  email: string;
   password: string;
 }): Promise<{ token: string; user: ReturnType<typeof publicUser> }> {
+  const email = input.email.trim().toLowerCase();
   const existing = await query<UserRow>(
-    "SELECT * FROM users WHERE (phone = $1 AND $1 IS NOT NULL) OR (email = $2 AND $2 IS NOT NULL)",
-    [input.phone ?? null, input.email ?? null],
+    "SELECT * FROM users WHERE email = $1",
+    [email],
   );
   if (existing.length > 0) {
-    throw new ApiError(
-      409,
-      "Пользователь с таким телефоном или e-mail уже существует",
-    );
+    throw new ApiError(409, "Пользователь с таким e-mail уже существует");
   }
 
   const rows = await query<UserRow>(
-    `INSERT INTO users (display_name, phone, email, password_hash, role)
-     VALUES ($1,$2,$3,$4,'viewer') RETURNING *`,
-    [
-      input.display_name,
-      input.phone ?? null,
-      input.email ?? null,
-      hashPassword(input.password),
-    ],
+    `INSERT INTO users (display_name, email, password_hash, role)
+     VALUES ($1,$2,$3,'viewer') RETURNING *`,
+    [input.display_name, email, hashPassword(input.password)],
   );
   const user = rows[0];
   return { token: signToken(user), user: publicUser(user) };

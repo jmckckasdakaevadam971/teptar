@@ -6,25 +6,19 @@ import { verifyTurnstile } from "./turnstile.js";
 import { emailVerificationEnabled } from "./mailer.js";
 import * as service from "./auth.service.js";
 
-const registerSchema = z
-  .object({
-    display_name: z
-      .string()
-      .min(2, "Имя не короче 2 символов")
-      .max(120, "Имя слишком длинное"),
-    phone: z
-      .string()
-      .min(5, "Некорректный телефон")
-      .max(20, "Некорректный телефон")
-      .optional(),
-    email: z.string().email("Некорректный e-mail").optional(),
-    password: z.string().min(8, "Пароль не короче 8 символов"),
-    turnstile_token: z.string().optional(),
-  })
-  .refine((d) => d.phone || d.email, {
-    message: "Укажите телефон или e-mail",
-    path: ["phone"],
-  });
+// Регистрация — ТОЛЬКО по e-mail. Телефон в регистрации запрещён:
+// поле phone намеренно отсутствует в схеме и отбрасывается при парсинге.
+const registerSchema = z.object({
+  display_name: z
+    .string()
+    .min(2, "Имя не короче 2 символов")
+    .max(120, "Имя слишком длинное"),
+  email: z
+    .string({ required_error: "Укажите e-mail — регистрация по телефону недоступна" })
+    .email("Некорректный e-mail"),
+  password: z.string().min(8, "Пароль не короче 8 символов"),
+  turnstile_token: z.string().optional(),
+});
 
 export async function register(req: Request, res: Response): Promise<void> {
   const input = registerSchema.parse(req.body);
@@ -36,11 +30,11 @@ export async function register(req: Request, res: Response): Promise<void> {
     );
   }
 
-  // Если включено подтверждение почты и регистрация идёт по e-mail —
-  // отправляем код и ждём подтверждения (пользователь создастся на шаге verify).
-  // Если письмо отправить не удалось (SMTP недоступен / домен на модерации) —
-  // не блокируем регистрацию, а честно регистрируем без подтверждения.
-  if (input.email && emailVerificationEnabled()) {
+  // Если включено подтверждение почты — отправляем код и ждём подтверждения
+  // (пользователь создастся на шаге verify). Если письмо отправить не удалось
+  // (SMTP недоступен / домен на модерации) — не блокируем регистрацию,
+  // а честно регистрируем без подтверждения.
+  if (emailVerificationEnabled()) {
     try {
       const result = await service.requestEmailVerification({
         display_name: input.display_name,

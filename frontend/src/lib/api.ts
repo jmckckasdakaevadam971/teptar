@@ -229,8 +229,7 @@ export const api = {
       }),
     register: (input: {
       display_name: string;
-      phone?: string;
-      email?: string;
+      email: string;
       password: string;
       turnstile_token?: string;
     }) =>
