@@ -34,7 +34,7 @@ const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
 const ROW_PITCH = NODE_H + V_GAP;
 // вертикальный шаг карточек в стопке листьев (дети без потомков)
-const STACK_PITCH = NODE_H + 34;
+const STACK_PITCH = NODE_H + 56;
 
 /** Плейсхолдер «добавить родственника» рядом с выбранным узлом. */
 type AddRelation = "father" | "wife" | "son" | "daughter";
