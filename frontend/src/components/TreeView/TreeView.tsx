@@ -42,6 +42,11 @@ const STACK_PITCH = NODE_H + 56;
 // карточки делят общий хребет. Широкий допуск склеивал перетащенную ветвь с
 // линией соседа — красный спуск прятался под чужим хребтом стопки.
 const CLUSTER_TOL = 28;
+// минимальный зум: отдаляться можно практически без ограничений
+const MIN_SCALE = 0.05;
+// свободные поля вокруг древа — чтобы осматриваться за его краями
+const PAN_PAD_X = 640;
+const PAN_PAD_Y = 480;
 
 // Палитра цветов ветвей на выбор пользователя: приглушённые тона,
 // различимые на тёмном фоне и не спорящие с золотой темой.
@@ -957,13 +962,13 @@ export function TreeView({
       e.preventDefault();
       const sizer = sizerRef.current;
       setScale((s) => {
-        const next = Math.min(2, Math.max(0.4, s - e.deltaY * 0.0015));
+        const next = Math.min(2, Math.max(MIN_SCALE, s - e.deltaY * 0.0015));
         if (sizer && next !== s) {
           const rect = sizer.getBoundingClientRect();
           // точка под курсором в немасштабированных координатах
           pendingAnchor.current = {
-            cx: (e.clientX - rect.left) / s,
-            cy: (e.clientY - rect.top) / s,
+            cx: (e.clientX - rect.left - PAN_PAD_X) / s,
+            cy: (e.clientY - rect.top - PAN_PAD_Y) / s,
             clientX: e.clientX,
             clientY: e.clientY,
           };
@@ -1186,13 +1191,14 @@ export function TreeView({
     if (!anchor || !el) return;
     pendingAnchor.current = null;
     const elRect = el.getBoundingClientRect();
-    const contentW = layout.width * scale;
-    const contentH = layout.height * scale;
+    const contentW = layout.width * scale + PAN_PAD_X * 2;
+    const contentH = layout.height * scale + PAN_PAD_Y * 2;
     const centerX = Math.max(0, (el.clientWidth - contentW) / 2);
     const centerY = Math.max(0, (el.clientHeight - contentH) / 2);
     el.scrollLeft =
-      centerX + anchor.cx * scale - (anchor.clientX - elRect.left);
-    el.scrollTop = centerY + anchor.cy * scale - (anchor.clientY - elRect.top);
+      centerX + PAN_PAD_X + anchor.cx * scale - (anchor.clientX - elRect.left);
+    el.scrollTop =
+      centerY + PAN_PAD_Y + anchor.cy * scale - (anchor.clientY - elRect.top);
   }, [scale, layout.width, layout.height]);
 
   // при первом открытии вписываем древо в экран и показываем его центр
@@ -1207,10 +1213,20 @@ export function TreeView({
       (el.clientWidth - 32) / layout.width,
       (el.clientHeight - 32) / layout.height,
     );
-    const next = Math.min(1, Math.max(0.4, fit));
+    const next = Math.min(1, Math.max(MIN_SCALE, fit));
     setScale(next);
-    el.scrollLeft = Math.max(0, (layout.width * next - el.clientWidth) / 2);
-    el.scrollTop = Math.max(0, (layout.height * next - el.clientHeight) / 2);
+    const totalW = layout.width * next + PAN_PAD_X * 2;
+    const totalH = layout.height * next + PAN_PAD_Y * 2;
+    const offX = Math.max(0, (el.clientWidth - totalW) / 2);
+    const offY = Math.max(0, (el.clientHeight - totalH) / 2);
+    el.scrollLeft = Math.max(
+      0,
+      offX + PAN_PAD_X + (layout.width * next) / 2 - el.clientWidth / 2,
+    );
+    el.scrollTop = Math.max(
+      0,
+      offY + PAN_PAD_Y + (layout.height * next) / 2 - el.clientHeight / 2,
+    );
   }, [people.length, layout.width, layout.height]);
 
   // подсветка предков выбранного узла
@@ -1240,15 +1256,15 @@ export function TreeView({
     const el = scrollRef.current;
     const sizer = sizerRef.current;
     setScale((s) => {
-      const next = Math.min(2, Math.max(0.4, s + delta));
+      const next = Math.min(2, Math.max(MIN_SCALE, s + delta));
       if (el && sizer && next !== s) {
         const rect = sizer.getBoundingClientRect();
         const elRect = el.getBoundingClientRect();
         const clientX = elRect.left + el.clientWidth / 2;
         const clientY = elRect.top + el.clientHeight / 2;
         pendingAnchor.current = {
-          cx: (clientX - rect.left) / s,
-          cy: (clientY - rect.top) / s,
+          cx: (clientX - rect.left - PAN_PAD_X) / s,
+          cy: (clientY - rect.top - PAN_PAD_Y) / s,
           clientX,
           clientY,
         };
@@ -1265,13 +1281,13 @@ export function TreeView({
     const p = targetId ? layout.pos[targetId] : undefined;
     const cx = p ? (p.x + NODE_W / 2) * scale : (layout.width * scale) / 2;
     const cy = p ? (p.y + NODE_H / 2) * scale : (layout.height * scale) / 2;
-    const contentW = layout.width * scale;
-    const contentH = layout.height * scale;
+    const contentW = layout.width * scale + PAN_PAD_X * 2;
+    const contentH = layout.height * scale + PAN_PAD_Y * 2;
     const offX = Math.max(0, (el.clientWidth - contentW) / 2);
     const offY = Math.max(0, (el.clientHeight - contentH) / 2);
     el.scrollTo({
-      left: offX + cx - el.clientWidth / 2,
-      top: offY + cy - el.clientHeight / 2,
+      left: offX + PAN_PAD_X + cx - el.clientWidth / 2,
+      top: offY + PAN_PAD_Y + cy - el.clientHeight / 2,
       behavior: "smooth",
     });
   }, [selectedId, people, layout, scale]);
@@ -1570,12 +1586,17 @@ export function TreeView({
         <div
           ref={sizerRef}
           className="relative mx-auto"
-          style={{ width: layout.width * scale, height: layout.height * scale }}
+          style={{
+            width: layout.width * scale + PAN_PAD_X * 2,
+            height: layout.height * scale + PAN_PAD_Y * 2,
+          }}
         >
           <div
             ref={containerRef}
-            className="absolute left-0 top-0"
+            className="absolute"
             style={{
+              left: PAN_PAD_X,
+              top: PAN_PAD_Y,
               width: layout.width,
               height: layout.height,
               transform: `scale(${scale})`,
