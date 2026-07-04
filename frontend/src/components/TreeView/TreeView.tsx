@@ -214,6 +214,62 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   // ширина карточки вместе с карточками жён справа
   const rectW = (p: Person) => NODE_W + getSpouses(p).length * SLOT;
   const placed = people.filter((p) => pos[p.id]);
+  // Вертикальные отрезки линий (спуск от родителя, спуски к детям, хребты
+  // стопок) — той же геометрией, что buildConnectors. Линия, протыкающая
+  // чужую карточку, — тоже наложение: ветви должны разъехаться.
+  const buildVSegs = () => {
+    const segs: { x: number; y1: number; y2: number; owner: string }[] = [];
+    childrenMap.forEach((kids, pid) => {
+      const pp = pos[pid];
+      if (!pp) return;
+      const px = pp.x + NODE_W / 2;
+      const py = pp.y + NODE_H;
+      const entries = kids
+        .map((k) =>
+          pos[k.id]
+            ? {
+                id: k.id,
+                x: pos[k.id].x,
+                topY: pos[k.id].y,
+                midY: pos[k.id].y + NODE_H / 2,
+              }
+            : null,
+        )
+        .filter((e): e is NonNullable<typeof e> => e !== null)
+        .sort((a, b) => a.x - b.x);
+      if (!entries.length) return;
+      let topMin = Infinity;
+      for (const e of entries) topMin = Math.min(topMin, e.topY);
+      const busY = py + (topMin - py) / 2;
+      if (busY > py + 4) segs.push({ x: px, y1: py, y2: busY, owner: pid });
+      const clusters: (typeof entries)[] = [];
+      for (const e of entries) {
+        const last = clusters[clusters.length - 1];
+        if (last && e.x - last[last.length - 1].x < NODE_W * 0.6) last.push(e);
+        else clusters.push([e]);
+      }
+      for (const cluster of clusters) {
+        if (cluster.length === 1) {
+          const only = cluster[0];
+          if (only.topY > busY + 4) {
+            segs.push({
+              x: only.x + NODE_W / 2,
+              y1: busY,
+              y2: only.topY,
+              owner: only.id,
+            });
+          }
+        } else {
+          const spineX = Math.min(...cluster.map((c) => c.x)) - 14;
+          const maxMid = Math.max(...cluster.map((c) => c.midY));
+          const y1 = Math.min(busY, maxMid);
+          const y2 = Math.max(busY, maxMid);
+          if (y2 - y1 > 8) segs.push({ x: spineX, y1, y2, owner: pid });
+        }
+      }
+    });
+    return segs;
+  };
   for (let pass = 0; pass < 8; pass++) {
     let movedAny = false;
     // слева направо — раздвижка каскадится за один-два прохода
@@ -263,6 +319,67 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         }
         movedAny = true;
       }
+    }
+    // карточка × вертикальная линия чужой ветви: конфликты копим по парам
+    // ветвей и раздвигаем разом — иначе ветвь, зажатая между двумя линиями
+    // одной семьи, бесконечно догоняла бы её мелкими шажками
+    const segs = buildVSegs();
+    const pairs = new Map<
+      string,
+      { rootCard: string; rootOwner: string; dxCard: number; dxOwner: number }
+    >();
+    for (const seg of segs) {
+      for (const B of placed) {
+        if (B.id === seg.owner) continue;
+        const qb = pos[B.id];
+        const wb = rectW(B);
+        if (seg.x < qb.x - 10 || seg.x > qb.x + wb + 10) continue;
+        const oy = Math.min(seg.y2, qb.y + NODE_H) - Math.max(seg.y1, qb.y);
+        if (oy <= 4) continue;
+        // верхние ветви двух сторон друг относительно друга
+        const ancB = ancestorsOf(B.id);
+        ancB.add(B.id);
+        let rootOwner = seg.owner;
+        let cur = parentOf.get(seg.owner);
+        while (cur && !ancB.has(cur)) {
+          rootOwner = cur;
+          cur = parentOf.get(cur);
+        }
+        const ancO = ancestorsOf(seg.owner);
+        ancO.add(seg.owner);
+        let rootCard = B.id;
+        cur = parentOf.get(B.id);
+        while (cur && !ancO.has(cur)) {
+          rootCard = cur;
+          cur = parentOf.get(cur);
+        }
+        // линия своей же ветви — сдвигом ветвей не разрулить
+        if (rootOwner === rootCard) continue;
+        if (subtreeIds(rootOwner).includes(B.id)) continue;
+        if (subtreeIds(rootCard).includes(seg.owner)) continue;
+        const key = rootOwner + "|" + rootCard;
+        const prev =
+          pairs.get(key) ?? { rootCard, rootOwner, dxCard: 0, dxOwner: 0 };
+        prev.dxCard = Math.max(prev.dxCard, seg.x + 16 - qb.x);
+        prev.dxOwner = Math.max(prev.dxOwner, qb.x + wb + 16 - seg.x);
+        pairs.set(key, prev);
+      }
+    }
+    for (const pr of pairs.values()) {
+      const ownerIds = subtreeIds(pr.rootOwner);
+      const cardIds = subtreeIds(pr.rootCard);
+      const minX = (ids: string[]) =>
+        Math.min(...ids.map((id) => pos[id]?.x ?? Infinity));
+      // вправо уезжает та ветвь, что правее (по левому краю поддерева)
+      const moveCard = minX(cardIds) >= minX(ownerIds);
+      const ids = moveCard ? cardIds : ownerIds;
+      const dx = moveCard ? pr.dxCard : pr.dxOwner;
+      if (dx <= 0) continue;
+      for (const id of ids) {
+        const q = pos[id];
+        if (q) q.x += dx;
+      }
+      movedAny = true;
     }
     if (!movedAny) break;
   }
