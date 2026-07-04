@@ -828,6 +828,30 @@ export function MyTreeClient() {
               ),
             )
           }
+          onMove={(ids, dx, dy) => {
+            const idSet = new Set(ids);
+            setPeople((prev) =>
+              prev.map((p) =>
+                idSet.has(p.id)
+                  ? {
+                      ...p,
+                      offsetX: (p.offsetX ?? 0) + dx,
+                      offsetY: (p.offsetY ?? 0) + dy,
+                    }
+                  : p,
+              ),
+            );
+          }}
+          onResetPos={(ids) => {
+            const idSet = new Set(ids);
+            setPeople((prev) =>
+              prev.map((p) =>
+                idSet.has(p.id)
+                  ? { ...p, offsetX: undefined, offsetY: undefined }
+                  : p,
+              ),
+            );
+          }}
         />
       )}
 

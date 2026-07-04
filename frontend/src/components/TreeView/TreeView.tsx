@@ -19,9 +19,11 @@ import {
   Minimize2,
   Minus,
   MoreVertical,
+  Move,
   Pencil,
   Plus,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { getSpouses, isFemale } from "@/lib/demo-data";
@@ -166,10 +168,34 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   };
   [...roots].reverse().forEach(place);
 
+  // Ручные смещения: пользователь перетащил карточку или целую ветвь.
+  let shiftX = 0;
+  let shiftY = 0;
+  for (const p of people) {
+    const q = pos[p.id];
+    if (!q) continue;
+    q.x += p.offsetX ?? 0;
+    q.y += p.offsetY ?? 0;
+    shiftX = Math.min(shiftX, q.x);
+    shiftY = Math.min(shiftY, q.y);
+  }
+  // Ничего не уводим в минус — возвращаем древо в видимую область.
+  if (shiftX < 0 || shiftY < 0) {
+    for (const key of Object.keys(pos)) {
+      pos[key].x -= Math.min(shiftX, 0);
+      pos[key].y -= Math.min(shiftY, 0);
+    }
+  }
+
+  // Габариты по фактическим позициям (включая карточки жён справа).
   let width = cursor > 0 ? (cursor - 1) * SLOT + NODE_W : NODE_W;
-  // стопки листьев уходят ниже своего ряда — высоту считаем по факту
-  const maxY = Math.max(...Object.values(pos).map((q) => q.y));
-  let height = maxY + NODE_H;
+  let height = NODE_H;
+  for (const p of people) {
+    const q = pos[p.id];
+    if (!q) continue;
+    width = Math.max(width, q.x + NODE_W + getSpouses(p).length * SLOT);
+    height = Math.max(height, q.y + NODE_H);
+  }
 
   // Запас по краям под плейсхолдеры «+» (отец сверху, жена справа, дети снизу).
   if (editable) {
@@ -300,6 +326,8 @@ export function TreeView({
   onEdit,
   onDelete,
   onSetColor,
+  onMove,
+  onResetPos,
   onWifeInfo,
   onWifeEdit,
   onWifeDelete,
@@ -318,6 +346,11 @@ export function TreeView({
   /** Если передан — в бургер-меню появляется пункт «Цвет ветви»:
    *  цвет применяется к человеку и его потомкам, null — сбросить. */
   onSetColor?: (id: string, color: string | null) => void;
+  /** Если передан — карточки можно перетаскивать мышкой. ids — кого двигаем
+   *  (ветвь или одна карточка), dx/dy — смещение в координатах раскладки. */
+  onMove?: (ids: string[], dx: number, dy: number) => void;
+  /** Сброс ручного смещения ветви: сама карточка + все её потомки. */
+  onResetPos?: (ids: string[]) => void;
   /** Если передан — на карточках жён появляется бургер-меню с пунктом «Информация».
    *  wifeIndex — позиция жены в списке getSpouses(person). */
   onWifeInfo?: (personId: string, wifeIndex: number) => void;
@@ -327,6 +360,7 @@ export function TreeView({
   onWifeDelete?: (personId: string, wifeIndex: number) => void;
 }) {
   const editable = Boolean(onAddRelative);
+  const movable = Boolean(onMove);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   // какая карточка держит открытым бургер-меню
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -336,6 +370,14 @@ export function TreeView({
     x: number;
     y: number;
   } | null>(null);
+  // live-перетаскивание: кого тянем и на сколько (до отпускания мыши)
+  const [drag, setDrag] = useState<{
+    ids: Set<string>;
+    dx: number;
+    dy: number;
+  } | null>(null);
+  // что тянуть за карточку: всю ветвь или только её саму
+  const [dragMode, setDragMode] = useState<"branch" | "single">("branch");
   // свёрнутые ветви: id узлов, чьи потомки скрыты
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -414,6 +456,41 @@ export function TreeView({
   const layout = useMemo(
     () => computeTreeLayout(visiblePeople, editable),
     [visiblePeople, editable],
+  );
+
+  // позиции для отрисовки: во время перетаскивания смещаем захваченные карточки
+  const displayPos = useMemo(() => {
+    if (!drag) return layout.pos;
+    const out: Record<string, { x: number; y: number }> = {};
+    for (const key of Object.keys(layout.pos)) {
+      const q = layout.pos[key];
+      out[key] = drag.ids.has(key)
+        ? { x: q.x + drag.dx, y: q.y + drag.dy }
+        : q;
+    }
+    return out;
+  }, [layout, drag]);
+
+  // id ветви: сам человек + все его потомки (по полному древу)
+  const collectBranch = useCallback(
+    (rootId: string): string[] => {
+      const kids = new Map<string, string[]>();
+      for (const p of people) {
+        if (!p.parentId) continue;
+        const arr = kids.get(p.parentId) ?? [];
+        arr.push(p.id);
+        kids.set(p.parentId, arr);
+      }
+      const ids: string[] = [];
+      const stack = [rootId];
+      while (stack.length) {
+        const id = stack.pop()!;
+        ids.push(id);
+        for (const k of kids.get(id) ?? []) stack.push(k);
+      }
+      return ids;
+    },
+    [people],
   );
 
   const selected = people.find((p) => p.id === selectedId) ?? null;
@@ -572,11 +649,11 @@ export function TreeView({
     setConnectors(
       buildConnectors(
         visiblePeople,
-        layout.pos,
+        displayPos,
         (id) => nodeRefs.current[id]?.offsetHeight ?? NODE_H,
       ),
     );
-  }, [visiblePeople, layout]);
+  }, [visiblePeople, displayPos]);
 
   useEffect(() => {
     computeConnectors();
@@ -646,6 +723,9 @@ export function TreeView({
 
     const onDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
+      // в редакторе карточки перетаскиваются сами — обзор двигаем с фона
+      if (movable && (e.target as HTMLElement).closest("[data-drag-card]"))
+        return;
       down = true;
       draggedRef.current = false;
       startX = e.clientX;
@@ -689,7 +769,53 @@ export function TreeView({
       window.removeEventListener("mouseup", onUp);
       el.removeEventListener("click", onClick, true);
     };
-  }, [isFullscreen]);
+  }, [isFullscreen, movable]);
+
+  // перетаскивание карточки: тянем всю ветвь или одну карточку (Shift — наоборот)
+  const startCardDrag = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>, id: string) => {
+      if (!onMove || e.button !== 0) return;
+      // кнопки внутри карточки (бургер, свернуть) — не начало перетаскивания
+      if ((e.target as HTMLElement).closest("button")) return;
+      e.preventDefault();
+      const branch = (dragMode === "branch") !== e.shiftKey;
+      const ids = branch ? collectBranch(id) : [id];
+      const idSet = new Set(ids);
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let moved = false;
+      const handleMove = (ev: MouseEvent) => {
+        if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 5) {
+          moved = true;
+          setMenuId(null);
+          setLinePicker(null);
+        }
+        if (moved) {
+          setDrag({
+            ids: idSet,
+            dx: (ev.clientX - startX) / scale,
+            dy: (ev.clientY - startY) / scale,
+          });
+        }
+      };
+      const handleUp = (ev: MouseEvent) => {
+        window.removeEventListener("mousemove", handleMove);
+        window.removeEventListener("mouseup", handleUp);
+        setDrag(null);
+        if (moved) {
+          draggedRef.current = true; // гасим click после перетаскивания
+          onMove(
+            ids,
+            Math.round((ev.clientX - startX) / scale),
+            Math.round((ev.clientY - startY) / scale),
+          );
+        }
+      };
+      window.addEventListener("mousemove", handleMove);
+      window.addEventListener("mouseup", handleUp);
+    },
+    [onMove, dragMode, collectBranch, scale],
+  );
 
   // после смены масштаба смещаем скролл так, чтобы точка осталась под курсором
   useLayoutEffect(() => {
@@ -958,6 +1084,41 @@ export function TreeView({
         </span>
       </div>
 
+      {/* Переключатель перетаскивания: что двигать за карточку (Shift — наоборот) */}
+      {movable ? (
+        <div
+          className="absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full border border-border bg-card/80 p-1 text-xs backdrop-blur"
+          title="Что двигается при перетаскивании карточки (Shift — наоборот)"
+        >
+          <Move className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" />
+          <span className="pr-0.5 text-muted-foreground">Тянуть:</span>
+          <button
+            type="button"
+            onClick={() => setDragMode("branch")}
+            className={cn(
+              "rounded-full px-2.5 py-1 transition-colors",
+              dragMode === "branch"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Ветвь
+          </button>
+          <button
+            type="button"
+            onClick={() => setDragMode("single")}
+            className={cn(
+              "rounded-full px-2.5 py-1 transition-colors",
+              dragMode === "single"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Карточку
+          </button>
+        </div>
+      ) : null}
+
       {/* Панель управления — колонка справа (как на Familio) */}
       <div className="absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1.5">
         <button
@@ -1178,7 +1339,7 @@ export function TreeView({
 
               {/* линии брака: муж — жена (жёны справа от мужа) */}
               {visiblePeople.map((person) => {
-                const pp = layout.pos[person.id];
+                const pp = displayPos[person.id];
                 if (!pp) return null;
                 const wives = getSpouses(person);
                 if (!wives.length) return null;
@@ -1198,7 +1359,7 @@ export function TreeView({
               })}
 
               {/* пунктирные связи к плейсхолдерам «+» */}
-              {selected && layout.pos[selected.id]
+              {selected && !drag && layout.pos[selected.id]
                 ? addSlots.map((slot) => {
                     const sp = layout.pos[selected.id];
                     const x1 = sp.x + NODE_W / 2;
@@ -1230,7 +1391,7 @@ export function TreeView({
                 const isCollapsed = collapsed.has(person.id);
                 const kidsCount = descendantCount.get(person.id) ?? 0;
                 const branchColor = branchColors.get(person.id);
-                const p = layout.pos[person.id];
+                const p = displayPos[person.id];
                 if (!p) return null;
                 return (
                   <div
@@ -1240,6 +1401,10 @@ export function TreeView({
                     }}
                     role="button"
                     tabIndex={0}
+                    data-drag-card={movable ? "true" : undefined}
+                    onMouseDown={
+                      movable ? (e) => startCardDrag(e, person.id) : undefined
+                    }
                     onClick={() => onSelect(person.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -1256,7 +1421,12 @@ export function TreeView({
                       // Карточка с открытым меню поднимается над плейсхолдерами
                       // «+ родственник»: hover-transform создаёт stacking context,
                       // и без этого меню рисуется ПОД плейсхолдером.
-                      zIndex: menuId === person.id ? 40 : undefined,
+                      zIndex:
+                        menuId === person.id
+                          ? 40
+                          : drag?.ids.has(person.id)
+                            ? 30
+                            : undefined,
                     }}
                     className={cn(
                       "group cursor-pointer overflow-visible rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
@@ -1318,6 +1488,24 @@ export function TreeView({
                               >
                                 <Pencil className="h-4 w-4 text-primary" />
                                 Редактировать
+                              </button>
+                            ) : null}
+                            {onResetPos &&
+                            collectBranch(person.id).some((bid) => {
+                              const bp = people.find((x) => x.id === bid);
+                              return Boolean(bp?.offsetX || bp?.offsetY);
+                            }) ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuId(null);
+                                  onResetPos(collectBranch(person.id));
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                              >
+                                <Undo2 className="h-4 w-4 text-primary" />
+                                Вернуть на место
                               </button>
                             ) : null}
                             {onDelete ? (
@@ -1397,7 +1585,7 @@ export function TreeView({
 
               {/* карточки жён — сателлиты справа от карточки мужа */}
               {visiblePeople.flatMap((person) => {
-                const pp = layout.pos[person.id];
+                const pp = displayPos[person.id];
                 if (!pp) return [];
                 const female = isFemale(person);
                 const wives = wifeCardsOf(person, pp);
@@ -1501,7 +1689,9 @@ export function TreeView({
               })}
 
               {/* плейсхолдеры «добавить родственника» вокруг выбранного */}
-              {addSlots.map((slot) => (
+              {drag
+                ? null
+                : addSlots.map((slot) => (
                 <button
                   key={slot.rel}
                   type="button"
@@ -1523,7 +1713,7 @@ export function TreeView({
                     {ADD_LABEL[slot.rel]}
                   </span>
                 </button>
-              ))}
+                ))}
 
               {/* всплывающая палитра «цвет ветви» — открывается кликом по линии */}
               {onSetColor && linePicker ? (
