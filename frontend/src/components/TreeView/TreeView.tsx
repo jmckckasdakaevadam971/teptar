@@ -245,25 +245,29 @@ function buildConnectors(
     const px = pPos.x + NODE_W / 2;
     const py = pPos.y + bottomOf(parentId);
 
-    // группируем детей по колонке X: колонка с несколькими — стопка листьев
-    const cols = new Map<
-      number,
-      { id: string; topY: number; midY: number }[]
-    >();
-    for (const kid of kids) {
-      const cPos = pos[kid.id];
-      if (!cPos) continue;
-      const arr = cols.get(cPos.x) ?? [];
-      arr.push({ id: kid.id, topY: cPos.y, midY: cPos.y + NODE_H / 2 });
-      cols.set(cPos.x, arr);
+    // Кластеризуем детей по X с допуском: карточки, стоящие «почти в
+    // колонку» (в т.ч. после ручного перетаскивания), считаем одной
+    // стопкой — иначе спуск к нижней карточке прошёл бы сквозь верхние.
+    const entries = kids
+      .map((kid) => {
+        const cPos = pos[kid.id];
+        return cPos
+          ? { id: kid.id, x: cPos.x, topY: cPos.y, midY: cPos.y + NODE_H / 2 }
+          : null;
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null)
+      .sort((a, b) => a.x - b.x);
+    if (!entries.length) return;
+
+    const clusters: (typeof entries)[] = [];
+    for (const e of entries) {
+      const last = clusters[clusters.length - 1];
+      if (last && e.x - last[last.length - 1].x < NODE_W * 0.6) last.push(e);
+      else clusters.push([e]);
     }
-    if (!cols.size) return;
 
     let topMin = Infinity;
-    cols.forEach((list) => {
-      list.sort((a, b) => a.topY - b.topY);
-      topMin = Math.min(topMin, list[0].topY);
-    });
+    for (const e of entries) topMin = Math.min(topMin, e.topY);
     const busY = py + (topMin - py) / 2;
 
     const children: { id: string; x: number; topY: number }[] = [];
@@ -275,34 +279,36 @@ function buildConnectors(
       cid?: string;
     }[] = [];
     const busXs = [px];
-    cols.forEach((list, colX) => {
-      if (list.length === 1) {
+    for (const cluster of clusters) {
+      if (cluster.length === 1) {
+        const only = cluster[0];
         children.push({
-          id: list[0].id,
-          x: colX + NODE_W / 2,
-          topY: list[0].topY,
+          id: only.id,
+          x: only.x + NODE_W / 2,
+          topY: only.topY,
         });
-        busXs.push(colX + NODE_W / 2);
+        busXs.push(only.x + NODE_W / 2);
       } else {
-        const spineX = colX - 14;
+        cluster.sort((a, b) => a.topY - b.topY);
+        const spineX = Math.min(...cluster.map((c) => c.x)) - 14;
         busXs.push(spineX);
         extra.push({
           x1: spineX,
           y1: busY,
           x2: spineX,
-          y2: list[list.length - 1].midY,
+          y2: cluster[cluster.length - 1].midY,
         });
-        for (const item of list) {
+        for (const item of cluster) {
           extra.push({
             x1: spineX,
             y1: item.midY,
-            x2: colX + 2,
+            x2: item.x + 2,
             y2: item.midY,
             cid: item.id,
           });
         }
       }
-    });
+    }
     result.push({
       pid: parentId,
       px,
@@ -518,11 +524,17 @@ export function TreeView({
           Math.abs(q.x - x) < NODE_W * 0.8 && Math.abs(q.y - y) < NODE_H * 0.8,
       );
 
-    const slots: { rel: AddRelation; x: number; y: number }[] = [];
+    const slots: {
+      rel: AddRelation;
+      x: number;
+      y: number;
+      ax?: number;
+      ay?: number;
+    }[] = [];
     /** Ставит слот на первую свободную позицию из списка кандидатов. */
     const pushFree = (
       rel: AddRelation,
-      candidates: { x: number; y: number }[],
+      candidates: { x: number; y: number; ax?: number; ay?: number }[],
     ) => {
       // отрицательные координаты — за холстом, такие кандидаты пропускаем
       const spot = candidates.find(
@@ -589,19 +601,28 @@ export function TreeView({
       const maxX = Math.max(...xs);
       // Листья семьи лежат вертикальной стопкой — новый ребёнок (тоже лист)
       // продолжит её вниз, поэтому превью ставим в хвост стопки.
+      // Если пользователь растащил листья по холсту — стопки больше нет,
+      // и слоты ставим по бокам ряда детей, а не «под первым листом».
       const leafKids = kids.filter(
         (k) =>
           layout.pos[k.id] &&
           !visiblePeople.some((q) => q.parentId === k.id),
       );
-      const stackTail: { x: number; y: number }[] = [];
+      const stackTail: { x: number; y: number; ax: number; ay: number }[] = [];
       if (leafKids.length) {
-        const sx = layout.pos[leafKids[0].id].x;
-        const bottom = Math.max(...leafKids.map((k) => layout.pos[k.id].y));
-        stackTail.push(
-          { x: sx, y: bottom + STACK_PITCH },
-          { x: sx, y: bottom + 2 * STACK_PITCH },
-        );
+        const lxs = leafKids.map((k) => layout.pos[k.id].x);
+        if (Math.max(...lxs) - Math.min(...lxs) < NODE_W * 0.6) {
+          const bottomLeaf = leafKids.reduce((a, b) =>
+            layout.pos[a.id].y >= layout.pos[b.id].y ? a : b,
+          );
+          const sx = layout.pos[bottomLeaf.id].x;
+          const bottom = layout.pos[bottomLeaf.id].y;
+          // якорь пунктира — нижняя карточка стопки: слот продолжает колонку
+          stackTail.push(
+            { x: sx, y: bottom + STACK_PITCH, ax: sx, ay: bottom },
+            { x: sx, y: bottom + 2 * STACK_PITCH, ax: sx, ay: bottom },
+          );
+        }
       }
       pushFree("daughter", [
         ...stackTail,
@@ -1358,21 +1379,40 @@ export function TreeView({
                 );
               })}
 
-              {/* пунктирные связи к плейсхолдерам «+» */}
+              {/* пунктирные связи к плейсхолдерам «+»: ортогональные, как
+                  настоящие линии — диагонали резали древо насквозь */}
               {selected && !drag && layout.pos[selected.id]
                 ? addSlots.map((slot) => {
                     const sp = layout.pos[selected.id];
-                    const x1 = sp.x + NODE_W / 2;
-                    const y1 = sp.y + NODE_H / 2;
-                    const x2 = slot.x + NODE_W / 2;
-                    const y2 = slot.y + NODE_H / 2;
+                    // якорь: низ стопки (слот-продолжение) или выбранная карточка
+                    const aTop = slot.ay ?? sp.y;
+                    const aBottom = aTop + NODE_H;
+                    const acx = (slot.ax ?? sp.x) + NODE_W / 2;
+                    const scx = slot.x + NODE_W / 2;
+                    let d: string;
+                    if (slot.y >= aBottom) {
+                      // слот ниже: вниз → в сторону → вниз
+                      const midY = (aBottom + slot.y) / 2;
+                      d = `M ${acx} ${aBottom} V ${midY} H ${scx} V ${slot.y}`;
+                    } else if (slot.y + NODE_H <= aTop) {
+                      // слот выше (отец): вверх → в сторону → вверх
+                      const midY = (slot.y + NODE_H + aTop) / 2;
+                      d = `M ${acx} ${aTop} V ${midY} H ${scx} V ${slot.y + NODE_H}`;
+                    } else {
+                      // слот сбоку (жена): горизонталь от края к краю
+                      const toRight = slot.x >= sp.x;
+                      const x1 = toRight ? sp.x + NODE_W : sp.x;
+                      const x2 = toRight ? slot.x : slot.x + NODE_W;
+                      const cy = sp.y + NODE_H / 2;
+                      d = `M ${x1} ${cy} H ${(x1 + x2) / 2} V ${
+                        slot.y + NODE_H / 2
+                      } H ${x2}`;
+                    }
                     return (
-                      <line
+                      <path
                         key={slot.rel}
-                        x1={x1}
-                        y1={y1}
-                        x2={x2}
-                        y2={y2}
+                        d={d}
+                        fill="none"
                         stroke="rgb(var(--primary) / 0.25)"
                         strokeWidth={1.5}
                         strokeDasharray="4 4"
