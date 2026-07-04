@@ -96,8 +96,16 @@ type Connector = {
   // спуски к детям; линия входа красится в цвет ветви самого ребёнка
   children: { id: string; x: number; topY: number }[];
   // хребет стопки листьев и отводы к карточкам: произвольные отрезки;
-  // cid — id ребёнка для отводов (хребет принадлежит ветви родителя)
-  extra: { x1: number; y1: number; x2: number; y2: number; cid?: string }[];
+  // cid — id ребёнка для отводов (хребет красится в цвет ветви родителя);
+  // gids — id всех карточек стопки: потянув за хребет, двигаем стопку целиком
+  extra: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    cid?: string;
+    gids?: string[];
+  }[];
 };
 
 /** Чистая древовидная раскладка: каждый родитель центрируется над детьми.
@@ -510,13 +518,7 @@ function buildConnectors(
     const busY = py + (topMin - py) / 2;
 
     const children: { id: string; x: number; topY: number }[] = [];
-    const extra: {
-      x1: number;
-      y1: number;
-      x2: number;
-      y2: number;
-      cid?: string;
-    }[] = [];
+    const extra: Connector["extra"] = [];
     const busXs = [px];
     for (const cluster of clusters) {
       if (cluster.length === 1) {
@@ -530,12 +532,14 @@ function buildConnectors(
       } else {
         cluster.sort((a, b) => a.topY - b.topY);
         const spineX = Math.min(...cluster.map((c) => c.x)) - 14;
+        const gids = cluster.map((c) => c.id);
         busXs.push(spineX);
         extra.push({
           x1: spineX,
           y1: busY,
           x2: spineX,
           y2: cluster[cluster.length - 1].midY,
+          gids,
         });
         for (const item of cluster) {
           extra.push({
@@ -544,6 +548,7 @@ function buildConnectors(
             x2: item.x + 2,
             y2: item.midY,
             cid: item.id,
+            gids,
           });
         }
       }
@@ -1039,9 +1044,15 @@ export function TreeView({
 
   // перетаскивание по древу: общее ядро для захвата за карточку и за линию
   const beginDrag = useCallback(
-    (startX: number, startY: number, id: string, branch: boolean) => {
+    (
+      startX: number,
+      startY: number,
+      id: string,
+      branch: boolean,
+      group?: string[],
+    ) => {
       if (!onMove) return;
-      const ids = branch ? collectBranch(id) : [id];
+      const ids = group ?? (branch ? collectBranch(id) : [id]);
       const idSet = new Set(ids);
       // Магнит: тянущаяся карточка прилипает к колонкам/рядам остальных
       // карточек и к своей «родной» позиции — чтобы стопки не расползались
@@ -1154,15 +1165,18 @@ export function TreeView({
     [onMove, dragMode, beginDrag],
   );
 
-  // перетаскивание за линию: двигается вся ветвь, в которую линия ведёт;
-  // клик без движения по-прежнему открывает выбор цвета
+  // перетаскивание за линию: хребет стопки тянет все её карточки разом,
+  // остальные линии — ветвь, в которую ведут; клик без движения открывает
+  // выбор цвета. Если линия охватывает всё древо (корень) — не тянем:
+  // равномерный сдвиг всех карточек всё равно отменяется нормализацией.
   const startLineDrag = useCallback(
-    (e: ReactMouseEvent<SVGLineElement>, id: string) => {
+    (e: ReactMouseEvent<SVGLineElement>, id: string, group?: string[]) => {
       if (!onMove || e.button !== 0) return;
+      if (!group && collectBranch(id).length >= people.length) return;
       e.preventDefault();
-      beginDrag(e.clientX, e.clientY, id, true);
+      beginDrag(e.clientX, e.clientY, id, true, group);
     },
-    [onMove, beginDrag],
+    [onMove, beginDrag, collectBranch, people],
   );
 
   // после смены масштаба смещаем скролл так, чтобы точка осталась под курсором
@@ -1465,7 +1479,7 @@ export function TreeView({
             Карточку
           </button>
           <span className="hidden pl-1 pr-1.5 text-muted-foreground/70 sm:inline">
-            · за линию — вся ветвь
+            · за линию — ветвь или стопка
           </span>
         </div>
       ) : null}
@@ -1712,7 +1726,11 @@ export function TreeView({
                             {...hit}
                             onClick={(e) => openPicker(e, s.cid ?? c.pid)}
                             onMouseDown={(e) =>
-                              startLineDrag(e, s.cid ?? c.pid)
+                              startLineDrag(
+                                e,
+                                s.cid ?? s.gids?.[0] ?? c.pid,
+                                s.gids,
+                              )
                             }
                           />
                         ))}
