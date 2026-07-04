@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronUp,
@@ -18,7 +19,6 @@ import {
   Minimize2,
   Minus,
   MoreVertical,
-  Paintbrush,
   Pencil,
   Plus,
   Trash2,
@@ -81,15 +81,17 @@ const ADD_LABEL: Record<AddRelation, string> = {
 // Уголковый коннектор: вертикаль от родителя к шине, горизонтальная шина
 // и вертикали к каждому ребёнку.
 type Connector = {
-  pid: string; // id родителя — линии красятся в цвет его ветви
+  pid: string; // id родителя — спуск/шина красятся в цвет его ветви
   px: number; // центр родителя по X
   py: number; // низ родителя по Y
   busY: number; // высота горизонтальной шины
   minX: number;
   maxX: number;
-  children: { x: number; topY: number }[];
-  // хребет стопки листьев и отводы к карточкам: произвольные отрезки
-  extra: { x1: number; y1: number; x2: number; y2: number }[];
+  // спуски к детям; линия входа красится в цвет ветви самого ребёнка
+  children: { id: string; x: number; topY: number }[];
+  // хребет стопки листьев и отводы к карточкам: произвольные отрезки;
+  // cid — id ребёнка для отводов (хребет принадлежит ветви родителя)
+  extra: { x1: number; y1: number; x2: number; y2: number; cid?: string }[];
 };
 
 /** Чистая древовидная раскладка: каждый родитель центрируется над детьми.
@@ -218,12 +220,15 @@ function buildConnectors(
     const py = pPos.y + bottomOf(parentId);
 
     // группируем детей по колонке X: колонка с несколькими — стопка листьев
-    const cols = new Map<number, { topY: number; midY: number }[]>();
+    const cols = new Map<
+      number,
+      { id: string; topY: number; midY: number }[]
+    >();
     for (const kid of kids) {
       const cPos = pos[kid.id];
       if (!cPos) continue;
       const arr = cols.get(cPos.x) ?? [];
-      arr.push({ topY: cPos.y, midY: cPos.y + NODE_H / 2 });
+      arr.push({ id: kid.id, topY: cPos.y, midY: cPos.y + NODE_H / 2 });
       cols.set(cPos.x, arr);
     }
     if (!cols.size) return;
@@ -235,12 +240,22 @@ function buildConnectors(
     });
     const busY = py + (topMin - py) / 2;
 
-    const children: { x: number; topY: number }[] = [];
-    const extra: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    const children: { id: string; x: number; topY: number }[] = [];
+    const extra: {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      cid?: string;
+    }[] = [];
     const busXs = [px];
     cols.forEach((list, colX) => {
       if (list.length === 1) {
-        children.push({ x: colX + NODE_W / 2, topY: list[0].topY });
+        children.push({
+          id: list[0].id,
+          x: colX + NODE_W / 2,
+          topY: list[0].topY,
+        });
         busXs.push(colX + NODE_W / 2);
       } else {
         const spineX = colX - 14;
@@ -252,7 +267,13 @@ function buildConnectors(
           y2: list[list.length - 1].midY,
         });
         for (const item of list) {
-          extra.push({ x1: spineX, y1: item.midY, x2: colX + 2, y2: item.midY });
+          extra.push({
+            x1: spineX,
+            y1: item.midY,
+            x2: colX + 2,
+            y2: item.midY,
+            cid: item.id,
+          });
         }
       }
     });
@@ -309,8 +330,12 @@ export function TreeView({
   const [connectors, setConnectors] = useState<Connector[]>([]);
   // какая карточка держит открытым бургер-меню
   const [menuId, setMenuId] = useState<string | null>(null);
-  // у какой карточки раскрыта палитра «Цвет ветви»
-  const [paletteId, setPaletteId] = useState<string | null>(null);
+  // палитра «цвет ветви», открытая кликом по линии: чью ветвь красим и где
+  const [linePicker, setLinePicker] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   // свёрнутые ветви: id узлов, чьи потомки скрыты
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -374,16 +399,16 @@ export function TreeView({
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // клик в любом месте вне меню — закрыть его (вместе с палитрой)
+  // клик в любом месте вне меню/палитры — закрыть их
   useEffect(() => {
-    if (!menuId) return;
+    if (!menuId && !linePicker) return;
     const close = () => {
       setMenuId(null);
-      setPaletteId(null);
+      setLinePicker(null);
     };
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
-  }, [menuId]);
+  }, [menuId, linePicker]);
 
   // раскладка видимой части древа (свёрнутые ветви исключены)
   const layout = useMemo(
@@ -766,24 +791,36 @@ export function TreeView({
 
     // Связи родитель → дети (общая логика с интерактивным SVG)
     const bColors = computeBranchColors(people);
+    const strokeFor = (id?: string) => {
+      const bc = id ? bColors.get(id) : undefined;
+      return bc ? `${bc}b3` : "rgba(201,162,39,0.5)";
+    };
     ctx.lineWidth = 2;
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
-      const bc = bColors.get(c.pid);
-      ctx.strokeStyle = bc ? `${bc}b3` : "rgba(201,162,39,0.5)";
+      // спуск от родителя + шина — цвет ветви родителя
+      ctx.strokeStyle = strokeFor(c.pid);
       ctx.beginPath();
       ctx.moveTo(c.px, c.py);
       ctx.lineTo(c.px, c.busY);
       ctx.moveTo(c.minX, c.busY);
       ctx.lineTo(c.maxX, c.busY);
+      ctx.stroke();
+      // спуски к детям — цвет ветви самого ребёнка
       for (const k of c.children) {
+        ctx.strokeStyle = strokeFor(k.id);
+        ctx.beginPath();
         ctx.moveTo(k.x, c.busY);
         ctx.lineTo(k.x, k.topY);
+        ctx.stroke();
       }
+      // хребет стопки (цвет родителя) и отводы (цвет ребёнка)
       for (const s of c.extra) {
+        ctx.strokeStyle = strokeFor(s.cid ?? c.pid);
+        ctx.beginPath();
         ctx.moveTo(s.x1, s.y1);
         ctx.lineTo(s.x2, s.y2);
+        ctx.stroke();
       }
-      ctx.stroke();
     }
 
     // Линии брака: муж — жена (рисуем до карточек, чтобы линия шла под ними)
@@ -1010,19 +1047,30 @@ export function TreeView({
             >
               {connectors.map((c, i) => {
                 const bc = branchColors.get(c.pid);
+                const parentStroke = bc ?? "rgb(var(--primary) / 0.45)";
                 return (
                   <g
                     key={i}
-                    stroke={bc ?? "rgb(var(--primary) / 0.45)"}
-                    strokeOpacity={bc ? 0.7 : undefined}
                     strokeWidth={2}
                     strokeLinecap="round"
+                    strokeOpacity={0.7}
                   >
-                    {/* спуск от родителя к шине */}
-                    <line x1={c.px} y1={c.py} x2={c.px} y2={c.busY} />
-                    {/* горизонтальная шина */}
-                    <line x1={c.minX} y1={c.busY} x2={c.maxX} y2={c.busY} />
-                    {/* спуски к каждому ребёнку */}
+                    {/* спуск от родителя к шине + шина — цвет ветви родителя */}
+                    <line
+                      x1={c.px}
+                      y1={c.py}
+                      x2={c.px}
+                      y2={c.busY}
+                      stroke={parentStroke}
+                    />
+                    <line
+                      x1={c.minX}
+                      y1={c.busY}
+                      x2={c.maxX}
+                      y2={c.busY}
+                      stroke={parentStroke}
+                    />
+                    {/* спуски к детям — цвет ветви самого ребёнка */}
                     {c.children.map((ch, j) => (
                       <line
                         key={j}
@@ -1030,9 +1078,13 @@ export function TreeView({
                         y1={c.busY}
                         x2={ch.x}
                         y2={ch.topY}
+                        stroke={
+                          branchColors.get(ch.id) ??
+                          "rgb(var(--primary) / 0.45)"
+                        }
                       />
                     ))}
-                    {/* хребет стопки листьев + отводы к карточкам */}
+                    {/* хребет стопки листьев (цвет родителя) + отводы (цвет ребёнка) */}
                     {c.extra.map((s, j) => (
                       <line
                         key={`e${j}`}
@@ -1040,11 +1092,89 @@ export function TreeView({
                         y1={s.y1}
                         x2={s.x2}
                         y2={s.y2}
+                        stroke={
+                          (s.cid
+                            ? branchColors.get(s.cid)
+                            : branchColors.get(c.pid)) ??
+                          "rgb(var(--primary) / 0.45)"
+                        }
                       />
                     ))}
                   </g>
                 );
               })}
+
+              {/* невидимые широкие зоны клика по линиям: открывают палитру
+                  «цвет ветви» — клик по линии красит ветвь, в которую она ведёт */}
+              {onSetColor
+                ? connectors.map((c, i) => {
+                    const openPicker = (
+                      e: ReactMouseEvent<SVGLineElement>,
+                      id: string,
+                    ) => {
+                      e.stopPropagation();
+                      const svg = e.currentTarget.ownerSVGElement;
+                      const rect = svg?.getBoundingClientRect();
+                      if (!rect) return;
+                      setMenuId(null);
+                      setLinePicker({
+                        id,
+                        x: (e.clientX - rect.left) / scale,
+                        y: (e.clientY - rect.top) / scale,
+                      });
+                    };
+                    const hit = {
+                      stroke: "transparent",
+                      strokeWidth: 14,
+                      style: {
+                        pointerEvents: "stroke",
+                        cursor: "pointer",
+                      } as CSSProperties,
+                    };
+                    return (
+                      <g key={`hit-${i}`}>
+                        <line
+                          x1={c.px}
+                          y1={c.py}
+                          x2={c.px}
+                          y2={c.busY}
+                          {...hit}
+                          onClick={(e) => openPicker(e, c.pid)}
+                        />
+                        <line
+                          x1={c.minX}
+                          y1={c.busY}
+                          x2={c.maxX}
+                          y2={c.busY}
+                          {...hit}
+                          onClick={(e) => openPicker(e, c.pid)}
+                        />
+                        {c.children.map((ch, j) => (
+                          <line
+                            key={j}
+                            x1={ch.x}
+                            y1={c.busY}
+                            x2={ch.x}
+                            y2={ch.topY}
+                            {...hit}
+                            onClick={(e) => openPicker(e, ch.id)}
+                          />
+                        ))}
+                        {c.extra.map((s, j) => (
+                          <line
+                            key={`e${j}`}
+                            x1={s.x1}
+                            y1={s.y1}
+                            x2={s.x2}
+                            y2={s.y2}
+                            {...hit}
+                            onClick={(e) => openPicker(e, s.cid ?? c.pid)}
+                          />
+                        ))}
+                      </g>
+                    );
+                  })
+                : null}
 
               {/* линии брака: муж — жена (жёны справа от мужа) */}
               {visiblePeople.map((person) => {
@@ -1153,7 +1283,7 @@ export function TreeView({
                           aria-label="Меню карточки"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPaletteId(null);
+                            setLinePicker(null);
                             setMenuId((v) =>
                               v === person.id ? null : person.id,
                             );
@@ -1169,7 +1299,6 @@ export function TreeView({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMenuId(null);
-                                setPaletteId(null);
                                 onShowInfo(person.id);
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
@@ -1183,7 +1312,6 @@ export function TreeView({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuId(null);
-                                  setPaletteId(null);
                                   onEdit(person.id);
                                 }}
                                 className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
@@ -1192,68 +1320,12 @@ export function TreeView({
                                 Редактировать
                               </button>
                             ) : null}
-                            {onSetColor ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPaletteId((v) =>
-                                      v === person.id ? null : person.id,
-                                    );
-                                  }}
-                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
-                                >
-                                  <Paintbrush className="h-4 w-4 text-primary" />
-                                  Цвет ветви
-                                </button>
-                                {paletteId === person.id ? (
-                                  <div className="border-t border-border px-3 py-2.5">
-                                    <div className="grid grid-cols-4 gap-1.5">
-                                      {BRANCH_PALETTE.map((color) => (
-                                        <button
-                                          key={color}
-                                          type="button"
-                                          aria-label={`Цвет ${color}`}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setMenuId(null);
-                                            setPaletteId(null);
-                                            onSetColor(person.id, color);
-                                          }}
-                                          className={cn(
-                                            "h-6 w-6 rounded-full border transition-transform hover:scale-110",
-                                            person.branchColor === color
-                                              ? "border-foreground"
-                                              : "border-transparent",
-                                          )}
-                                          style={{ backgroundColor: color }}
-                                        />
-                                      ))}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setMenuId(null);
-                                        setPaletteId(null);
-                                        onSetColor(person.id, null);
-                                      }}
-                                      className="mt-2 w-full rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                                    >
-                                      Без цвета
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </>
-                            ) : null}
                             {onDelete ? (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuId(null);
-                                  setPaletteId(null);
                                   onDelete(person.id);
                                 }}
                                 className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
@@ -1452,6 +1524,60 @@ export function TreeView({
                   </span>
                 </button>
               ))}
+
+              {/* всплывающая палитра «цвет ветви» — открывается кликом по линии */}
+              {onSetColor && linePicker ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: linePicker.x,
+                    top: linePicker.y,
+                    zIndex: 50,
+                  }}
+                  className="w-40 -translate-x-1/2 translate-y-2 rounded-xl border border-border bg-card p-3 shadow-lg"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="mb-2 truncate text-xs text-muted-foreground">
+                    Ветвь:{" "}
+                    <span className="text-foreground">
+                      {people.find((p) => p.id === linePicker.id)?.name ?? ""}
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {BRANCH_PALETTE.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`Цвет ${color}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetColor(linePicker.id, color);
+                          setLinePicker(null);
+                        }}
+                        className={cn(
+                          "h-7 w-7 rounded-full border transition-transform hover:scale-110",
+                          people.find((p) => p.id === linePicker.id)
+                            ?.branchColor === color
+                            ? "border-foreground"
+                            : "border-transparent",
+                        )}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSetColor(linePicker.id, null);
+                      setLinePicker(null);
+                    }}
+                    className="mt-2 w-full rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    Без цвета
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
