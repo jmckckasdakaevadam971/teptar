@@ -1576,6 +1576,33 @@ export function TreeView({
                   >
                     Без цвета
                   </button>
+                  {/* свой цвет: полная свобода — системная палитра любого оттенка */}
+                  <label
+                    className="mt-1 flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span
+                      className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full border border-border"
+                      style={{
+                        background:
+                          "conic-gradient(#f55, #fd5, #7d5, #5dc, #57d, #a5d, #f55)",
+                      }}
+                    >
+                      <input
+                        type="color"
+                        aria-label="Свой цвет"
+                        value={
+                          people.find((p) => p.id === linePicker.id)
+                            ?.branchColor ?? "#c9a227"
+                        }
+                        onChange={(e) =>
+                          onSetColor(linePicker.id, e.target.value)
+                        }
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      />
+                    </span>
+                    Свой цвет
+                  </label>
                 </div>
               ) : null}
             </div>
