@@ -376,11 +376,14 @@ export function TreeView({
     x: number;
     y: number;
   } | null>(null);
-  // live-перетаскивание: кого тянем и на сколько (до отпускания мыши)
+  // live-перетаскивание: кого тянем и на сколько (до отпускания мыши);
+  // snapX/snapY — координаты «магнитных» направляющих, если карточка прилипла
   const [drag, setDrag] = useState<{
     ids: Set<string>;
     dx: number;
     dy: number;
+    snapX?: number | null;
+    snapY?: number | null;
   } | null>(null);
   // что тянуть за карточку: всю ветвь или только её саму
   const [dragMode, setDragMode] = useState<"branch" | "single">("branch");
@@ -804,6 +807,60 @@ export function TreeView({
       const idSet = new Set(ids);
       const startX = e.clientX;
       const startY = e.clientY;
+      // Магнит: тянущаяся карточка прилипает к колонкам/рядам остальных
+      // карточек и к своей «родной» позиции — чтобы стопки не расползались
+      // зигзагом от неточных движений мыши.
+      const SNAP = 14;
+      const base = layout.pos[id];
+      const dragged = people.find((q) => q.id === id);
+      const xTargets: number[] = [];
+      const yTargets: number[] = [];
+      if (base) {
+        const seenX = new Set<number>();
+        const seenY = new Set<number>();
+        const addT = (x: number, y: number) => {
+          if (!seenX.has(x)) {
+            seenX.add(x);
+            xTargets.push(x);
+          }
+          if (!seenY.has(y)) {
+            seenY.add(y);
+            yTargets.push(y);
+          }
+        };
+        for (const q of visiblePeople) {
+          if (idSet.has(q.id)) continue;
+          const qp = layout.pos[q.id];
+          if (qp) addT(qp.x, qp.y);
+        }
+        // родная позиция карточки (раскладка без ручного смещения)
+        addT(base.x - (dragged?.offsetX ?? 0), base.y - (dragged?.offsetY ?? 0));
+      }
+      const applySnap = (dx: number, dy: number) => {
+        let sx: number | null = null;
+        let sy: number | null = null;
+        if (base) {
+          let bestX = SNAP;
+          for (const t of xTargets) {
+            const d = Math.abs(base.x + dx - t);
+            if (d <= bestX) {
+              bestX = d;
+              sx = t;
+            }
+          }
+          if (sx !== null) dx = sx - base.x;
+          let bestY = SNAP;
+          for (const t of yTargets) {
+            const d = Math.abs(base.y + dy - t);
+            if (d <= bestY) {
+              bestY = d;
+              sy = t;
+            }
+          }
+          if (sy !== null) dy = sy - base.y;
+        }
+        return { dx, dy, sx, sy };
+      };
       let moved = false;
       const handleMove = (ev: MouseEvent) => {
         if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 5) {
@@ -812,10 +869,16 @@ export function TreeView({
           setLinePicker(null);
         }
         if (moved) {
+          const s = applySnap(
+            (ev.clientX - startX) / scale,
+            (ev.clientY - startY) / scale,
+          );
           setDrag({
             ids: idSet,
-            dx: (ev.clientX - startX) / scale,
-            dy: (ev.clientY - startY) / scale,
+            dx: s.dx,
+            dy: s.dy,
+            snapX: s.sx,
+            snapY: s.sy,
           });
         }
       };
@@ -825,17 +888,17 @@ export function TreeView({
         setDrag(null);
         if (moved) {
           draggedRef.current = true; // гасим click после перетаскивания
-          onMove(
-            ids,
-            Math.round((ev.clientX - startX) / scale),
-            Math.round((ev.clientY - startY) / scale),
+          const s = applySnap(
+            (ev.clientX - startX) / scale,
+            (ev.clientY - startY) / scale,
           );
+          onMove(ids, Math.round(s.dx), Math.round(s.dy));
         }
       };
       window.addEventListener("mousemove", handleMove);
       window.addEventListener("mouseup", handleUp);
     },
-    [onMove, dragMode, collectBranch, scale],
+    [onMove, dragMode, collectBranch, scale, layout, people, visiblePeople],
   );
 
   // после смены масштаба смещаем скролл так, чтобы точка осталась под курсором
@@ -1286,6 +1349,31 @@ export function TreeView({
                 );
               })}
 
+              {/* магнитные направляющие при перетаскивании: вертикаль/
+                  горизонталь колонки или ряда, к которым прилипла карточка */}
+              {drag && drag.snapX != null ? (
+                <line
+                  x1={drag.snapX + NODE_W / 2}
+                  y1={0}
+                  x2={drag.snapX + NODE_W / 2}
+                  y2={layout.height}
+                  stroke="rgb(var(--primary) / 0.4)"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 6"
+                />
+              ) : null}
+              {drag && drag.snapY != null ? (
+                <line
+                  x1={0}
+                  y1={drag.snapY + NODE_H / 2}
+                  x2={layout.width}
+                  y2={drag.snapY + NODE_H / 2}
+                  stroke="rgb(var(--primary) / 0.4)"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 6"
+                />
+              ) : null}
+
               {/* невидимые широкие зоны клика по линиям: открывают палитру
                   «цвет ветви» — клик по линии красит ветвь, в которую она ведёт */}
               {onSetColor
@@ -1391,8 +1479,20 @@ export function TreeView({
                     const scx = slot.x + NODE_W / 2;
                     let d: string;
                     if (slot.y >= aBottom) {
-                      // слот ниже: вниз → в сторону → вниз
-                      const midY = (aBottom + slot.y) / 2;
+                      // слот ниже: вниз → в сторону → вниз. Горизонталь ведём
+                      // по коридору семейной шины (между родителем и детьми) —
+                      // середина зазора может резать перетащенные карточки.
+                      const conn =
+                        slot.ay == null
+                          ? connectors.find((c) => c.pid === selected.id)
+                          : undefined;
+                      const fallback = (aBottom + slot.y) / 2;
+                      const midY =
+                        conn &&
+                        conn.busY > aBottom + 8 &&
+                        conn.busY < slot.y - 8
+                          ? conn.busY
+                          : fallback;
                       d = `M ${acx} ${aBottom} V ${midY} H ${scx} V ${slot.y}`;
                     } else if (slot.y + NODE_H <= aTop) {
                       // слот выше (отец): вверх → в сторону → вверх
