@@ -134,7 +134,14 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   }
 
   const pos: Record<string, { x: number; y: number }> = {};
-  if (!people.length) return { pos, width: NODE_W, height: NODE_H };
+  if (!people.length) {
+    return {
+      pos,
+      width: NODE_W,
+      height: NODE_H,
+      pushDelta: {} as Record<string, { x: number; y: number }>,
+    };
+  }
 
   const minGen = Math.min(...people.map((p) => p.generation));
   let cursor = 0;
@@ -193,6 +200,15 @@ function computeTreeLayout(people: Person[], editable: boolean) {
     q.y += p.offsetY ?? 0;
   }
 
+  // Снимок позиций ДО расталкивания: разница финальной и этой позиции —
+  // сдвиг, добавленный расталкиванием (pushDelta). При отпускании
+  // перетаскивания его «запекают» в ручное смещение, иначе карточка после
+  // пересчёта прыгает назад и раскладка разъезжается с каждым перетаскиванием.
+  const prePush: Record<string, { x: number; y: number }> = {};
+  for (const key of Object.keys(pos)) {
+    prePush[key] = { x: pos[key].x, y: pos[key].y };
+  }
+
   // ── Расталкивание наложений ────────────────────────────────────────
   // Сама авто-раскладка наложений не даёт, но ручные смещения прибивают
   // соседние ветви к месту: когда у человека появляются новые потомки,
@@ -231,11 +247,37 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   // ширина карточки вместе с карточками жён справа
   const rectW = (p: Person) => NODE_W + getSpouses(p).length * SLOT;
   const placed = people.filter((p) => pos[p.id]);
+  // Карточки, расставленные руками, — неприкосновенны: расталкивание двигает
+  // только авто-ветви. Иначе перетащенное «уезжало» после каждого пересчёта.
+  const manual = new Set<string>();
+  for (const p of people) {
+    if ((p.offsetX ?? 0) !== 0 || (p.offsetY ?? 0) !== 0) manual.add(p.id);
+  }
+  const hasManual = (ids: string[]) => ids.some((id) => manual.has(id));
+  // Единица сдвига: поддерево конфликтного корня. Одиночный лист внутри
+  // стопки расширяем до всей стопки — поштучные сдвиги рвали колонки
+  // братьев/сестёр и раскидывали их каскадом через всё древо.
+  const unitOf = (rootId: string): string[] => {
+    const ids = subtreeIds(rootId);
+    if (ids.length !== 1) return ids;
+    const par = parentOf.get(rootId);
+    const base = pos[rootId];
+    if (!par || !base) return ids;
+    const mates = (childrenMap.get(par) ?? []).filter(
+      (k) =>
+        !(childrenMap.get(k.id)?.length) &&
+        pos[k.id] &&
+        Math.abs(pos[k.id].x - base.x) < NODE_W * 0.5,
+    );
+    return mates.length > 1 ? mates.map((m) => m.id) : ids;
+  };
   // Вертикальные отрезки линий (спуск от родителя, спуски к детям, хребты
   // стопок) — той же геометрией, что buildConnectors. Линия, протыкающая
   // чужую карточку, — тоже наложение: ветви должны разъехаться.
   const buildVSegs = () => {
-    const segs: { x: number; y1: number; y2: number; owner: string }[] = [];
+    // det — карточка, чья позиция задаёт x отрезка: гард сходимости
+    // проверяет, что препятствие статично (левее шва сдвигаемой стены)
+    const segs: { x: number; y1: number; y2: number; owner: string; det: string }[] = [];
     childrenMap.forEach((kids, pid) => {
       const pp = pos[pid];
       if (!pp) return;
@@ -259,7 +301,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
       let topMin = Infinity;
       for (const e of entries) topMin = Math.min(topMin, e.topY);
       const busY = py + (topMin - py) / 2;
-      if (busY > py + 4) segs.push({ x: px, y1: py, y2: busY, owner: pid });
+      if (busY > py + 4) segs.push({ x: px, y1: py, y2: busY, owner: pid, det: pid });
       const clusters: (typeof entries)[] = [];
       for (const e of entries) {
         const last = clusters[clusters.length - 1];
@@ -281,14 +323,18 @@ function computeTreeLayout(people: Person[], editable: boolean) {
               y1: busY,
               y2: only.topY,
               owner: only.id,
+              det: only.id,
             });
           }
         } else {
-          const spineX = Math.min(...cluster.map((c) => c.x)) - 14;
+          let leftmost = cluster[0];
+          for (const c of cluster) if (c.x < leftmost.x) leftmost = c;
+          const spineX = leftmost.x - 14;
           const maxMid = Math.max(...cluster.map((c) => c.midY));
           const y1 = Math.min(busY, maxMid);
           const y2 = Math.max(busY, maxMid);
-          if (y2 - y1 > 8) segs.push({ x: spineX, y1, y2, owner: pid });
+          if (y2 - y1 > 8)
+            segs.push({ x: spineX, y1, y2, owner: pid, det: leftmost.id });
         }
       }
     });
@@ -315,44 +361,43 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         const ancA = ancestorsOf(A.id);
         ancA.add(A.id);
         let rootB = B.id;
-        let cur = parentOf.get(B.id);
-        while (cur && !ancA.has(cur)) {
-          rootB = cur;
-          cur = parentOf.get(cur);
+        let curUp = parentOf.get(B.id);
+        while (curUp && !ancA.has(curUp)) {
+          rootB = curUp;
+          curUp = parentOf.get(curUp);
         }
-        const movedIds = subtreeIds(rootB);
+        const unitB = unitOf(rootB);
         // A внутри той же ветви — сдвигом ветви наложение не разрулить
-        if (movedIds.includes(A.id)) continue;
-        // Вниз двигаем ТОЛЬКО одиночный лист внутри стопки одного родителя
-        // (перекрытие в родной колонке) — карточка одна, каскада не будет.
-        // Ветви раздвигаем строго вправо: вертикальный сдвиг целых ветвей
-        // каскадился, и пары наехавших ветвей утаскивало далеко вниз.
-        const stackPair =
-          movedIds.length === 1 &&
-          parentOf.get(B.id) !== undefined &&
-          parentOf.get(A.id) === parentOf.get(B.id) &&
-          Math.abs(qa.x - qb.x) < NODE_W * 0.5;
-        const dx = stackPair ? 0 : qa.x + wa + H_GAP - qb.x;
-        const dy = stackPair ? qa.y + STACK_PITCH - qb.y : 0;
-        for (const id of movedIds) {
-          const q = pos[id];
-          if (q) {
-            q.x += dx;
-            q.y += dy;
-          }
+        // (в т.ч. конфликт внутри одной стопки листьев)
+        if (unitB.includes(A.id)) continue;
+        // Ручная (перетащенная) ветвь неприкосновенна. Сдвиги — ТОЛЬКО
+        // вправо и только авто-ветвей: любые «встречные» коррекции
+        // (влево/прыжки через ветвь) раскачивали древо до разлёта.
+        // Наложение на ручную ветвь слева оставляем — так поставил юзер.
+        if (hasManual(unitB)) continue;
+        const dx = qa.x + wa + H_GAP - qb.x;
+        if (dx <= 0) continue;
+        // «Сдвиг стеной»: уезжает не только ветвь B, а ВСЕ карточки правее
+        // её левого края. Взаимное расположение правой части сохраняется,
+        // поэтому сдвиг не рождает новых наложений. Локальный сдвиг одной
+        // ветви вбрасывал её в соседей и лавиной разносил всё древо.
+        const x0 = Math.min(...unitB.map((id) => pos[id]?.x ?? Infinity));
+        if (qa.x >= x0) continue; // стену не открыть, не сдвинув сам A
+        for (const p of placed) {
+          if (manual.has(p.id)) continue;
+          const q = pos[p.id];
+          if (q && q.x >= x0) q.x += dx;
         }
         movedAny = true;
       }
     }
-    // карточка × вертикальная линия чужой ветви: конфликты копим по парам
-    // ветвей и раздвигаем разом — иначе ветвь, зажатая между двумя линиями
-    // одной семьи, бесконечно догоняла бы её мелкими шажками
+    // карточка × вертикальная линия чужой ветви — тем же «сдвигом стеной».
+    // Один конфликт за проход: после сдвига геометрия линий устарела,
+    // следующий проход пересчитает её заново.
     const segs = buildVSegs();
-    const pairs = new Map<
-      string,
-      { rootCard: string; rootOwner: string; dxCard: number; dxOwner: number }
-    >();
+    let lineFixed = false;
     for (const seg of segs) {
+      if (lineFixed) break;
       for (const B of placed) {
         if (B.id === seg.owner) continue;
         const qb = pos[B.id];
@@ -383,31 +428,71 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         if (rootOwner === rootCard) continue;
         if (subtreeIds(rootOwner).includes(B.id)) continue;
         if (subtreeIds(rootCard).includes(seg.owner)) continue;
-        const key = rootOwner + "|" + rootCard;
-        const prev =
-          pairs.get(key) ?? { rootCard, rootOwner, dxCard: 0, dxOwner: 0 };
-        prev.dxCard = Math.max(prev.dxCard, seg.x + 40 - qb.x);
-        prev.dxOwner = Math.max(prev.dxOwner, qb.x + wb + 16 - seg.x);
-        pairs.set(key, prev);
+        const ownerIds = unitOf(rootOwner);
+        const cardIds = unitOf(rootCard);
+        // ручная ветвь не двигается (её ставил пользователь) — двигать
+        // можно только авто-сторону; обе ручные — оставляем как есть
+        const pinOwner = hasManual(ownerIds);
+        const pinCard = hasManual(cardIds);
+        if (pinOwner && pinCard) continue;
+        const minX = (ids: string[]) =>
+          Math.min(...ids.map((id) => pos[id]?.x ?? Infinity));
+        const mxCard = minX(cardIds);
+        const mxOwner = minX(ownerIds);
+        // два варианта: уезжает ветвь карточки (за линию) или ветвь линии
+        // (за карточку). Сдвиг ЛОКАЛЬНЫЙ — прыгает только сам юнит, целиком
+        // за препятствие. Стеной здесь нельзя: статичная линия внутри зоны
+        // стены каждый проход «прогоняла» сквозь себя новые карточки и
+        // растаскивала древо (+656 вместо +200). Вторичные наложения после
+        // прыжка разруливает card×card-стена — она структуру сохраняет.
+        const tryCard = () => {
+          if (pinCard) return null;
+          // юнит уводим сразу ВСЕМИ карточками, попавшими в полосу линии:
+          // прыжки по одной карточке за проход накачивали сдвиг
+          let mxConf = Infinity;
+          for (const id of cardIds) {
+            const q = pos[id];
+            if (!q) continue;
+            const o = Math.min(seg.y2, q.y + NODE_H) - Math.max(seg.y1, q.y);
+            if (o <= 4) continue;
+            if (q.x < mxConf) mxConf = q.x;
+          }
+          if (mxConf === Infinity) return null;
+          const dx = seg.x + 40 - mxConf;
+          if (dx <= 0) return null;
+          return { dx, ids: cardIds };
+        };
+        const tryOwner = () => {
+          if (pinOwner) return null;
+          const dx = qb.x + wb + 16 - seg.x;
+          if (dx <= 0) return null;
+          return { dx, ids: ownerIds };
+        };
+        // предпочитаем сдвиг более правой ветви, при блокировке — вторую
+        const mv =
+          mxCard >= mxOwner ? tryCard() ?? tryOwner() : tryOwner() ?? tryCard();
+        if (!mv) continue;
+        for (const id of mv.ids) {
+          if (manual.has(id)) continue;
+          const q = pos[id];
+          if (q) q.x += mv.dx;
+        }
+        movedAny = true;
+        lineFixed = true;
+        break;
       }
-    }
-    for (const pr of pairs.values()) {
-      const ownerIds = subtreeIds(pr.rootOwner);
-      const cardIds = subtreeIds(pr.rootCard);
-      const minX = (ids: string[]) =>
-        Math.min(...ids.map((id) => pos[id]?.x ?? Infinity));
-      // вправо уезжает та ветвь, что правее (по левому краю поддерева)
-      const moveCard = minX(cardIds) >= minX(ownerIds);
-      const ids = moveCard ? cardIds : ownerIds;
-      const dx = moveCard ? pr.dxCard : pr.dxOwner;
-      if (dx <= 0) continue;
-      for (const id of ids) {
-        const q = pos[id];
-        if (q) q.x += dx;
-      }
-      movedAny = true;
     }
     if (!movedAny) break;
+  }
+
+  // Сдвиг от расталкивания (до общей нормализации — она равномерная и
+  // к ручным смещениям отношения не имеет).
+  const pushDelta: Record<string, { x: number; y: number }> = {};
+  for (const key of Object.keys(pos)) {
+    pushDelta[key] = {
+      x: pos[key].x - (prePush[key]?.x ?? pos[key].x),
+      y: pos[key].y - (prePush[key]?.y ?? pos[key].y),
+    };
   }
 
   let shiftX = 0;
@@ -444,7 +529,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
     width += 2 * SLOT;
     height += 2 * ROW_PITCH;
   }
-  return { pos, width, height };
+  return { pos, width, height, pushDelta };
 }
 
 /** Позиции карточек жён: подряд справа от карточки мужа. */
@@ -601,9 +686,10 @@ export function TreeView({
   /** Если передан — в бургер-меню появляется пункт «Цвет ветви»:
    *  цвет применяется к человеку и его потомкам, null — сбросить. */
   onSetColor?: (id: string, color: string | null) => void;
-  /** Если передан — карточки можно перетаскивать мышкой. ids — кого двигаем
-   *  (ветвь или одна карточка), dx/dy — смещение в координатах раскладки. */
-  onMove?: (ids: string[], dx: number, dy: number) => void;
+  /** Если передан — карточки можно перетаскивать мышкой. moves — кого двигаем
+   *  и на сколько (в координатах раскладки); сдвиг расталкивания уже учтён,
+   *  так что «куда бросил — там и осталось». */
+  onMove?: (moves: { id: string; dx: number; dy: number }[]) => void;
   /** Сброс ручного смещения ветви: сама карточка + все её потомки. */
   onResetPos?: (ids: string[]) => void;
   /** Если передан — на карточках жён появляется бургер-меню с пунктом «Информация».
@@ -1146,7 +1232,19 @@ export function TreeView({
             (ev.clientX - startX) / scale,
             (ev.clientY - startY) / scale,
           );
-          onMove(ids, Math.round(s.dx), Math.round(s.dy));
+          // Запекаем сдвиг расталкивания в ручное смещение: пользователь
+          // видел карточки уже с ним, и без учёта позиции после пересчёта
+          // «улетали» — раскладка разъезжалась с каждым перетаскиванием.
+          onMove(
+            ids.map((mid) => {
+              const d = layout.pushDelta[mid] ?? { x: 0, y: 0 };
+              return {
+                id: mid,
+                dx: Math.round(s.dx + d.x),
+                dy: Math.round(s.dy + d.y),
+              };
+            }),
+          );
         }
       };
       window.addEventListener("mousemove", handleMove);
