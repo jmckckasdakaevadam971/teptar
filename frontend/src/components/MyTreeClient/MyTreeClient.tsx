@@ -821,6 +821,13 @@ export function MyTreeClient() {
           onWifeInfo={(id, i) => openWifeDialog(id, i, "info")}
           onWifeEdit={(id, i) => openWifeDialog(id, i, "edit")}
           onWifeDelete={(id, i) => openWifeDialog(id, i, "delete")}
+          onSetColor={(id, color) =>
+            setPeople((prev) =>
+              prev.map((p) =>
+                p.id === id ? { ...p, branchColor: color ?? undefined } : p,
+              ),
+            )
+          }
         />
       )}
 

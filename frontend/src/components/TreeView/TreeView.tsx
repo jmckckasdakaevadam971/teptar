@@ -18,6 +18,7 @@ import {
   Minimize2,
   Minus,
   MoreVertical,
+  Paintbrush,
   Pencil,
   Plus,
   Trash2,
@@ -36,6 +37,38 @@ const ROW_PITCH = NODE_H + V_GAP;
 // вертикальный шаг карточек в стопке листьев (дети без потомков)
 const STACK_PITCH = NODE_H + 56;
 
+// Палитра цветов ветвей на выбор пользователя: приглушённые тона,
+// различимые на тёмном фоне и не спорящие с золотой темой.
+const BRANCH_PALETTE = [
+  "#5da9a2", // бирюзовый
+  "#7f9ccb", // голубой
+  "#a58fd0", // лавандовый
+  "#c77e94", // розовый
+  "#8fb573", // зелёный
+  "#cf8f5a", // медный
+  "#6fb3c9", // циан
+  "#b3b264", // оливковый
+];
+
+/** Итоговый цвет каждого узла: собственный branchColor или ближайшего
+ *  предка. Считается по полному древу — не зависит от свёрнутых ветвей. */
+function computeBranchColors(people: Person[]): Map<string, string> {
+  const byId = new Map(people.map((p) => [p.id, p]));
+  const colors = new Map<string, string>();
+  const resolve = (p: Person, guard: Set<string>): string | undefined => {
+    if (colors.has(p.id)) return colors.get(p.id);
+    if (guard.has(p.id)) return undefined; // защита от цикла в parentId
+    guard.add(p.id);
+    const color =
+      p.branchColor ??
+      (p.parentId ? resolve(byId.get(p.parentId) ?? p, guard) : undefined);
+    if (color) colors.set(p.id, color);
+    return color;
+  };
+  for (const p of people) resolve(p, new Set());
+  return colors;
+}
+
 /** Плейсхолдер «добавить родственника» рядом с выбранным узлом. */
 type AddRelation = "father" | "wife" | "son" | "daughter";
 const ADD_LABEL: Record<AddRelation, string> = {
@@ -48,6 +81,7 @@ const ADD_LABEL: Record<AddRelation, string> = {
 // Уголковый коннектор: вертикаль от родителя к шине, горизонтальная шина
 // и вертикали к каждому ребёнку.
 type Connector = {
+  pid: string; // id родителя — линии красятся в цвет его ветви
   px: number; // центр родителя по X
   py: number; // низ родителя по Y
   busY: number; // высота горизонтальной шины
@@ -223,6 +257,7 @@ function buildConnectors(
       }
     });
     result.push({
+      pid: parentId,
       px,
       py,
       busY,
@@ -243,6 +278,7 @@ export function TreeView({
   onShowInfo,
   onEdit,
   onDelete,
+  onSetColor,
   onWifeInfo,
   onWifeEdit,
   onWifeDelete,
@@ -258,6 +294,9 @@ export function TreeView({
   onEdit?: (id: string) => void;
   /** Если передан — в бургер-меню карточки появляется пункт «Удалить». */
   onDelete?: (id: string) => void;
+  /** Если передан — в бургер-меню появляется пункт «Цвет ветви»:
+   *  цвет применяется к человеку и его потомкам, null — сбросить. */
+  onSetColor?: (id: string, color: string | null) => void;
   /** Если передан — на карточках жён появляется бургер-меню с пунктом «Информация».
    *  wifeIndex — позиция жены в списке getSpouses(person). */
   onWifeInfo?: (personId: string, wifeIndex: number) => void;
@@ -270,6 +309,8 @@ export function TreeView({
   const [connectors, setConnectors] = useState<Connector[]>([]);
   // какая карточка держит открытым бургер-меню
   const [menuId, setMenuId] = useState<string | null>(null);
+  // у какой карточки раскрыта палитра «Цвет ветви»
+  const [paletteId, setPaletteId] = useState<string | null>(null);
   // свёрнутые ветви: id узлов, чьи потомки скрыты
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -327,13 +368,19 @@ export function TreeView({
     return people.filter((p) => !isHidden(p));
   }, [people, collapsed]);
 
+  // Итоговые цвета ветвей (наследуются от предка) — по полному древу
+  const branchColors = useMemo(() => computeBranchColors(people), [people]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // клик в любом месте вне меню — закрыть его
+  // клик в любом месте вне меню — закрыть его (вместе с палитрой)
   useEffect(() => {
     if (!menuId) return;
-    const close = () => setMenuId(null);
+    const close = () => {
+      setMenuId(null);
+      setPaletteId(null);
+    };
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [menuId]);
@@ -718,9 +765,11 @@ export function TreeView({
     ctx.translate(PAD, PAD);
 
     // Связи родитель → дети (общая логика с интерактивным SVG)
-    ctx.strokeStyle = "rgba(201,162,39,0.5)";
+    const bColors = computeBranchColors(people);
     ctx.lineWidth = 2;
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
+      const bc = bColors.get(c.pid);
+      ctx.strokeStyle = bc ? `${bc}b3` : "rgba(201,162,39,0.5)";
       ctx.beginPath();
       ctx.moveTo(c.px, c.py);
       ctx.lineTo(c.px, c.busY);
@@ -795,6 +844,15 @@ export function TreeView({
       ctx.strokeStyle = "#c9a227";
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
+      // цветная метка ветви на левом крае карточки
+      const bc = bColors.get(person.id);
+      if (bc) {
+        ctx.beginPath();
+        ctx.roundRect(p.x + 1, p.y + 12, 4, cardH - 24, [0, 2, 2, 0]);
+        ctx.fillStyle = bc;
+        ctx.fill();
+      }
 
       const tx = p.x + 16;
       ctx.textAlign = "left";
@@ -950,39 +1008,43 @@ export function TreeView({
               height={layout.height}
               aria-hidden="true"
             >
-              {connectors.map((c, i) => (
-                <g
-                  key={i}
-                  stroke="rgb(var(--primary) / 0.45)"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                >
-                  {/* спуск от родителя к шине */}
-                  <line x1={c.px} y1={c.py} x2={c.px} y2={c.busY} />
-                  {/* горизонтальная шина */}
-                  <line x1={c.minX} y1={c.busY} x2={c.maxX} y2={c.busY} />
-                  {/* спуски к каждому ребёнку */}
-                  {c.children.map((ch, j) => (
-                    <line
-                      key={j}
-                      x1={ch.x}
-                      y1={c.busY}
-                      x2={ch.x}
-                      y2={ch.topY}
-                    />
-                  ))}
-                  {/* хребет стопки листьев + отводы к карточкам */}
-                  {c.extra.map((s, j) => (
-                    <line
-                      key={`e${j}`}
-                      x1={s.x1}
-                      y1={s.y1}
-                      x2={s.x2}
-                      y2={s.y2}
-                    />
-                  ))}
-                </g>
-              ))}
+              {connectors.map((c, i) => {
+                const bc = branchColors.get(c.pid);
+                return (
+                  <g
+                    key={i}
+                    stroke={bc ?? "rgb(var(--primary) / 0.45)"}
+                    strokeOpacity={bc ? 0.7 : undefined}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  >
+                    {/* спуск от родителя к шине */}
+                    <line x1={c.px} y1={c.py} x2={c.px} y2={c.busY} />
+                    {/* горизонтальная шина */}
+                    <line x1={c.minX} y1={c.busY} x2={c.maxX} y2={c.busY} />
+                    {/* спуски к каждому ребёнку */}
+                    {c.children.map((ch, j) => (
+                      <line
+                        key={j}
+                        x1={ch.x}
+                        y1={c.busY}
+                        x2={ch.x}
+                        y2={ch.topY}
+                      />
+                    ))}
+                    {/* хребет стопки листьев + отводы к карточкам */}
+                    {c.extra.map((s, j) => (
+                      <line
+                        key={`e${j}`}
+                        x1={s.x1}
+                        y1={s.y1}
+                        x2={s.x2}
+                        y2={s.y2}
+                      />
+                    ))}
+                  </g>
+                );
+              })}
 
               {/* линии брака: муж — жена (жёны справа от мужа) */}
               {visiblePeople.map((person) => {
@@ -1037,6 +1099,7 @@ export function TreeView({
                 const isLiving = !person.death;
                 const isCollapsed = collapsed.has(person.id);
                 const kidsCount = descendantCount.get(person.id) ?? 0;
+                const branchColor = branchColors.get(person.id);
                 const p = layout.pos[person.id];
                 if (!p) return null;
                 return (
@@ -1074,6 +1137,14 @@ export function TreeView({
                           : "border-border hover:border-primary/40",
                     )}
                   >
+                    {/* Цветная метка ветви, назначенная пользователем */}
+                    {branchColor ? (
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute bottom-3 left-0 top-3 w-1 rounded-r-full"
+                        style={{ backgroundColor: branchColor }}
+                      />
+                    ) : null}
                     {/* Бургер-меню карточки; само меню раскрывается СПРАВА от карточки */}
                     {onShowInfo ? (
                       <>
@@ -1082,6 +1153,7 @@ export function TreeView({
                           aria-label="Меню карточки"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setPaletteId(null);
                             setMenuId((v) =>
                               v === person.id ? null : person.id,
                             );
@@ -1097,6 +1169,7 @@ export function TreeView({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setMenuId(null);
+                                setPaletteId(null);
                                 onShowInfo(person.id);
                               }}
                               className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
@@ -1110,6 +1183,7 @@ export function TreeView({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuId(null);
+                                  setPaletteId(null);
                                   onEdit(person.id);
                                 }}
                                 className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
@@ -1118,12 +1192,68 @@ export function TreeView({
                                 Редактировать
                               </button>
                             ) : null}
+                            {onSetColor ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPaletteId((v) =>
+                                      v === person.id ? null : person.id,
+                                    );
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                                >
+                                  <Paintbrush className="h-4 w-4 text-primary" />
+                                  Цвет ветви
+                                </button>
+                                {paletteId === person.id ? (
+                                  <div className="border-t border-border px-3 py-2.5">
+                                    <div className="grid grid-cols-4 gap-1.5">
+                                      {BRANCH_PALETTE.map((color) => (
+                                        <button
+                                          key={color}
+                                          type="button"
+                                          aria-label={`Цвет ${color}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setMenuId(null);
+                                            setPaletteId(null);
+                                            onSetColor(person.id, color);
+                                          }}
+                                          className={cn(
+                                            "h-6 w-6 rounded-full border transition-transform hover:scale-110",
+                                            person.branchColor === color
+                                              ? "border-foreground"
+                                              : "border-transparent",
+                                          )}
+                                          style={{ backgroundColor: color }}
+                                        />
+                                      ))}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuId(null);
+                                        setPaletteId(null);
+                                        onSetColor(person.id, null);
+                                      }}
+                                      className="mt-2 w-full rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                                    >
+                                      Без цвета
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
                             {onDelete ? (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuId(null);
+                                  setPaletteId(null);
                                   onDelete(person.id);
                                 }}
                                 className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
