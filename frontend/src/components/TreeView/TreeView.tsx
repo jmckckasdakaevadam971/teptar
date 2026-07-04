@@ -989,6 +989,9 @@ export function TreeView({
       // в редакторе карточки перетаскиваются сами — обзор двигаем с фона
       if (movable && (e.target as HTMLElement).closest("[data-drag-card]"))
         return;
+      // за линию тянется её ветвь, а не обзор
+      if (movable && (e.target as HTMLElement).closest("[data-line-hit]"))
+        return;
       down = true;
       draggedRef.current = false;
       startX = e.clientX;
@@ -1034,18 +1037,12 @@ export function TreeView({
     };
   }, [isFullscreen, movable]);
 
-  // перетаскивание карточки: тянем всю ветвь или одну карточку (Shift — наоборот)
-  const startCardDrag = useCallback(
-    (e: ReactMouseEvent<HTMLDivElement>, id: string) => {
-      if (!onMove || e.button !== 0) return;
-      // кнопки внутри карточки (бургер, свернуть) — не начало перетаскивания
-      if ((e.target as HTMLElement).closest("button")) return;
-      e.preventDefault();
-      const branch = (dragMode === "branch") !== e.shiftKey;
+  // перетаскивание по древу: общее ядро для захвата за карточку и за линию
+  const beginDrag = useCallback(
+    (startX: number, startY: number, id: string, branch: boolean) => {
+      if (!onMove) return;
       const ids = branch ? collectBranch(id) : [id];
       const idSet = new Set(ids);
-      const startX = e.clientX;
-      const startY = e.clientY;
       // Магнит: тянущаяся карточка прилипает к колонкам/рядам остальных
       // карточек и к своей «родной» позиции — чтобы стопки не расползались
       // зигзагом от неточных движений мыши.
@@ -1137,7 +1134,35 @@ export function TreeView({
       window.addEventListener("mousemove", handleMove);
       window.addEventListener("mouseup", handleUp);
     },
-    [onMove, dragMode, collectBranch, scale, layout, people, visiblePeople],
+    [onMove, collectBranch, scale, layout, people, visiblePeople],
+  );
+
+  // перетаскивание карточки: тянем всю ветвь или одну карточку (Shift — наоборот)
+  const startCardDrag = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>, id: string) => {
+      if (!onMove || e.button !== 0) return;
+      // кнопки внутри карточки (бургер, свернуть) — не начало перетаскивания
+      if ((e.target as HTMLElement).closest("button")) return;
+      e.preventDefault();
+      beginDrag(
+        e.clientX,
+        e.clientY,
+        id,
+        (dragMode === "branch") !== e.shiftKey,
+      );
+    },
+    [onMove, dragMode, beginDrag],
+  );
+
+  // перетаскивание за линию: двигается вся ветвь, в которую линия ведёт;
+  // клик без движения по-прежнему открывает выбор цвета
+  const startLineDrag = useCallback(
+    (e: ReactMouseEvent<SVGLineElement>, id: string) => {
+      if (!onMove || e.button !== 0) return;
+      e.preventDefault();
+      beginDrag(e.clientX, e.clientY, id, true);
+    },
+    [onMove, beginDrag],
   );
 
   // после смены масштаба смещаем скролл так, чтобы точка осталась под курсором
@@ -1411,7 +1436,7 @@ export function TreeView({
       {movable ? (
         <div
           className="absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full border border-border bg-card/80 p-1 text-xs backdrop-blur"
-          title="Что двигается при перетаскивании карточки (Shift — наоборот)"
+          title="Что двигается при перетаскивании карточки (Shift — наоборот). Ветвь можно тянуть и за её линию"
         >
           <Move className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" />
           <span className="pr-0.5 text-muted-foreground">Тянуть:</span>
@@ -1439,6 +1464,9 @@ export function TreeView({
           >
             Карточку
           </button>
+          <span className="hidden pl-1 pr-1.5 text-muted-foreground/70 sm:inline">
+            · за линию — вся ветвь
+          </span>
         </div>
       ) : null}
 
@@ -1613,8 +1641,9 @@ export function TreeView({
                 />
               ) : null}
 
-              {/* невидимые широкие зоны клика по линиям: открывают палитру
-                  «цвет ветви» — клик по линии красит ветвь, в которую она ведёт */}
+              {/* невидимые широкие зоны по линиям: клик открывает палитру
+                  «цвет ветви», а потянув за линию, можно перетащить всю
+                  ветвь, в которую она ведёт */}
               {onSetColor
                 ? connectors.map((c, i) => {
                     const openPicker = (
@@ -1635,9 +1664,10 @@ export function TreeView({
                     const hit = {
                       stroke: "transparent",
                       strokeWidth: 14,
+                      "data-line-hit": true,
                       style: {
                         pointerEvents: "stroke",
-                        cursor: "pointer",
+                        cursor: movable ? "grab" : "pointer",
                       } as CSSProperties,
                     };
                     return (
@@ -1649,6 +1679,7 @@ export function TreeView({
                           y2={c.busY}
                           {...hit}
                           onClick={(e) => openPicker(e, c.pid)}
+                          onMouseDown={(e) => startLineDrag(e, c.pid)}
                         />
                         <line
                           x1={c.minX}
@@ -1657,6 +1688,7 @@ export function TreeView({
                           y2={c.busY}
                           {...hit}
                           onClick={(e) => openPicker(e, c.pid)}
+                          onMouseDown={(e) => startLineDrag(e, c.pid)}
                         />
                         {c.children.map((ch, j) => (
                           <line
@@ -1667,6 +1699,7 @@ export function TreeView({
                             y2={ch.topY}
                             {...hit}
                             onClick={(e) => openPicker(e, ch.id)}
+                            onMouseDown={(e) => startLineDrag(e, ch.id)}
                           />
                         ))}
                         {c.extra.map((s, j) => (
@@ -1678,6 +1711,9 @@ export function TreeView({
                             y2={s.y2}
                             {...hit}
                             onClick={(e) => openPicker(e, s.cid ?? c.pid)}
+                            onMouseDown={(e) =>
+                              startLineDrag(e, s.cid ?? c.pid)
+                            }
                           />
                         ))}
                       </g>
