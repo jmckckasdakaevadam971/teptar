@@ -1195,6 +1195,24 @@ export function TreeView({
     el.scrollTop = centerY + anchor.cy * scale - (anchor.clientY - elRect.top);
   }, [scale, layout.width, layout.height]);
 
+  // при первом открытии вписываем древо в экран и показываем его центр
+  const initialFitDone = useRef(false);
+  useLayoutEffect(() => {
+    if (initialFitDone.current) return;
+    const el = scrollRef.current;
+    if (!el || people.length === 0 || layout.width <= 0 || layout.height <= 0)
+      return;
+    initialFitDone.current = true;
+    const fit = Math.min(
+      (el.clientWidth - 32) / layout.width,
+      (el.clientHeight - 32) / layout.height,
+    );
+    const next = Math.min(1, Math.max(0.4, fit));
+    setScale(next);
+    el.scrollLeft = Math.max(0, (layout.width * next - el.clientWidth) / 2);
+    el.scrollTop = Math.max(0, (layout.height * next - el.clientHeight) / 2);
+  }, [people.length, layout.width, layout.height]);
+
   // подсветка предков выбранного узла
   const ancestorIds = new Set<string>();
   if (selected) {
