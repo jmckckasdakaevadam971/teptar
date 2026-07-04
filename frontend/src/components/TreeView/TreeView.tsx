@@ -169,13 +169,103 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   [...roots].reverse().forEach(place);
 
   // Ручные смещения: пользователь перетащил карточку или целую ветвь.
-  let shiftX = 0;
-  let shiftY = 0;
   for (const p of people) {
     const q = pos[p.id];
     if (!q) continue;
     q.x += p.offsetX ?? 0;
     q.y += p.offsetY ?? 0;
+  }
+
+  // ── Расталкивание наложений ────────────────────────────────────────
+  // Сама авто-раскладка наложений не даёт, но ручные смещения прибивают
+  // соседние ветви к месту: когда у человека появляются новые потомки,
+  // авто-позиции карточек попадают под перетащенные ветви. Пересекающиеся
+  // карточки раздвигаем целыми ветвями: ветвь правее уезжает вправо, а в
+  // одной колонке — нижняя вниз. Так братья/сёстры уступают место, и под
+  // каждым можно строить своё поддрево.
+  const parentOf = new Map<string, string>();
+  for (const p of people) {
+    if (p.parentId && idSet.has(p.parentId) && p.parentId !== p.id) {
+      parentOf.set(p.id, p.parentId);
+    }
+  }
+  const ancestorsOf = (id: string): Set<string> => {
+    const out = new Set<string>();
+    let cur = parentOf.get(id);
+    while (cur && !out.has(cur)) {
+      out.add(cur);
+      cur = parentOf.get(cur);
+    }
+    return out;
+  };
+  const subtreeIds = (rootId: string): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const st = [rootId];
+    while (st.length) {
+      const id = st.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+      for (const k of childrenMap.get(id) ?? []) st.push(k.id);
+    }
+    return out;
+  };
+  // ширина карточки вместе с карточками жён справа
+  const rectW = (p: Person) => NODE_W + getSpouses(p).length * SLOT;
+  const placed = people.filter((p) => pos[p.id]);
+  for (let pass = 0; pass < 8; pass++) {
+    let movedAny = false;
+    // слева направо — раздвижка каскадится за один-два прохода
+    placed.sort((a, b) => pos[a.id].x - pos[b.id].x || pos[a.id].y - pos[b.id].y);
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        const A = placed[i];
+        const B = placed[j];
+        const qa = pos[A.id];
+        const qb = pos[B.id];
+        const wa = rectW(A);
+        const wb = rectW(B);
+        const overX = Math.min(qa.x + wa, qb.x + wb) - Math.max(qa.x, qb.x);
+        const overY =
+          Math.min(qa.y + NODE_H, qb.y + NODE_H) - Math.max(qa.y, qb.y);
+        if (overX <= 1 || overY <= 1) continue;
+        // двигаем не карточку, а её ветвь: верхний предок B, не являющийся
+        // предком A (обычно это брат/сестра на уровне общего родителя)
+        const ancA = ancestorsOf(A.id);
+        ancA.add(A.id);
+        let rootB = B.id;
+        let cur = parentOf.get(B.id);
+        while (cur && !ancA.has(cur)) {
+          rootB = cur;
+          cur = parentOf.get(cur);
+        }
+        const movedIds = subtreeIds(rootB);
+        // A внутри той же ветви — сдвигом ветви наложение не разрулить
+        if (movedIds.includes(A.id)) continue;
+        // почти одна колонка (стопка) — раздвигаем вниз, иначе вправо
+        const sameCol =
+          Math.abs(qa.x + wa / 2 - (qb.x + wb / 2)) < NODE_W * 0.5;
+        const dx = sameCol ? 0 : qa.x + wa + H_GAP - qb.x;
+        const dy = sameCol ? qa.y + STACK_PITCH - qb.y : 0;
+        for (const id of movedIds) {
+          const q = pos[id];
+          if (q) {
+            q.x += dx;
+            q.y += dy;
+          }
+        }
+        movedAny = true;
+      }
+    }
+    if (!movedAny) break;
+  }
+
+  let shiftX = 0;
+  let shiftY = 0;
+  for (const p of people) {
+    const q = pos[p.id];
+    if (!q) continue;
     shiftX = Math.min(shiftX, q.x);
     shiftY = Math.min(shiftY, q.y);
   }
