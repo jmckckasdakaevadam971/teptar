@@ -1862,7 +1862,12 @@ export function TreeView({
                             : undefined,
                     }}
                     className={cn(
-                      "group cursor-pointer overflow-visible rounded-2xl border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5",
+                      "group cursor-pointer overflow-visible rounded-2xl border bg-card p-4 text-left hover:-translate-y-0.5",
+                      // во время перетаскивания карточка следует за мышью
+                      // мгновенно, как линии; анимация — только для раскладки
+                      drag?.ids.has(person.id)
+                        ? "transition-none"
+                        : "transition-all duration-200",
                       isSelected
                         ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
                         : isAncestor
