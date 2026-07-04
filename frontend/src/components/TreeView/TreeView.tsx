@@ -38,6 +38,10 @@ const SLOT = NODE_W + H_GAP;
 const ROW_PITCH = NODE_H + V_GAP;
 // вертикальный шаг карточек в стопке листьев (дети без потомков)
 const STACK_PITCH = NODE_H + 56;
+// Допуск «одной колонки» при кластеризации детей: только реально выровненные
+// карточки делят общий хребет. Широкий допуск склеивал перетащенную ветвь с
+// линией соседа — красный спуск прятался под чужим хребтом стопки.
+const CLUSTER_TOL = 28;
 
 // Палитра цветов ветвей на выбор пользователя: приглушённые тона,
 // различимые на тёмном фоне и не спорящие с золотой темой.
@@ -232,6 +236,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
                 x: pos[k.id].x,
                 topY: pos[k.id].y,
                 midY: pos[k.id].y + NODE_H / 2,
+                leaf: !(childrenMap.get(k.id)?.length),
               }
             : null,
         )
@@ -245,7 +250,13 @@ function computeTreeLayout(people: Person[], editable: boolean) {
       const clusters: (typeof entries)[] = [];
       for (const e of entries) {
         const last = clusters[clusters.length - 1];
-        if (last && e.x - last[last.length - 1].x < NODE_W * 0.6) last.push(e);
+        if (
+          last &&
+          e.leaf &&
+          last[last.length - 1].leaf &&
+          e.x - last[last.length - 1].x < CLUSTER_TOL
+        )
+          last.push(e);
         else clusters.push([e]);
       }
       for (const cluster of clusters) {
@@ -333,7 +344,9 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         if (B.id === seg.owner) continue;
         const qb = pos[B.id];
         const wb = rectW(B);
-        if (seg.x < qb.x - 10 || seg.x > qb.x + wb + 10) continue;
+        // слева ловим шире: хребет стопки идёт в 14px левее карточек,
+        // чужая линия рядом с ним сливается в «линию под линией»
+        if (seg.x < qb.x - 30 || seg.x > qb.x + wb + 10) continue;
         const oy = Math.min(seg.y2, qb.y + NODE_H) - Math.max(seg.y1, qb.y);
         if (oy <= 4) continue;
         // верхние ветви двух сторон друг относительно друга
@@ -360,7 +373,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         const key = rootOwner + "|" + rootCard;
         const prev =
           pairs.get(key) ?? { rootCard, rootOwner, dxCard: 0, dxOwner: 0 };
-        prev.dxCard = Math.max(prev.dxCard, seg.x + 16 - qb.x);
+        prev.dxCard = Math.max(prev.dxCard, seg.x + 40 - qb.x);
         prev.dxOwner = Math.max(prev.dxOwner, qb.x + wb + 16 - seg.x);
         pairs.set(key, prev);
       }
@@ -458,14 +471,21 @@ function buildConnectors(
     const px = pPos.x + NODE_W / 2;
     const py = pPos.y + bottomOf(parentId);
 
-    // Кластеризуем детей по X с допуском: карточки, стоящие «почти в
-    // колонку» (в т.ч. после ручного перетаскивания), считаем одной
-    // стопкой — иначе спуск к нижней карточке прошёл бы сквозь верхние.
+    // Кластеризуем детей по X: одной стопкой считаем только реально
+    // выровненные карточки-листья. Ребёнок с собственными детьми (ветвь)
+    // всегда получает отдельный спуск — иначе перетащенная в чужую колонку
+    // ветвь визуально «вклеивается» в стопку соседа.
     const entries = kids
       .map((kid) => {
         const cPos = pos[kid.id];
         return cPos
-          ? { id: kid.id, x: cPos.x, topY: cPos.y, midY: cPos.y + NODE_H / 2 }
+          ? {
+              id: kid.id,
+              x: cPos.x,
+              topY: cPos.y,
+              midY: cPos.y + NODE_H / 2,
+              leaf: !byParent.has(kid.id),
+            }
           : null;
       })
       .filter((e): e is NonNullable<typeof e> => e !== null)
@@ -475,7 +495,13 @@ function buildConnectors(
     const clusters: (typeof entries)[] = [];
     for (const e of entries) {
       const last = clusters[clusters.length - 1];
-      if (last && e.x - last[last.length - 1].x < NODE_W * 0.6) last.push(e);
+      if (
+        last &&
+        e.leaf &&
+        last[last.length - 1].leaf &&
+        e.x - last[last.length - 1].x < CLUSTER_TOL
+      )
+        last.push(e);
       else clusters.push([e]);
     }
 
@@ -827,7 +853,7 @@ export function TreeView({
       const stackTail: { x: number; y: number; ax: number; ay: number }[] = [];
       if (leafKids.length) {
         const lxs = leafKids.map((k) => layout.pos[k.id].x);
-        if (Math.max(...lxs) - Math.min(...lxs) < NODE_W * 0.6) {
+        if (Math.max(...lxs) - Math.min(...lxs) < CLUSTER_TOL) {
           const bottomLeaf = leafKids.reduce((a, b) =>
             layout.pos[a.id].y >= layout.pos[b.id].y ? a : b,
           );
