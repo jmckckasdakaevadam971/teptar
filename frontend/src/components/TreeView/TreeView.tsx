@@ -454,6 +454,152 @@ function wifeCardsOf(
   }));
 }
 
+/** Прямоугольник-препятствие для обхода линий. */
+type ObstacleRect = { x: number; y: number; w: number; h: number };
+
+const DETOUR_PAD = 10; // отступ обхода от края карточки
+const DETOUR_MERGE = 80; // ближе этого зазора карточки огибаются одним блоком
+
+/** Ортогональный отрезок → ломаная, огибающая карточки сбоку.
+ *  Карточки, которых отрезок касается концами (родитель сверху, ребёнок
+ *  снизу, карточка стопки у отвода), препятствиями не считаются. Если
+ *  обход не помещается в пределах отрезка, участок остаётся прямым. */
+function routeSegment(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rects: ObstacleRect[],
+): { x: number; y: number }[] {
+  const touches = (r: ObstacleRect) =>
+    (x1 >= r.x - 3 &&
+      x1 <= r.x + r.w + 3 &&
+      y1 >= r.y - 3 &&
+      y1 <= r.y + r.h + 3) ||
+    (x2 >= r.x - 3 &&
+      x2 <= r.x + r.w + 3 &&
+      y2 >= r.y - 3 &&
+      y2 <= r.y + r.h + 3);
+  const pts: { x: number; y: number }[] = [{ x: x1, y: y1 }];
+  if (x1 === x2 && y1 !== y2) {
+    const yA = Math.min(y1, y2);
+    const yB = Math.max(y1, y2);
+    const hits = rects
+      .filter(
+        (r) =>
+          x1 > r.x &&
+          x1 < r.x + r.w &&
+          yA < r.y + r.h - 2 &&
+          yB > r.y + 2 &&
+          !touches(r),
+      )
+      .sort((a, b) => a.y - b.y);
+    const spans: {
+      top: number;
+      bottom: number;
+      left: number;
+      right: number;
+    }[] = [];
+    for (const r of hits) {
+      const last = spans[spans.length - 1];
+      if (last && r.y - last.bottom <= DETOUR_MERGE) {
+        last.bottom = Math.max(last.bottom, r.y + r.h);
+        last.left = Math.min(last.left, r.x);
+        last.right = Math.max(last.right, r.x + r.w);
+      } else {
+        spans.push({
+          top: r.y,
+          bottom: r.y + r.h,
+          left: r.x,
+          right: r.x + r.w,
+        });
+      }
+    }
+    const mid: { x: number; y: number }[] = [];
+    for (const s of spans) {
+      const yIn = s.top - DETOUR_PAD;
+      const yOut = s.bottom + DETOUR_PAD;
+      if (yIn <= yA + 2 || yOut >= yB - 2) continue;
+      const sideX =
+        x1 - s.left <= s.right - x1 ? s.left - DETOUR_PAD : s.right + DETOUR_PAD;
+      mid.push(
+        { x: x1, y: yIn },
+        { x: sideX, y: yIn },
+        { x: sideX, y: yOut },
+        { x: x1, y: yOut },
+      );
+    }
+    pts.push(...(y1 <= y2 ? mid : mid.reverse()));
+  } else if (y1 === y2 && x1 !== x2) {
+    const xA = Math.min(x1, x2);
+    const xB = Math.max(x1, x2);
+    const hits = rects
+      .filter(
+        (r) =>
+          y1 > r.y &&
+          y1 < r.y + r.h &&
+          xA < r.x + r.w - 2 &&
+          xB > r.x + 2 &&
+          !touches(r),
+      )
+      .sort((a, b) => a.x - b.x);
+    const spans: {
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    }[] = [];
+    for (const r of hits) {
+      const last = spans[spans.length - 1];
+      if (last && r.x - last.right <= DETOUR_MERGE) {
+        last.right = Math.max(last.right, r.x + r.w);
+        last.top = Math.min(last.top, r.y);
+        last.bottom = Math.max(last.bottom, r.y + r.h);
+      } else {
+        spans.push({
+          left: r.x,
+          right: r.x + r.w,
+          top: r.y,
+          bottom: r.y + r.h,
+        });
+      }
+    }
+    const mid: { x: number; y: number }[] = [];
+    for (const s of spans) {
+      const xIn = s.left - DETOUR_PAD;
+      const xOut = s.right + DETOUR_PAD;
+      if (xIn <= xA + 2 || xOut >= xB - 2) continue;
+      const sideY =
+        y1 - s.top <= s.bottom - y1 ? s.top - DETOUR_PAD : s.bottom + DETOUR_PAD;
+      mid.push(
+        { x: xIn, y: y1 },
+        { x: xIn, y: sideY },
+        { x: xOut, y: sideY },
+        { x: xOut, y: y1 },
+      );
+    }
+    pts.push(...(x1 <= x2 ? mid : mid.reverse()));
+  }
+  pts.push({ x: x2, y: y2 });
+  return pts;
+}
+
+/** Прямоугольники карточек (включая карточки жён) — препятствия для линий. */
+function obstacleRectsFor(
+  people: Person[],
+  pos: Record<string, { x: number; y: number }>,
+): ObstacleRect[] {
+  const rects: ObstacleRect[] = [];
+  for (const person of people) {
+    const p = pos[person.id];
+    if (!p) continue;
+    rects.push({ x: p.x, y: p.y, w: NODE_W, h: NODE_H });
+    for (const w of wifeCardsOf(person, p))
+      rects.push({ x: w.x, y: w.y, w: NODE_W, h: NODE_H });
+  }
+  return rects;
+}
+
 /** Строит связи родитель → дети по готовой раскладке.
  *  Дети, лежащие в одной колонке (стопка листьев), подключаются через
  *  вертикальный «хребет» слева от карточек с отводом к каждой — так стопка
@@ -911,6 +1057,20 @@ export function TreeView({
     return slots;
   }, [editable, selected, people, visiblePeople, layout, collapsed]);
 
+  // препятствия для линий: карточки (и жёны) в текущих позициях.
+  // Линия, пересекающая чужую карточку, огибает её сбоку (routeSegment).
+  const lineObstacles = useMemo(
+    () => obstacleRectsFor(visiblePeople, displayPos),
+    [visiblePeople, displayPos],
+  );
+  const routePoints = useCallback(
+    (x1: number, y1: number, x2: number, y2: number) =>
+      routeSegment(x1, y1, x2, y2, lineObstacles)
+        .map((p) => `${p.x},${p.y}`)
+        .join(" "),
+    [lineObstacles],
+  );
+
   // вычисляем уголковые связи родитель → дети.
   // Координаты X/Y берём из layout (надёжно), высоту карточки — из DOM.
   const computeConnectors = useCallback(() => {
@@ -1170,7 +1330,7 @@ export function TreeView({
   // выбор цвета. Если линия охватывает всё древо (корень) — не тянем:
   // равномерный сдвиг всех карточек всё равно отменяется нормализацией.
   const startLineDrag = useCallback(
-    (e: ReactMouseEvent<SVGLineElement>, id: string, group?: string[]) => {
+    (e: ReactMouseEvent<SVGPolylineElement>, id: string, group?: string[]) => {
       if (!onMove || e.button !== 0) return;
       if (!group && collectBranch(id).length >= people.length) return;
       e.preventDefault();
@@ -1284,30 +1444,30 @@ export function TreeView({
       return bc ? `${bc}b3` : "rgba(201,162,39,0.5)";
     };
     ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    // линии в экспорте тоже огибают карточки, как в интерактивном древе
+    const exportObstacles = obstacleRectsFor(people, full.pos);
+    const strokeRoute = (x1: number, y1: number, x2: number, y2: number) => {
+      const pts = routeSegment(x1, y1, x2, y2, exportObstacles);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
+      ctx.stroke();
+    };
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
       // спуск от родителя + шина — цвет ветви родителя
       ctx.strokeStyle = strokeFor(c.pid);
-      ctx.beginPath();
-      ctx.moveTo(c.px, c.py);
-      ctx.lineTo(c.px, c.busY);
-      ctx.moveTo(c.minX, c.busY);
-      ctx.lineTo(c.maxX, c.busY);
-      ctx.stroke();
+      strokeRoute(c.px, c.py, c.px, c.busY);
+      strokeRoute(c.minX, c.busY, c.maxX, c.busY);
       // спуски к детям — цвет ветви самого ребёнка
       for (const k of c.children) {
         ctx.strokeStyle = strokeFor(k.id);
-        ctx.beginPath();
-        ctx.moveTo(k.x, c.busY);
-        ctx.lineTo(k.x, k.topY);
-        ctx.stroke();
+        strokeRoute(k.x, c.busY, k.x, k.topY);
       }
       // хребет стопки (цвет родителя) и отводы (цвет ребёнка)
       for (const s of c.extra) {
         ctx.strokeStyle = strokeFor(s.cid ?? c.pid);
-        ctx.beginPath();
-        ctx.moveTo(s.x1, s.y1);
-        ctx.lineTo(s.x2, s.y2);
-        ctx.stroke();
+        strokeRoute(s.x1, s.y1, s.x2, s.y2);
       }
     }
 
@@ -1579,31 +1739,24 @@ export function TreeView({
                     key={i}
                     strokeWidth={2}
                     strokeLinecap="round"
+                    strokeLinejoin="round"
                     strokeOpacity={0.7}
+                    fill="none"
                   >
                     {/* спуск от родителя к шине + шина — цвет ветви родителя */}
-                    <line
-                      x1={c.px}
-                      y1={c.py}
-                      x2={c.px}
-                      y2={c.busY}
+                    <polyline
+                      points={routePoints(c.px, c.py, c.px, c.busY)}
                       stroke={parentStroke}
                     />
-                    <line
-                      x1={c.minX}
-                      y1={c.busY}
-                      x2={c.maxX}
-                      y2={c.busY}
+                    <polyline
+                      points={routePoints(c.minX, c.busY, c.maxX, c.busY)}
                       stroke={parentStroke}
                     />
                     {/* спуски к детям — цвет ветви самого ребёнка */}
                     {c.children.map((ch, j) => (
-                      <line
+                      <polyline
                         key={j}
-                        x1={ch.x}
-                        y1={c.busY}
-                        x2={ch.x}
-                        y2={ch.topY}
+                        points={routePoints(ch.x, c.busY, ch.x, ch.topY)}
                         stroke={
                           branchColors.get(ch.id) ??
                           "rgb(var(--primary) / 0.45)"
@@ -1612,12 +1765,9 @@ export function TreeView({
                     ))}
                     {/* хребет стопки листьев (цвет родителя) + отводы (цвет ребёнка) */}
                     {c.extra.map((s, j) => (
-                      <line
+                      <polyline
                         key={`e${j}`}
-                        x1={s.x1}
-                        y1={s.y1}
-                        x2={s.x2}
-                        y2={s.y2}
+                        points={routePoints(s.x1, s.y1, s.x2, s.y2)}
                         stroke={
                           (s.cid
                             ? branchColors.get(s.cid)
@@ -1661,7 +1811,7 @@ export function TreeView({
               {onSetColor
                 ? connectors.map((c, i) => {
                     const openPicker = (
-                      e: ReactMouseEvent<SVGLineElement>,
+                      e: ReactMouseEvent<SVGPolylineElement>,
                       id: string,
                     ) => {
                       e.stopPropagation();
@@ -1678,6 +1828,7 @@ export function TreeView({
                     const hit = {
                       stroke: "transparent",
                       strokeWidth: 14,
+                      fill: "none",
                       "data-line-hit": true,
                       style: {
                         pointerEvents: "stroke",
@@ -1686,43 +1837,31 @@ export function TreeView({
                     };
                     return (
                       <g key={`hit-${i}`}>
-                        <line
-                          x1={c.px}
-                          y1={c.py}
-                          x2={c.px}
-                          y2={c.busY}
+                        <polyline
+                          points={routePoints(c.px, c.py, c.px, c.busY)}
                           {...hit}
                           onClick={(e) => openPicker(e, c.pid)}
                           onMouseDown={(e) => startLineDrag(e, c.pid)}
                         />
-                        <line
-                          x1={c.minX}
-                          y1={c.busY}
-                          x2={c.maxX}
-                          y2={c.busY}
+                        <polyline
+                          points={routePoints(c.minX, c.busY, c.maxX, c.busY)}
                           {...hit}
                           onClick={(e) => openPicker(e, c.pid)}
                           onMouseDown={(e) => startLineDrag(e, c.pid)}
                         />
                         {c.children.map((ch, j) => (
-                          <line
+                          <polyline
                             key={j}
-                            x1={ch.x}
-                            y1={c.busY}
-                            x2={ch.x}
-                            y2={ch.topY}
+                            points={routePoints(ch.x, c.busY, ch.x, ch.topY)}
                             {...hit}
                             onClick={(e) => openPicker(e, ch.id)}
                             onMouseDown={(e) => startLineDrag(e, ch.id)}
                           />
                         ))}
                         {c.extra.map((s, j) => (
-                          <line
+                          <polyline
                             key={`e${j}`}
-                            x1={s.x1}
-                            y1={s.y1}
-                            x2={s.x2}
-                            y2={s.y2}
+                            points={routePoints(s.x1, s.y1, s.x2, s.y2)}
                             {...hit}
                             onClick={(e) => openPicker(e, s.cid ?? c.pid)}
                             onMouseDown={(e) =>
