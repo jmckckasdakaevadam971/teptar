@@ -243,11 +243,17 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         const movedIds = subtreeIds(rootB);
         // A внутри той же ветви — сдвигом ветви наложение не разрулить
         if (movedIds.includes(A.id)) continue;
-        // почти одна колонка (стопка) — раздвигаем вниз, иначе вправо
-        const sameCol =
-          Math.abs(qa.x + wa / 2 - (qb.x + wb / 2)) < NODE_W * 0.5;
-        const dx = sameCol ? 0 : qa.x + wa + H_GAP - qb.x;
-        const dy = sameCol ? qa.y + STACK_PITCH - qb.y : 0;
+        // Вниз двигаем ТОЛЬКО одиночный лист внутри стопки одного родителя
+        // (перекрытие в родной колонке) — карточка одна, каскада не будет.
+        // Ветви раздвигаем строго вправо: вертикальный сдвиг целых ветвей
+        // каскадился, и пары наехавших ветвей утаскивало далеко вниз.
+        const stackPair =
+          movedIds.length === 1 &&
+          parentOf.get(B.id) !== undefined &&
+          parentOf.get(A.id) === parentOf.get(B.id) &&
+          Math.abs(qa.x - qb.x) < NODE_W * 0.5;
+        const dx = stackPair ? 0 : qa.x + wa + H_GAP - qb.x;
+        const dy = stackPair ? qa.y + STACK_PITCH - qb.y : 0;
         for (const id of movedIds) {
           const q = pos[id];
           if (q) {
