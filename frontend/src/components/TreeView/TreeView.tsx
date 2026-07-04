@@ -710,10 +710,12 @@ export function TreeView({
     return () => window.removeEventListener("click", close);
   }, [menuId, linePicker]);
 
-  // раскладка видимой части древа (свёрнутые ветви исключены)
+  // Раскладка ВСЕГДА по полному древу: сворачивание лишь прячет карточки,
+  // не двигая остальные — иначе схлопывание «листьев» в стопки и повторное
+  // расталкивание перемешивали древо при каждом скрытии/раскрытии ветви.
   const layout = useMemo(
-    () => computeTreeLayout(visiblePeople, editable),
-    [visiblePeople, editable],
+    () => computeTreeLayout(people, editable),
+    [people, editable],
   );
 
   // позиции для отрисовки: во время перетаскивания смещаем захваченные карточки
