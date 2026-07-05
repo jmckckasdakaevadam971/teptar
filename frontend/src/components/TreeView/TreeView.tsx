@@ -12,6 +12,8 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronUp,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Crosshair,
   Download,
   Info,
@@ -746,6 +748,19 @@ export function TreeView({
       return next;
     });
   }, []);
+
+  // Свернуть все ветви: прячем потомков каждого узла, у которого они есть, —
+  // видимыми остаются только корни. Развернуть — очистить весь набор.
+  const collapseAll = useCallback(() => {
+    const ids = new Set(people.map((p) => p.id));
+    const withKids = new Set<string>();
+    for (const p of people) {
+      if (p.parentId && ids.has(p.parentId)) withKids.add(p.parentId);
+    }
+    setCollapsed(withKids);
+  }, [people]);
+
+  const expandAll = useCallback(() => setCollapsed(new Set()), []);
 
   // Число потомков каждого узла (для счётчика на кнопке свёрнутой ветви).
   const descendantCount = useMemo(() => {
@@ -1664,6 +1679,24 @@ export function TreeView({
           className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
         >
           <Crosshair className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={collapseAll}
+          aria-label="Свернуть все ветви"
+          title="Свернуть все ветви"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <ChevronsDownUp className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={expandAll}
+          aria-label="Развернуть все ветви"
+          title="Развернуть все ветви"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <ChevronsUpDown className="h-4 w-4" />
         </button>
         <button
           type="button"
