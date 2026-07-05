@@ -6,6 +6,13 @@ import type { AuthResult, User } from './types';
 const TOKEN_KEY = 'teptar_token';
 const USER_KEY = 'teptar_user';
 
+/**
+ * ВРЕМЕННО: открытый доступ к страницам, требующим входа (кроме админки).
+ * Гостевое древо хранится в браузере и переносится в аккаунт при входе.
+ * Чтобы вернуть обязательную регистрацию — поставить false.
+ */
+export const OPEN_ACCESS = true;
+
 /** Имя кастомного события, чтобы компоненты узнавали о смене сессии. */
 const AUTH_EVENT = 'teptar:auth';
 

@@ -21,7 +21,7 @@ import {
 import type { Person } from "@/lib/demo-data";
 import { getSpouses, isFemale, displayName, isAlive } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
-import { useAuth, getToken } from "@/lib/auth";
+import { useAuth, getToken, OPEN_ACCESS } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { TEIPS, GARS_BY_TEIP } from "@/lib/teips";
 import { VILLAGES } from "@/lib/villages";
@@ -743,8 +743,8 @@ export function MyTreeClient() {
     );
   }
   // В dev-режиме (локально) разрешаем строить древо без входа — чтобы проверять
-  // изменения. В проде гейт обязателен.
-  if (!user && process.env.NODE_ENV !== "development") {
+  // изменения. В проде гейт обязателен, пока не включён OPEN_ACCESS.
+  if (!user && !OPEN_ACCESS && process.env.NODE_ENV !== "development") {
     return (
       <div className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card/40 px-6 py-20 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary text-primary">
