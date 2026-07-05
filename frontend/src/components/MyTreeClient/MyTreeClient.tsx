@@ -19,7 +19,8 @@ import {
   Pencil,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
-import { getSpouses, isFemale } from "@/lib/demo-data";
+import { getSpouses, isFemale, displayName, isAlive } from "@/lib/demo-data";
+import { cn } from "@/lib/utils";
 import { useAuth, getToken } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { TEIPS, GARS_BY_TEIP } from "@/lib/teips";
@@ -49,9 +50,13 @@ function storageKeyFor(userId?: number | null): string {
 type Relation = "founder" | "son" | "daughter" | "father" | "wife";
 
 type Draft = {
+  lastName: string;
   name: string;
+  patronymic: string;
   birth: string;
   death: string;
+  /** Переключатель «жив/умер»; при «жив» год смерти не заполняется. */
+  alive: boolean;
   role: string;
   teip: string;
   gar: string;
@@ -61,9 +66,13 @@ type Draft = {
 };
 
 const EMPTY_DRAFT: Draft = {
+  lastName: "",
   name: "",
+  patronymic: "",
   birth: "",
   death: "",
+  // По умолчанию считаем человека умершим (правило: без дат — умер).
+  alive: false,
   role: "",
   teip: "",
   gar: "",
@@ -327,7 +336,7 @@ export function MyTreeClient() {
         const spouses = getSpouses(p);
         return {
           temp_id: p.id,
-          full_name: p.name,
+          full_name: displayName(p),
           gender:
             p.role?.trim().toLowerCase() === "дочь"
               ? ("f" as const)
@@ -577,9 +586,12 @@ export function MyTreeClient() {
     setRelation(null);
     setEditingId(id);
     setDraft({
+      lastName: person.lastName ?? "",
       name: person.name,
+      patronymic: person.patronymic ?? "",
       birth: person.birth ?? "",
       death: person.death ?? "",
+      alive: isAlive(person),
       role: person.role === "—" ? "" : person.role,
       teip: person.teip === "—" ? "" : person.teip,
       gar: person.gar ?? "",
@@ -612,8 +624,11 @@ export function MyTreeClient() {
       setError("Укажите имя (не короче 2 символов).");
       return;
     }
+    const lastName = draft.lastName.trim();
+    const patronymic = draft.patronymic.trim();
     const birth = draft.birth.trim();
-    const death = draft.death.trim();
+    // При «жив» год смерти игнорируем, даже если он был введён ранее.
+    const death = draft.alive ? "" : draft.death.trim();
     if (birth && death && Number(death) < Number(birth)) {
       setError("Год смерти не может быть раньше года рождения.");
       return;
@@ -632,8 +647,11 @@ export function MyTreeClient() {
             ? {
                 ...p,
                 name,
+                lastName: lastName || undefined,
+                patronymic: patronymic || undefined,
                 birth: birth || undefined,
                 death: death || undefined,
+                alive: draft.alive,
                 teip: lockedTeip ?? (draft.teip.trim() || p.teip),
                 gar: draft.gar.trim() || undefined,
                 village: draft.village.trim() || undefined,
@@ -678,8 +696,11 @@ export function MyTreeClient() {
     const person: Person = {
       id: newId,
       name,
+      lastName: lastName || undefined,
+      patronymic: patronymic || undefined,
       birth: birth || undefined,
       death: death || undefined,
+      alive: draft.alive,
       role: draft.role.trim() || (relation ? RELATION_LABEL[relation] : "—"),
       teip: lockedTeip ?? (draft.teip.trim() || "—"),
       gar: draft.gar.trim() || undefined,
@@ -958,7 +979,7 @@ export function MyTreeClient() {
                   {selected.name.charAt(0)}
                 </span>
                 <h2 className="mt-4 font-serif text-3xl font-bold text-foreground">
-                  {selected.name}
+                  {displayName(selected)}
                 </h2>
                 <p className="mt-1 text-muted-foreground">{selected.role}</p>
 
@@ -966,9 +987,13 @@ export function MyTreeClient() {
                   <DetailRow
                     icon={<Calendar className="h-4 w-4 text-primary" />}
                     label="Годы жизни"
-                    value={`${selected.birth ?? "—"}${
-                      selected.death ? `–${selected.death}` : " — наши дни"
-                    }`}
+                    value={
+                      isAlive(selected)
+                        ? `${selected.birth ?? "—"} — наши дни`
+                        : `${selected.birth ?? "—"}${
+                            selected.death ? `–${selected.death}` : ""
+                          }`
+                    }
                   />
                   <DetailRow
                     icon={<Users className="h-4 w-4 text-primary" />}
@@ -1009,7 +1034,8 @@ export function MyTreeClient() {
                   <div className="mt-6 border-t border-border pt-6">
                     <div className="rounded-xl border border-[#5b2c25] bg-[#2a1714] p-4">
                       <p className="text-sm text-[#e6c9c2]">
-                        Удалить «{selected.name}»? Его дети перейдут к родителю
+                        Удалить «{displayName(selected)}»? Его дети перейдут к
+                        родителю
                         выше. Действие нельзя отменить.
                       </p>
                       <div className="mt-3 flex gap-3">
@@ -1221,13 +1247,16 @@ export function MyTreeClient() {
                       relation &&
                       relation !== "founder" &&
                       selected
-                        ? ` — ${selected.name}`
+                        ? ` — ${displayName(selected)}`
                         : ""}
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {editingId
                         ? "Измените данные и нажмите «Сохранить»."
-                        : formSubtitle(relation, selected?.name)}
+                        : formSubtitle(
+                            relation,
+                            selected ? displayName(selected) : undefined,
+                          )}
                     </p>
                   </div>
                   <button
@@ -1246,19 +1275,61 @@ export function MyTreeClient() {
                   onSubmit={handleSubmit}
                   className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-8 py-6"
                 >
-                  <div className={FIELD}>
-                    <label className={LABEL} htmlFor="name">
-                      Имя *
-                    </label>
-                    <input
-                      id="name"
-                      className={INPUT}
-                      value={draft.name}
-                      onChange={(e) => set("name", e.target.value)}
-                      placeholder="Напр. Тарам"
-                      autoFocus
-                    />
-                  </div>
+                  {relation === "wife" && !editingId ? (
+                    <div className={FIELD}>
+                      <label className={LABEL} htmlFor="name">
+                        Имя *
+                      </label>
+                      <input
+                        id="name"
+                        className={INPUT}
+                        value={draft.name}
+                        onChange={(e) => set("name", e.target.value)}
+                        placeholder="Напр. Зайнап"
+                        autoFocus
+                      />
+                    </div>
+                  ) : (
+                    <div className={FORM_ROW}>
+                      <div className={FIELD}>
+                        <label className={LABEL} htmlFor="lastName">
+                          Фамилия
+                        </label>
+                        <input
+                          id="lastName"
+                          className={INPUT}
+                          value={draft.lastName}
+                          onChange={(e) => set("lastName", e.target.value)}
+                          placeholder="Напр. Бенойский"
+                        />
+                      </div>
+                      <div className={FIELD}>
+                        <label className={LABEL} htmlFor="name">
+                          Имя *
+                        </label>
+                        <input
+                          id="name"
+                          className={INPUT}
+                          value={draft.name}
+                          onChange={(e) => set("name", e.target.value)}
+                          placeholder="Напр. Тарам"
+                          autoFocus
+                        />
+                      </div>
+                      <div className={FIELD}>
+                        <label className={LABEL} htmlFor="patronymic">
+                          Отчество
+                        </label>
+                        <input
+                          id="patronymic"
+                          className={INPUT}
+                          value={draft.patronymic}
+                          onChange={(e) => set("patronymic", e.target.value)}
+                          placeholder="Напр. Идрисович"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div className={FIELD}>
                     <label className={LABEL} htmlFor="village">
@@ -1301,6 +1372,35 @@ export function MyTreeClient() {
 
                   <div className={FORM_ROW}>
                     <div className={FIELD}>
+                      <span className={LABEL}>Статус</span>
+                      <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1">
+                        <button
+                          type="button"
+                          onClick={() => set("alive", true)}
+                          className={cn(
+                            "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                            draft.alive
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Жив
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => set("alive", false)}
+                          className={cn(
+                            "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                            !draft.alive
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          Умер
+                        </button>
+                      </div>
+                    </div>
+                    <div className={FIELD}>
                       <label className={LABEL} htmlFor="birth">
                         Год рождения
                       </label>
@@ -1313,19 +1413,21 @@ export function MyTreeClient() {
                         inputMode="numeric"
                       />
                     </div>
-                    <div className={FIELD}>
-                      <label className={LABEL} htmlFor="death">
-                        Год смерти
-                      </label>
-                      <input
-                        id="death"
-                        className={INPUT}
-                        value={draft.death}
-                        onChange={(e) => set("death", e.target.value)}
-                        placeholder="Год"
-                        inputMode="numeric"
-                      />
-                    </div>
+                    {!draft.alive ? (
+                      <div className={FIELD}>
+                        <label className={LABEL} htmlFor="death">
+                          Год смерти
+                        </label>
+                        <input
+                          id="death"
+                          className={INPUT}
+                          value={draft.death}
+                          onChange={(e) => set("death", e.target.value)}
+                          placeholder="Год"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    ) : null}
                   </div>
 
                   {relation !== "wife" ? (
@@ -1478,7 +1580,7 @@ export function MyTreeClient() {
                     form="person-form"
                     className={BTN_PRIMARY}
                   >
-                    Добавить
+                    {editingId ? "Сохранить" : "Добавить"}
                   </button>
                 </div>
               </div>

@@ -5,8 +5,15 @@
 export type Person = {
   id: string;
   name: string;
+  /** Фамилия (необязательно; в name хранится имя). */
+  lastName?: string;
+  /** Отчество (необязательно). */
+  patronymic?: string;
   birth?: string;
   death?: string;
+  /** Жив ли человек. Для старых записей без флага действует правило:
+   *  жив, только если указан год рождения и нет года смерти. */
+  alive?: boolean;
   role: string;
   teip: string;
   gar?: string;
@@ -39,6 +46,21 @@ export function getSpouses(p: Person): string[] {
 /** Женский узел: по полю gender или по роли «Дочь» (старые данные без gender). */
 export function isFemale(p: Person): boolean {
   return p.gender === "f" || p.role.trim().toLowerCase() === "дочь";
+}
+
+/** Полное отображаемое имя: «Фамилия Имя Отчество» (пустые части опускаются). */
+export function displayName(p: Person): string {
+  return [p.lastName, p.name, p.patronymic]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Жив ли человек. Явный флаг alive главнее; для старых записей без флага —
+ *  жив, только если есть год рождения и нет года смерти (без дат — умер). */
+export function isAlive(p: Person): boolean {
+  if (typeof p.alive === "boolean") return p.alive;
+  return Boolean(p.birth?.trim()) && !p.death?.trim();
 }
 
 // Родовое древо — узлы по поколениям (от предка к потомкам)

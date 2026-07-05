@@ -29,7 +29,7 @@ import {
   Undo2,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
-import { getSpouses, isFemale } from "@/lib/demo-data";
+import { getSpouses, isFemale, displayName, isAlive } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
@@ -1572,7 +1572,7 @@ export function TreeView({
 
       ctx.font = "600 13px Georgia, serif";
       const maxTextW = NODE_W - 32;
-      const nameLines = wrapText(person.name, maxTextW, 2);
+      const nameLines = wrapText(displayName(person), maxTextW, 2);
 
       const years = person.birth
         ? `${person.birth}${person.death ? `–${person.death}` : ""}`
@@ -2091,7 +2091,7 @@ export function TreeView({
               {visiblePeople.map((person) => {
                 const isSelected = person.id === selectedId;
                 const isAncestor = ancestorIds.has(person.id);
-                const isLiving = !person.death;
+                const isLiving = isAlive(person);
                 const isCollapsed = collapsed.has(person.id);
                 const kidsCount = descendantCount.get(person.id) ?? 0;
                 const branchColor = branchColors.get(person.id);
@@ -2242,7 +2242,7 @@ export function TreeView({
                         onShowInfo && "pr-6",
                       )}
                     >
-                      {person.name}
+                      {displayName(person)}
                     </p>
                     <div className="mt-1 flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">
@@ -2439,7 +2439,12 @@ export function TreeView({
                   <p className="mb-2 truncate text-xs text-muted-foreground">
                     Ветвь:{" "}
                     <span className="text-foreground">
-                      {people.find((p) => p.id === linePicker.id)?.name ?? ""}
+                      {(() => {
+                        const owner = people.find(
+                          (p) => p.id === linePicker.id,
+                        );
+                        return owner ? displayName(owner) : "";
+                      })()}
                     </span>
                   </p>
                   <div className="grid grid-cols-4 gap-1.5">
