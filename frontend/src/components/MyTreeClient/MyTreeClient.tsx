@@ -1285,7 +1285,7 @@ export function MyTreeClient() {
                         className={INPUT}
                         value={draft.name}
                         onChange={(e) => set("name", e.target.value)}
-                        placeholder="Напр. Зайнап"
+                        placeholder="Имя"
                         autoFocus
                       />
                     </div>
@@ -1300,7 +1300,7 @@ export function MyTreeClient() {
                           className={INPUT}
                           value={draft.lastName}
                           onChange={(e) => set("lastName", e.target.value)}
-                          placeholder="Напр. Бенойский"
+                          placeholder="Фамилия"
                         />
                       </div>
                       <div className={FIELD}>
@@ -1312,7 +1312,7 @@ export function MyTreeClient() {
                           className={INPUT}
                           value={draft.name}
                           onChange={(e) => set("name", e.target.value)}
-                          placeholder="Напр. Тарам"
+                          placeholder="Имя"
                           autoFocus
                         />
                       </div>
@@ -1325,7 +1325,7 @@ export function MyTreeClient() {
                           className={INPUT}
                           value={draft.patronymic}
                           onChange={(e) => set("patronymic", e.target.value)}
-                          placeholder="Напр. Идрисович"
+                          placeholder="Отчество"
                         />
                       </div>
                     </div>
@@ -1345,7 +1345,7 @@ export function MyTreeClient() {
                         onBlur={() =>
                           setTimeout(() => setVillageFocused(false), 120)
                         }
-                        placeholder="Напр. Ведено"
+                        placeholder="Населённый пункт"
                         autoComplete="off"
                       />
                       {villageSuggestions.length > 0 ? (
