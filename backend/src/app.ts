@@ -28,7 +28,8 @@ export function createApp() {
   app.set("trust proxy", 1);
 
   app.use(cors({ origin: env.corsOrigin }));
-  app.use(express.json({ limit: "1mb" }));
+  // 2mb: черновик большого древа (до 2000 карточек с биографиями) в JSON.
+  app.use(express.json({ limit: "2mb" }));
   app.use(authOptional); // распознаём пользователя, если есть токен
 
   // Health-check

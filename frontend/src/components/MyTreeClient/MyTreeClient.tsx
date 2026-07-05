@@ -35,10 +35,8 @@ import {
   LABEL,
 } from "@/lib/ui";
 
-// ⚠️ ВРЕМЕННО: всё состояние держим локально, без бэкенда.
-// Сохранение идёт в localStorage браузера и привязано к конкретному аккаунту,
-// чтобы черновик одного пользователя не показывался в другом аккаунте на том же устройстве.
-// Когда заработают вход и API — заменить на api.persons.* и загрузку древа.
+// Черновик древа хранится на сервере (для вошедших) и дублируется в
+// localStorage как офлайн-кэш, чтобы древо было доступно с любого устройства.
 const STORAGE_PREFIX = "vorhda:my-tree";
 // Старый общий ключ (без привязки к аккаунту) — удаляем его, он «протекал» между аккаунтами.
 const LEGACY_STORAGE_KEY = "vorhda:my-tree";
@@ -126,6 +124,16 @@ export function MyTreeClient() {
     at: string | null;
   } | null>(null);
   const lastSavedRef = useRef("[]");
+  // Актуальный список людей для колбэков (загрузка серверного черновика).
+  const peopleRef = useRef<Person[]>([]);
+  // Состояние синхронизации черновика с сервером.
+  const [syncState, setSyncState] = useState<"idle" | "saving" | "error">(
+    "idle",
+  );
+
+  useEffect(() => {
+    peopleRef.current = people;
+  }, [people]);
 
   useEffect(() => {
     setMounted(true);
@@ -154,7 +162,8 @@ export function MyTreeClient() {
     };
   }, [ready, user]);
 
-  // Загружаем черновик конкретного аккаунта. При смене аккаунта — перезагружаем.
+  // Загружаем черновик: сначала локальный кэш (мгновенно), затем серверный —
+  // он главный, чтобы древо было одинаковым на всех устройствах.
   useEffect(() => {
     if (!ready) return;
     const key = storageKeyFor(user?.id);
@@ -164,6 +173,7 @@ export function MyTreeClient() {
     } catch {
       // хранилище недоступно
     }
+    let applied = false;
     try {
       let raw = localStorage.getItem(key);
       // Перенос гостевого черновика в аккаунт при первом входе (без утечки между аккаунтами).
@@ -180,18 +190,57 @@ export function MyTreeClient() {
         if (Array.isArray(parsed) && parsed.length) {
           setPeople(parsed);
           setStarted(true);
-          lastSavedRef.current = raw;
-          return;
+          lastSavedRef.current = JSON.stringify(parsed);
+          applied = true;
         }
       }
-      // У этого аккаунта нет сохранённого древа — начинаем с чистого листа.
+    } catch {
+      // Повреждённые данные просто игнорируем.
+    }
+    if (!applied) {
+      // Локального черновика нет — начинаем с чистого листа.
       setPeople([]);
       setStarted(false);
       setSelectedId(null);
       lastSavedRef.current = "[]";
-    } catch {
-      // Повреждённые данные просто игнорируем.
     }
+
+    // Серверная копия — только для вошедших в аккаунт.
+    if (!user?.id) return;
+    let cancelled = false;
+    api.persons
+      .treeDraft()
+      .then((draft) => {
+        if (cancelled) return;
+        const localSerialized = JSON.stringify(peopleRef.current);
+        if (draft.data === null) {
+          // На сервере черновика ещё нет — переносим туда локальный (если есть).
+          if (peopleRef.current.length > 0) {
+            api.persons
+              .saveTreeDraft(peopleRef.current)
+              .catch(() => setSyncState("error"));
+          }
+          return;
+        }
+        // Пользователь уже начал править локальную копию — не затираем её.
+        if (localSerialized !== lastSavedRef.current) return;
+        const parsed = draft.data as Person[];
+        const serialized = JSON.stringify(parsed);
+        if (serialized === lastSavedRef.current) return; // копии совпадают
+        lastSavedRef.current = serialized;
+        try {
+          localStorage.setItem(key, serialized);
+        } catch {
+          // хранилище недоступно
+        }
+        setPeople(parsed);
+        setStarted(parsed.length > 0);
+        setSelectedId(null);
+      })
+      .catch(() => undefined); // офлайн/ошибка — остаёмся на локальной копии
+    return () => {
+      cancelled = true;
+    };
   }, [ready, user?.id]);
 
   // Отмечаем несохранённые изменения. Любая правка снова разрешает отправку.
@@ -202,15 +251,33 @@ export function MyTreeClient() {
   }, [people, mounted]);
 
   function saveTree() {
+    const serialized = JSON.stringify(people);
     try {
-      const serialized = JSON.stringify(people);
       localStorage.setItem(storageKeyFor(user?.id), serialized);
-      lastSavedRef.current = serialized;
-      setDirty(false);
     } catch {
       // Хранилище недоступно (приватный режим и т.п.).
     }
+    lastSavedRef.current = serialized;
+    setDirty(false);
+    // Отправляем черновик на сервер — древо будет видно с других устройств.
+    if (user?.id) {
+      setSyncState("saving");
+      api.persons
+        .saveTreeDraft(people)
+        .then(() => setSyncState("idle"))
+        .catch(() => setSyncState("error"));
+    }
   }
+
+  // Автосохранение: через 1,5 с после последней правки сохраняем локально
+  // и на сервер, чтобы изменения не терялись без нажатия «Сохранить».
+  useEffect(() => {
+    if (!mounted || !ready) return;
+    if (JSON.stringify(people) === lastSavedRef.current) return;
+    const t = setTimeout(saveTree, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [people, mounted, ready, user?.id]);
 
   // Отправить древо в общую базу → на модерацию.
   // Создаём персоны в бэкенде (от предков к потомкам, со связями
@@ -727,15 +794,26 @@ export function MyTreeClient() {
           <button
             type="button"
             onClick={saveTree}
-            disabled={people.length === 0 || !dirty}
+            disabled={people.length === 0 || (!dirty && syncState !== "error")}
+            title={
+              syncState === "error"
+                ? "Не удалось отправить на сервер — сохранено только в этом браузере. Нажмите, чтобы повторить."
+                : undefined
+            }
             className={`${BTN_SECONDARY} disabled:cursor-not-allowed disabled:opacity-50`}
           >
-            {dirty ? (
+            {dirty || syncState === "error" ? (
               <Save className="h-4 w-4" />
             ) : (
               <Check className="h-4 w-4" />
             )}
-            {dirty ? "Сохранить" : "Сохранено"}
+            {dirty
+              ? "Сохранить"
+              : syncState === "saving"
+                ? "Сохранение…"
+                : syncState === "error"
+                  ? "Повторить сохранение"
+                  : "Сохранено"}
           </button>
           <button
             type="button"

@@ -125,6 +125,15 @@ async function run() {
          CREATE UNIQUE INDEX IF NOT EXISTS uq_tree_merge_pair  ON tree_merges(anchor_a_id, anchor_b_id);
          CREATE INDEX        IF NOT EXISTS idx_tree_merge_stat ON tree_merges(status);`,
       );
+
+      // Черновики «Моего древа» — синхронизация редактора между устройствами.
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS tree_drafts (
+           user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+           data        JSONB NOT NULL DEFAULT '[]'::jsonb,
+           updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+         );`,
+      );
     }
 
     if (FORCE_RESET || !initialized) {

@@ -24,6 +24,17 @@ personsRouter.get(
   requireAuth,
   asyncHandler(controller.treeStatus),
 );
+// Черновик своего древа (синхронизация между устройствами)
+personsRouter.get(
+  "/tree/draft",
+  requireAuth,
+  asyncHandler(controller.getTreeDraft),
+);
+personsRouter.put(
+  "/tree/draft",
+  requireAuth,
+  asyncHandler(controller.saveTreeDraft),
+);
 personsRouter.post(
   "/tree/publish",
   requireAuth,

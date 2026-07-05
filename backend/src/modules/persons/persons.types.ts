@@ -127,3 +127,23 @@ export const bulkTreeSchema = z.object({
 });
 export type BulkPersonInput = z.infer<typeof bulkPersonSchema>;
 export type BulkTreeInput = z.infer<typeof bulkTreeSchema>;
+
+/**
+ * Черновик «Моего древа» — JSON-массив карточек редактора как есть.
+ * Хранится на сервере, чтобы древо было доступно с любого устройства.
+ * Структуру карточек валидируем мягко (id/name обязательны), остальные
+ * поля редактор может менять без миграций БД.
+ */
+export const treeDraftSchema = z.object({
+  data: z
+    .array(
+      z
+        .object({
+          id: z.string().min(1).max(64),
+          name: z.string().min(1).max(200),
+        })
+        .passthrough(),
+    )
+    .max(2000),
+});
+export type TreeDraftInput = z.infer<typeof treeDraftSchema>;

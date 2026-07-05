@@ -101,6 +101,18 @@ export const api = {
 
     /** Состояние своего древа (приватное / на модерации / опубликовано). */
     treeStatus: () => request<TreeStatus>("/persons/tree/status"),
+
+    /** Черновик своего древа с сервера (синхронизация между устройствами). */
+    treeDraft: () =>
+      request<{ data: unknown[] | null; updated_at: string | null }>(
+        "/persons/tree/draft",
+      ),
+    /** Сохранить черновик своего древа на сервере. */
+    saveTreeDraft: (data: unknown[]) =>
+      request<{ updated_at: string }>("/persons/tree/draft", {
+        method: "PUT",
+        body: JSON.stringify({ data }),
+      }),
     /** Отправить своё древо в общую базу. */
     publish: (mode: "all" | "hide_recent", cutoff_year = 1970) =>
       request<{ published: number; hidden: number }>("/persons/tree/publish", {

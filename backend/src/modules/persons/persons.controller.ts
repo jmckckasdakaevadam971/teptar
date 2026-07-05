@@ -10,6 +10,7 @@ import {
   resolveMergeSchema,
   bulkTreeSchema,
   rejectTreeSchema,
+  treeDraftSchema,
 } from "./persons.types.js";
 import * as service from "./persons.service.js";
 import type { Viewer } from "./persons.service.js";
@@ -90,6 +91,24 @@ export async function remove(req: Request, res: Response): Promise<void> {
 export async function treeStatus(req: Request, res: Response): Promise<void> {
   const status = await service.getTreeStatus(req.user!.userId);
   res.json(ok(status));
+}
+
+// Черновик «Моего древа» — синхронизация между устройствами.
+export async function getTreeDraft(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const draft = await service.getTreeDraft(req.user!.userId);
+  res.json(ok(draft));
+}
+
+export async function saveTreeDraft(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { data } = treeDraftSchema.parse(req.body);
+  const result = await service.saveTreeDraft(req.user!.userId, data);
+  res.json(ok(result));
 }
 
 export async function publish(req: Request, res: Response): Promise<void> {

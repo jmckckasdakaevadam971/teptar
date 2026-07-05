@@ -482,6 +482,43 @@ export async function getTreeStatus(userId: number): Promise<TreeStatus> {
   return { ...r, state, reject_reason: rejectReason, rejected_at: rejectedAt };
 }
 
+// ============================================================================
+//  ЧЕРНОВИК «МОЕГО ДРЕВА»
+//  JSON редактора хранится на сервере как есть, чтобы древо было доступно
+//  с любого устройства (localStorage остаётся офлайн-кэшем).
+// ============================================================================
+
+export interface TreeDraft {
+  data: unknown[] | null;
+  updated_at: string | null;
+}
+
+/** Черновик древа пользователя (null — ещё не сохраняли). */
+export async function getTreeDraft(userId: number): Promise<TreeDraft> {
+  const rows = await query<{ data: unknown[]; updated_at: string }>(
+    "SELECT data, updated_at FROM tree_drafts WHERE user_id = $1",
+    [userId],
+  );
+  if (rows.length === 0) return { data: null, updated_at: null };
+  return { data: rows[0].data, updated_at: rows[0].updated_at };
+}
+
+/** Сохранить (upsert) черновик древа пользователя. */
+export async function saveTreeDraft(
+  userId: number,
+  data: unknown[],
+): Promise<{ updated_at: string }> {
+  const rows = await query<{ updated_at: string }>(
+    `INSERT INTO tree_drafts (user_id, data, updated_at)
+     VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (user_id) DO UPDATE
+       SET data = EXCLUDED.data, updated_at = now()
+     RETURNING updated_at`,
+    [userId, JSON.stringify(data)],
+  );
+  return { updated_at: rows[0].updated_at };
+}
+
 /**
  * Опубликовать своё древо в общую базу (уходит на модерацию).
  *  • all         — все мои персоны → public/pending;
