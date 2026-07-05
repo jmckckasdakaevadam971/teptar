@@ -32,11 +32,11 @@ import type { Person } from "@/lib/demo-data";
 import { getSpouses, isFemale, displayName, isAlive } from "@/lib/demo-data";
 import {
   buildPdfFromJpeg,
-  buildVdx,
+  buildVsdx,
   buildXlsx,
   downloadBlob,
 } from "@/lib/export-formats";
-import type { VdxBox, VdxLine } from "@/lib/export-formats";
+import type { VsdxBox, VsdxLine } from "@/lib/export-formats";
 import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
@@ -1733,14 +1733,14 @@ export function TreeView({
     );
   }, [people]);
 
-  /** Экспорт древа в схему Visio (.vdx): карточки и связи как фигуры. */
-  const exportVdx = useCallback(() => {
+  /** Экспорт древа в схему Visio (.vsdx): карточки и связи как фигуры. */
+  const exportVsdx = useCallback(() => {
     const full = computeTreeLayout(people, false);
     const bColors = computeBranchColors(people);
     const GOLD = "#C9A227";
     const colorOf = (id?: string) => (id ? (bColors.get(id) ?? GOLD) : GOLD);
-    const boxes: VdxBox[] = [];
-    const lines: VdxLine[] = [];
+    const boxes: VsdxBox[] = [];
+    const lines: VsdxLine[] = [];
 
     // связи родитель → дети (та же геометрия, что и в древе)
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
@@ -1802,15 +1802,11 @@ export function TreeView({
     }
 
     const PAD = 40;
-    const xml = buildVdx(full.width + PAD * 2, full.height + PAD * 2, 
+    const vsdx = buildVsdx(full.width + PAD * 2, full.height + PAD * 2, 
       boxes.map((b) => ({ ...b, x: b.x + PAD, y: b.y + PAD })),
       lines.map((l) => ({ ...l, x1: l.x1 + PAD, y1: l.y1 + PAD, x2: l.x2 + PAD, y2: l.y2 + PAD })),
     );
-    downloadBlob(
-      "vorhda-drevo.vdx",
-      "application/vnd.visio",
-      new TextEncoder().encode(xml),
-    );
+    downloadBlob("vorhda-drevo.vsdx", "application/vnd.ms-visio.drawing", vsdx);
   }, [people]);
 
   const tree = (
@@ -1989,7 +1985,7 @@ export function TreeView({
                   ["PNG", "изображение", exportPng],
                   ["PDF", "документ для печати", exportPdf],
                   ["Excel", "таблица людей (.xlsx)", exportXlsx],
-                  ["Visio", "схема (.vdx)", exportVdx],
+                  ["Visio", "схема (.vsdx)", exportVsdx],
                 ] as const
               ).map(([label, hint, run]) => (
                 <button

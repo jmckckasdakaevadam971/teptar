@@ -1,12 +1,12 @@
 // Генераторы файлов для выгрузки древа БЕЗ внешних библиотек:
 //  - PDF: одна страница-«постер» с JPEG-снимком древа (DCTDecode);
 //  - XLSX: настоящий Excel-файл — минимальный ZIP (без сжатия) с XML-листом;
-//  - VDX: схема Microsoft Visio (XML-формат 2003+, открывается и в новых
-//    версиях Visio, и в LibreOffice Draw).
+//  - VSDX: схема Microsoft Visio (современный формат 2013+, OPC-пакет).
 
-/** Экранирование спецсимволов XML. */
+/** Экранирование спецсимволов XML (+ удаление запрещённых управляющих). */
 export function xmlEscape(s: string): string {
   return s
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -264,9 +264,9 @@ export function buildPdfFromJpeg(
   return out;
 }
 
-// ---------------------------------------------------------------------- VDX
+// --------------------------------------------------------------------- VSDX
 
-export type VdxBox = {
+export type VsdxBox = {
   x: number;
   y: number;
   w: number;
@@ -277,7 +277,7 @@ export type VdxBox = {
   textColor?: string;
 };
 
-export type VdxLine = {
+export type VsdxLine = {
   x1: number;
   y1: number;
   x2: number;
@@ -287,75 +287,218 @@ export type VdxLine = {
 
 const PX_PER_IN = 96;
 
-/** Схема Visio (VDX): страница с прямоугольниками-карточками и линиями.
- *  Координаты на входе — в пикселях макета (ось Y вниз); внутри переводятся
- *  в дюймы и переворачиваются (у Visio начало координат — левый нижний угол). */
-export function buildVdx(
+/** Число для XML Visio: до 6 знаков после точки, без хвостовых нулей. */
+function vNum(v: number): string {
+  const s = v.toFixed(6).replace(/\.?0+$/, "");
+  return s === "" || s === "-" ? "0" : s;
+}
+
+/** Схема Microsoft Visio (.vsdx, формат 2013+): OPC-пакет (ZIP) со страницей,
+ *  прямоугольниками-карточками и линиями связей. Координаты на входе — в
+ *  пикселях макета (ось Y вниз); внутри переводятся в дюймы и переворачиваются
+ *  (у Visio начало координат — левый нижний угол страницы). */
+export function buildVsdx(
   widthPx: number,
   heightPx: number,
-  boxes: VdxBox[],
-  lines: VdxLine[],
-): string {
-  const f = (n: number) => n.toFixed(4);
+  boxes: VsdxBox[],
+  lines: VsdxLine[],
+): Uint8Array {
+  const toIn = (px: number) => px / PX_PER_IN;
+  const flipY = (px: number) => (heightPx - px) / PX_PER_IN;
+  const pageW = vNum(toIn(widthPx));
+  const pageH = vNum(toIn(heightPx));
+
   let id = 0;
   const shapes: string[] = [];
 
+  // линии — первыми, чтобы карточки рисовались поверх них
   for (const l of lines) {
     id++;
-    const x1 = l.x1 / PX_PER_IN;
-    const x2 = l.x2 / PX_PER_IN;
-    const y1 = (heightPx - l.y1) / PX_PER_IN;
-    const y2 = (heightPx - l.y2) / PX_PER_IN;
-    const bx = Math.min(x1, x2);
-    const by = Math.min(y1, y2);
-    const w = Math.max(Math.abs(x2 - x1), 0.001);
-    const h = Math.max(Math.abs(y2 - y1), 0.001);
+    const ax = toIn(l.x1);
+    const ay = flipY(l.y1);
+    const bx = toIn(l.x2);
+    const by = flipY(l.y2);
+    const w = Math.max(Math.abs(bx - ax), 0.0001);
+    const h = Math.max(Math.abs(by - ay), 0.0001);
+    const minX = Math.min(ax, bx);
+    const minY = Math.min(ay, by);
+    // относительные координаты концов отрезка внутри рамки фигуры (0..1)
+    const rx1 = vNum((ax - minX) / w);
+    const ry1 = vNum((ay - minY) / h);
+    const rx2 = vNum((bx - minX) / w);
+    const ry2 = vNum((by - minY) / h);
     shapes.push(
-      `<Shape ID="${id}" Type="Shape">` +
-        `<XForm><PinX>${f(bx)}</PinX><PinY>${f(by)}</PinY>` +
-        `<Width>${f(w)}</Width><Height>${f(h)}</Height>` +
-        `<LocPinX>0</LocPinX><LocPinY>0</LocPinY></XForm>` +
-        `<Line><LineWeight>0.014</LineWeight><LineColor>${l.color}</LineColor></Line>` +
-        `<Geom IX="0"><NoFill>1</NoFill>` +
-        `<MoveTo IX="1"><X>${f(x1 - bx)}</X><Y>${f(y1 - by)}</Y></MoveTo>` +
-        `<LineTo IX="2"><X>${f(x2 - bx)}</X><Y>${f(y2 - by)}</Y></LineTo>` +
-        `</Geom></Shape>`,
+      `<Shape ID="${id}" Type="Shape" LineStyle="0" FillStyle="0" TextStyle="0">` +
+        `<Cell N="PinX" V="${vNum(minX + w / 2)}"/>` +
+        `<Cell N="PinY" V="${vNum(minY + h / 2)}"/>` +
+        `<Cell N="Width" V="${vNum(w)}"/>` +
+        `<Cell N="Height" V="${vNum(h)}"/>` +
+        `<Cell N="LocPinX" V="${vNum(w / 2)}" F="Width*0.5"/>` +
+        `<Cell N="LocPinY" V="${vNum(h / 2)}" F="Height*0.5"/>` +
+        `<Cell N="Angle" V="0"/>` +
+        `<Cell N="LineColor" V="${l.color}"/>` +
+        `<Cell N="LineWeight" V="0.02"/>` +
+        `<Section N="Geometry" IX="0">` +
+        `<Cell N="NoFill" V="1"/>` +
+        `<Cell N="NoLine" V="0"/>` +
+        `<Row T="RelMoveTo" IX="1"><Cell N="X" V="${rx1}"/><Cell N="Y" V="${ry1}"/></Row>` +
+        `<Row T="RelLineTo" IX="2"><Cell N="X" V="${rx2}"/><Cell N="Y" V="${ry2}"/></Row>` +
+        `</Section></Shape>`,
     );
   }
 
   for (const b of boxes) {
     id++;
-    const w = b.w / PX_PER_IN;
-    const h = b.h / PX_PER_IN;
-    const bx = b.x / PX_PER_IN;
-    const by = (heightPx - b.y - b.h) / PX_PER_IN;
+    const w = toIn(b.w);
+    const h = toIn(b.h);
+    const cx = toIn(b.x) + w / 2;
+    const cy = flipY(b.y) - h / 2;
     shapes.push(
-      `<Shape ID="${id}" Type="Shape">` +
-        `<XForm><PinX>${f(bx)}</PinX><PinY>${f(by)}</PinY>` +
-        `<Width>${f(w)}</Width><Height>${f(h)}</Height>` +
-        `<LocPinX>0</LocPinX><LocPinY>0</LocPinY></XForm>` +
-        `<Line><LineWeight>0.014</LineWeight><LineColor>${b.line}</LineColor></Line>` +
-        `<Fill><FillForegnd>${b.fill}</FillForegnd><FillPattern>1</FillPattern></Fill>` +
-        `<Char IX="0"><Color>${b.textColor ?? "#000000"}</Color><Size>0.125</Size></Char>` +
-        `<Geom IX="0">` +
-        `<MoveTo IX="1"><X>0</X><Y>0</Y></MoveTo>` +
-        `<LineTo IX="2"><X>${f(w)}</X><Y>0</Y></LineTo>` +
-        `<LineTo IX="3"><X>${f(w)}</X><Y>${f(h)}</Y></LineTo>` +
-        `<LineTo IX="4"><X>0</X><Y>${f(h)}</Y></LineTo>` +
-        `<LineTo IX="5"><X>0</X><Y>0</Y></LineTo>` +
-        `</Geom><Text>${xmlEscape(b.text)}</Text></Shape>`,
+      `<Shape ID="${id}" Type="Shape" LineStyle="0" FillStyle="0" TextStyle="0">` +
+        `<Cell N="PinX" V="${vNum(cx)}"/>` +
+        `<Cell N="PinY" V="${vNum(cy)}"/>` +
+        `<Cell N="Width" V="${vNum(w)}"/>` +
+        `<Cell N="Height" V="${vNum(h)}"/>` +
+        `<Cell N="LocPinX" V="${vNum(w / 2)}" F="Width*0.5"/>` +
+        `<Cell N="LocPinY" V="${vNum(h / 2)}" F="Height*0.5"/>` +
+        `<Cell N="Angle" V="0"/>` +
+        `<Cell N="FillForegnd" V="${b.fill}"/>` +
+        `<Cell N="FillPattern" V="1"/>` +
+        `<Cell N="LineColor" V="${b.line}"/>` +
+        `<Cell N="LineWeight" V="0.0138889"/>` +
+        `<Cell N="Rounding" V="0.05"/>` +
+        `<Cell N="VerticalAlign" V="1"/>` +
+        `<Section N="Character"><Row IX="0">` +
+        `<Cell N="Color" V="${b.textColor ?? "#000000"}"/>` +
+        `<Cell N="Size" V="0.111111"/>` +
+        `</Row></Section>` +
+        `<Section N="Paragraph"><Row IX="0"><Cell N="HorzAlign" V="1"/></Row></Section>` +
+        `<Section N="Geometry" IX="0">` +
+        `<Cell N="NoFill" V="0"/>` +
+        `<Cell N="NoLine" V="0"/>` +
+        `<Row T="RelMoveTo" IX="1"><Cell N="X" V="0"/><Cell N="Y" V="0"/></Row>` +
+        `<Row T="RelLineTo" IX="2"><Cell N="X" V="1"/><Cell N="Y" V="0"/></Row>` +
+        `<Row T="RelLineTo" IX="3"><Cell N="X" V="1"/><Cell N="Y" V="1"/></Row>` +
+        `<Row T="RelLineTo" IX="4"><Cell N="X" V="0"/><Cell N="Y" V="1"/></Row>` +
+        `<Row T="RelLineTo" IX="5"><Cell N="X" V="0"/><Cell N="Y" V="0"/></Row>` +
+        `</Section>` +
+        `<Text>${xmlEscape(b.text)}</Text></Shape>`,
     );
   }
 
-  return (
-    `<?xml version="1.0" encoding="utf-8"?>\n` +
-    `<VisioDocument xmlns="http://schemas.microsoft.com/visio/2003/core">` +
-    `<Pages><Page ID="1" NameU="Древо" Name="Древо">` +
-    `<PageSheet><PageProps>` +
-    `<PageWidth>${f(widthPx / PX_PER_IN)}</PageWidth>` +
-    `<PageHeight>${f(heightPx / PX_PER_IN)}</PageHeight>` +
-    `</PageProps></PageSheet>` +
+  const VISIO_NS = "http://schemas.microsoft.com/office/visio/2012/main";
+  const R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+  const XML_HEAD = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`;
+
+  const contentTypes =
+    XML_HEAD +
+    `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+    `<Default Extension="xml" ContentType="application/xml"/>` +
+    `<Override PartName="/visio/document.xml" ContentType="application/vnd.ms-visio.drawing.main+xml"/>` +
+    `<Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml"/>` +
+    `<Override PartName="/visio/pages/page1.xml" ContentType="application/vnd.ms-visio.page+xml"/>` +
+    `<Override PartName="/visio/windows.xml" ContentType="application/vnd.ms-visio.windows+xml"/>` +
+    `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+    `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>` +
+    `</Types>`;
+
+  const rootRels =
+    XML_HEAD +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/document" Target="visio/document.xml"/>` +
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
+    `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>` +
+    `</Relationships>`;
+
+  const coreProps =
+    XML_HEAD +
+    `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ` +
+    `xmlns:dc="http://purl.org/dc/elements/1.1/">` +
+    `<dc:title>Родовое древо</dc:title><dc:creator>Vorhda</dc:creator>` +
+    `</cp:coreProperties>`;
+
+  const appProps =
+    XML_HEAD +
+    `<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">` +
+    `<Application>Microsoft Visio</Application>` +
+    `</Properties>`;
+
+  // Документ: базовый стиль ID=0 («No Style»), на него ссылаются все фигуры
+  const documentXml =
+    XML_HEAD +
+    `<VisioDocument xmlns="${VISIO_NS}" xmlns:r="${R_NS}" xml:space="preserve">` +
+    `<StyleSheets>` +
+    `<StyleSheet ID="0" NameU="No Style" Name="No Style">` +
+    `<Cell N="EnableLineProps" V="1"/>` +
+    `<Cell N="EnableFillProps" V="1"/>` +
+    `<Cell N="EnableTextProps" V="1"/>` +
+    `<Cell N="LineWeight" V="0.01"/>` +
+    `<Cell N="LineColor" V="#000000"/>` +
+    `<Cell N="LinePattern" V="1"/>` +
+    `<Cell N="FillForegnd" V="#ffffff"/>` +
+    `<Cell N="FillBkgnd" V="#ffffff"/>` +
+    `<Cell N="FillPattern" V="1"/>` +
+    `<Cell N="VerticalAlign" V="1"/>` +
+    `<Section N="Character"><Row IX="0">` +
+    `<Cell N="Font" V="Calibri"/><Cell N="Color" V="#000000"/><Cell N="Size" V="0.125"/>` +
+    `</Row></Section>` +
+    `<Section N="Paragraph"><Row IX="0"><Cell N="HorzAlign" V="1"/></Row></Section>` +
+    `</StyleSheet>` +
+    `</StyleSheets>` +
+    `</VisioDocument>`;
+
+  const documentRels =
+    XML_HEAD +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="pages/pages.xml"/>` +
+    `<Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/windows" Target="windows.xml"/>` +
+    `</Relationships>`;
+
+  // Без части windows.xml Visio отказывается открывать пакет
+  // («части отсутствуют или являются недопустимыми») — проверено на Visio 16.
+  const windowsXml =
+    XML_HEAD +
+    `<Windows ClientWidth="1600" ClientHeight="900" xmlns="${VISIO_NS}" xmlns:r="${R_NS}" xml:space="preserve">` +
+    `<Window ID="0" WindowType="Drawing" WindowState="1073741824" ContainerType="Page" Page="0" ` +
+    `ViewScale="-1" ViewCenterX="${vNum(toIn(widthPx) / 2)}" ViewCenterY="${vNum(toIn(heightPx) / 2)}"/>` +
+    `</Windows>`;
+
+  const pagesXml =
+    XML_HEAD +
+    `<Pages xmlns="${VISIO_NS}" xmlns:r="${R_NS}" xml:space="preserve">` +
+    `<Page ID="0" NameU="Page-1" Name="Древо">` +
+    `<PageSheet LineStyle="0" FillStyle="0" TextStyle="0">` +
+    `<Cell N="PageWidth" V="${pageW}"/>` +
+    `<Cell N="PageHeight" V="${pageH}"/>` +
+    `<Cell N="DrawingSizeType" V="3"/>` +
+    `</PageSheet>` +
+    `<Rel r:id="rId1"/>` +
+    `</Page></Pages>`;
+
+  const pagesRels =
+    XML_HEAD +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/page" Target="page1.xml"/>` +
+    `</Relationships>`;
+
+  const pageContents =
+    XML_HEAD +
+    `<PageContents xmlns="${VISIO_NS}" xmlns:r="${R_NS}" xml:space="preserve">` +
     `<Shapes>${shapes.join("")}</Shapes>` +
-    `</Page></Pages></VisioDocument>`
-  );
+    `</PageContents>`;
+
+  const te = new TextEncoder();
+  return makeZip([
+    { name: "[Content_Types].xml", data: te.encode(contentTypes) },
+    { name: "_rels/.rels", data: te.encode(rootRels) },
+    { name: "docProps/core.xml", data: te.encode(coreProps) },
+    { name: "docProps/app.xml", data: te.encode(appProps) },
+    { name: "visio/document.xml", data: te.encode(documentXml) },
+    { name: "visio/_rels/document.xml.rels", data: te.encode(documentRels) },
+    { name: "visio/windows.xml", data: te.encode(windowsXml) },
+    { name: "visio/pages/pages.xml", data: te.encode(pagesXml) },
+    { name: "visio/pages/_rels/pages.xml.rels", data: te.encode(pagesRels) },
+    { name: "visio/pages/page1.xml", data: te.encode(pageContents) },
+  ]);
 }
