@@ -124,9 +124,17 @@ type Connector = {
  *  Дети БЕЗ потомков (листья) складываются вертикальной стопкой в одну
  *  колонку — иначе широкие семьи растягивают древо по горизонтали.
  *  Жёны занимают собственные слоты справа от мужа (карточки-сателлиты).
+ *  reserveForId — выбранный человек: вокруг его семейного блока добавляется
+ *  по свободному слоту с обеих сторон, чтобы слоты «добавить сына/дочь/жену»
+ *  всегда помещались рядом, а не улетали за соседние ветви (ветви при
+ *  выборе слегка раздвигаются).
  *  Вынесена из компонента, чтобы PNG-экспорт мог построить раскладку
  *  ПОЛНОГО древа независимо от свёрнутых ветвей. */
-function computeTreeLayout(people: Person[], editable: boolean) {
+function computeTreeLayout(
+  people: Person[],
+  editable: boolean,
+  reserveForId: string | null = null,
+) {
   const idSet = new Set(people.map((p) => p.id));
   const childrenMap = new Map<string, Person[]>();
   const roots: Person[] = [];
@@ -160,11 +168,16 @@ function computeTreeLayout(people: Person[], editable: boolean) {
     const kids = childrenMap.get(node.id);
     // узел с жёнами занимает 1 + N слотов (карточки жён — справа)
     const unitSlots = 1 + getSpouses(node).length;
+    // выбранный человек: запас по слоту с обеих сторон его блока
+    const reserved = node.id === reserveForId;
     let x: number;
     if (!kids || kids.length === 0) {
+      if (reserved) cursor += 1;
       x = cursor * SLOT;
       cursor += unitSlots;
+      if (reserved) cursor += 1;
     } else {
+      if (reserved) cursor += 1;
       // листья семьи — одной вертикальной стопкой в одну колонку
       const leaves = kids.filter((k) => !hasKids(k));
       const xs: number[] = [];
@@ -176,6 +189,9 @@ function computeTreeLayout(people: Person[], editable: boolean) {
           if (stackPlaced) continue;
           stackPlaced = true;
           if (placedUnits > 0) cursor += BRANCH_GAP / SLOT;
+          // стопка с выбранным листом тоже получает запас с обеих сторон
+          const stackReserved = leaves.some((l) => l.id === reserveForId);
+          if (stackReserved) cursor += 1;
           const stackX = cursor * SLOT;
           // колонка стопки резервирует место под жён самого «жёнистого» листа
           const stackSlots =
@@ -187,6 +203,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
             };
           });
           cursor += stackSlots;
+          if (stackReserved) cursor += 1;
           xs.push(stackX);
           placedUnits += 1;
         } else {
@@ -199,6 +216,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
       // карточки жён торчат вправо — сдвигаем курсор, чтобы следующая
       // ветвь не наехала на них
       cursor = Math.max(cursor, x / SLOT + unitSlots);
+      if (reserved) cursor += 1;
     }
     pos[node.id] = { x, y: (node.generation - minGen) * ROW_PITCH };
     return x;
@@ -830,9 +848,11 @@ export function TreeView({
   // Раскладка ВСЕГДА по полному древу: сворачивание лишь прячет карточки,
   // не двигая остальные — иначе схлопывание «листьев» в стопки и повторное
   // расталкивание перемешивали древо при каждом скрытии/раскрытии ветви.
+  // При выборе карточки вокруг неё резервируется место под слоты добавления —
+  // соседние ветви раздвигаются (и сдвигаются обратно при снятии выбора).
   const layout = useMemo(
-    () => computeTreeLayout(people, editable),
-    [people, editable],
+    () => computeTreeLayout(people, editable, editable ? selectedId : null),
+    [people, editable, selectedId],
   );
 
   // позиции для отрисовки: во время перетаскивания смещаем захваченные карточки
@@ -1062,6 +1082,31 @@ export function TreeView({
   const [scale, setScale] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sizerRef = useRef<HTMLDivElement>(null);
+
+  // При выборе/снятии выбора раскладка раздвигается или сжимается (резерв под
+  // слоты добавления) — компенсируем скролл, чтобы карточка, вокруг которой
+  // всё раздвинулось, осталась на том же месте экрана и ничего не «прыгало».
+  const prevAnchorRef = useRef<{
+    sel: string | null;
+    pos: Record<string, { x: number; y: number }>;
+  }>({ sel: null, pos: {} });
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const prev = prevAnchorRef.current;
+    if (el && prev.sel !== selectedId) {
+      const anchorId = selectedId ?? prev.sel;
+      if (anchorId) {
+        const a = prev.pos[anchorId];
+        const b = layout.pos[anchorId];
+        if (a && b && (a.x !== b.x || a.y !== b.y)) {
+          el.scrollLeft += (b.x - a.x) * scale;
+          el.scrollTop += (b.y - a.y) * scale;
+        }
+      }
+    }
+    prevAnchorRef.current = { sel: selectedId, pos: layout.pos };
+  }, [layout, selectedId, scale]);
+
   // полноэкранный режим: больше места для просмотра большого древа
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mounted, setMounted] = useState(false);
