@@ -38,6 +38,10 @@ const SLOT = NODE_W + H_GAP;
 const ROW_PITCH = NODE_H + V_GAP;
 // вертикальный шаг карточек в стопке листьев (дети без потомков)
 const STACK_PITCH = NODE_H + 56;
+// дополнительный зазор между соседними ветвями (между поддеревьями
+// братьев/сестёр, стопкой листьев и между корнями) — чтобы ветви
+// не липли друг к другу; добавляется поверх H_GAP
+const BRANCH_GAP = 96;
 // Допуск «одной колонки» при кластеризации детей: только реально выровненные
 // карточки делят общий хребет. Широкий допуск склеивал перетащенную ветвь с
 // линией соседа — красный спуск прятался под чужим хребтом стопки.
@@ -162,10 +166,13 @@ function computeTreeLayout(people: Person[], editable: boolean) {
       const leaves = kids.filter((k) => !hasKids(k));
       const xs: number[] = [];
       let stackPlaced = false;
+      // между соседними единицами семьи (стопка/поддеревья) — широкий зазор
+      let placedUnits = 0;
       for (const kid of [...kids].reverse()) {
         if (!hasKids(kid)) {
           if (stackPlaced) continue;
           stackPlaced = true;
+          if (placedUnits > 0) cursor += BRANCH_GAP / SLOT;
           const stackX = cursor * SLOT;
           // колонка стопки резервирует место под жён самого «жёнистого» листа
           const stackSlots =
@@ -178,8 +185,11 @@ function computeTreeLayout(people: Person[], editable: boolean) {
           });
           cursor += stackSlots;
           xs.push(stackX);
+          placedUnits += 1;
         } else {
+          if (placedUnits > 0) cursor += BRANCH_GAP / SLOT;
           xs.push(place(kid));
+          placedUnits += 1;
         }
       }
       x = (Math.min(...xs) + Math.max(...xs)) / 2;
@@ -190,7 +200,10 @@ function computeTreeLayout(people: Person[], editable: boolean) {
     pos[node.id] = { x, y: (node.generation - minGen) * ROW_PITCH };
     return x;
   };
-  [...roots].reverse().forEach(place);
+  [...roots].reverse().forEach((r, i) => {
+    if (i > 0) cursor += BRANCH_GAP / SLOT;
+    place(r);
+  });
 
   // Ручные смещения: пользователь перетащил карточку или целую ветвь.
   for (const p of people) {
