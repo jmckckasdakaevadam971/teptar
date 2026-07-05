@@ -33,7 +33,12 @@ export function PageShell({
           }}
           aria-hidden="true"
         />
-        <div className="mx-auto max-w-6xl px-5 pb-12 pt-32 md:px-8 md:pb-16 md:pt-40">
+        <div
+          className={cn(
+            'mx-auto px-5 pb-12 pt-32 md:px-8 md:pb-16 md:pt-40',
+            wide ? 'max-w-[1800px]' : 'max-w-6xl',
+          )}
+        >
           <p className="font-mono text-xs uppercase tracking-[0.25em] text-primary">
             {eyebrow}
           </p>
