@@ -30,6 +30,13 @@ import {
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
 import { getSpouses, isFemale, displayName, isAlive } from "@/lib/demo-data";
+import {
+  buildPdfFromJpeg,
+  buildVdx,
+  buildXlsx,
+  downloadBlob,
+} from "@/lib/export-formats";
+import type { VdxBox, VdxLine } from "@/lib/export-formats";
 import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
@@ -758,6 +765,8 @@ export function TreeView({
   const [dragMode, setDragMode] = useState<"branch" | "single">("branch");
   // панель настроек древа: свёрнута по умолчанию, чтобы не закрывать карточки
   const [panelOpen, setPanelOpen] = useState(false);
+  // меню «Скачать»: выбор формата выгрузки (PNG/PDF/Excel/Visio)
+  const [exportOpen, setExportOpen] = useState(false);
   // свёрнутые ветви: id узлов, чьи потомки скрыты
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -844,6 +853,14 @@ export function TreeView({
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [menuId, linePicker]);
+
+  // клик в любом месте вне меню «Скачать» — закрыть его
+  useEffect(() => {
+    if (!exportOpen) return;
+    const close = () => setExportOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [exportOpen]);
 
   // Раскладка ВСЕГДА по полному древу: сворачивание лишь прячет карточки,
   // не двигая остальные — иначе схлопывание «листьев» в стопки и повторное
@@ -1477,9 +1494,9 @@ export function TreeView({
     });
   }, [selectedId, people, layout, scale]);
 
-  /** Экспорт древа в PNG: рисуем на canvas без внешних библиотек.
-   *  Всегда экспортируется ПОЛНОЕ древо — свёрнутые ветви не влияют. */
-  const exportPng = useCallback(() => {
+  /** Снимок полного древа на canvas (общий для PNG и PDF).
+   *  Всегда рисуется ПОЛНОЕ древо — свёрнутые ветви не влияют. */
+  const renderTreeCanvas = useCallback((): HTMLCanvasElement | null => {
     // отдельная раскладка полного древа без запаса под плейсхолдеры «+»
     const full = computeTreeLayout(people, false);
     const PAD = 40;
@@ -1488,7 +1505,7 @@ export function TreeView({
     canvas.width = (full.width + PAD * 2) * dpr;
     canvas.height = (full.height + PAD * 2) * dpr;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) return null;
     ctx.scale(dpr, dpr);
 
     // Фон в цветах сайта
@@ -1643,10 +1660,157 @@ export function TreeView({
       });
     }
 
+    return canvas;
+  }, [people]);
+
+  /** Экспорт древа в PNG-изображение. */
+  const exportPng = useCallback(() => {
+    const canvas = renderTreeCanvas();
+    if (!canvas) return;
     const a = document.createElement("a");
     a.download = "vorhda-drevo.png";
     a.href = canvas.toDataURL("image/png");
     a.click();
+  }, [renderTreeCanvas]);
+
+  /** Экспорт древа в PDF: страница-«постер» с JPEG-снимком древа. */
+  const exportPdf = useCallback(() => {
+    const canvas = renderTreeCanvas();
+    if (!canvas) return;
+    const b64 = canvas.toDataURL("image/jpeg", 0.92).split(",")[1] ?? "";
+    const bin = atob(b64);
+    const jpeg = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) jpeg[i] = bin.charCodeAt(i);
+    const pdf = buildPdfFromJpeg(jpeg, canvas.width, canvas.height);
+    downloadBlob("vorhda-drevo.pdf", "application/pdf", pdf);
+  }, [renderTreeCanvas]);
+
+  /** Экспорт древа в Excel (.xlsx): таблица всех людей с полями. */
+  const exportXlsx = useCallback(() => {
+    const byId = new Map(people.map((p) => [p.id, p]));
+    const header = [
+      "Фамилия",
+      "Имя",
+      "Отчество",
+      "Год рождения",
+      "Год смерти",
+      "Статус",
+      "Роль",
+      "Тейп",
+      "Гар",
+      "Населённый пункт",
+      "Поколение",
+      "Родитель",
+      "Жёны",
+      "Биография",
+    ];
+    const rows = [...people]
+      .sort((a, b) => a.generation - b.generation)
+      .map((p) => {
+        const parent = p.parentId ? byId.get(p.parentId) : undefined;
+        return [
+          p.lastName ?? "",
+          p.name ?? "",
+          p.patronymic ?? "",
+          p.birth ?? "",
+          p.death ?? "",
+          isAlive(p) ? "Жив" : "Умер",
+          p.role ?? "",
+          p.teip ?? "",
+          p.gar ?? "",
+          p.village ?? "",
+          String(p.generation),
+          parent ? displayName(parent) : "",
+          getSpouses(p).join(", "),
+          p.bio ?? "",
+        ];
+      });
+    const xlsx = buildXlsx("Древо", [header, ...rows]);
+    downloadBlob(
+      "vorhda-drevo.xlsx",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      xlsx,
+    );
+  }, [people]);
+
+  /** Экспорт древа в схему Visio (.vdx): карточки и связи как фигуры. */
+  const exportVdx = useCallback(() => {
+    const full = computeTreeLayout(people, false);
+    const bColors = computeBranchColors(people);
+    const GOLD = "#C9A227";
+    const colorOf = (id?: string) => (id ? (bColors.get(id) ?? GOLD) : GOLD);
+    const boxes: VdxBox[] = [];
+    const lines: VdxLine[] = [];
+
+    // связи родитель → дети (та же геометрия, что и в древе)
+    for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
+      lines.push({ x1: c.px, y1: c.py, x2: c.px, y2: c.busY, color: colorOf(c.pid) });
+      lines.push({ x1: c.minX, y1: c.busY, x2: c.maxX, y2: c.busY, color: colorOf(c.pid) });
+      for (const k of c.children) {
+        lines.push({ x1: k.x, y1: c.busY, x2: k.x, y2: k.topY, color: colorOf(k.id) });
+      }
+      for (const s of c.extra) {
+        lines.push({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, color: colorOf(s.cid ?? c.pid) });
+      }
+    }
+
+    for (const person of people) {
+      const p = full.pos[person.id];
+      if (!p) continue;
+      const spouses = getSpouses(person);
+      // линия брака под карточками
+      if (spouses.length) {
+        lines.push({
+          x1: p.x + NODE_W - 8,
+          y1: p.y + NODE_H / 2,
+          x2: p.x + SLOT * spouses.length + 8,
+          y2: p.y + NODE_H / 2,
+          color: "#B0788A",
+        });
+      }
+      const years = person.birth
+        ? `${person.birth}${person.death ? `–${person.death}` : ""}`
+        : "";
+      boxes.push({
+        x: p.x,
+        y: p.y,
+        w: NODE_W,
+        h: NODE_H,
+        text: years ? `${displayName(person)}\n${years}` : displayName(person),
+        fill: "#FBF7EC",
+        line: colorOf(person.id),
+        textColor: "#3A3226",
+      });
+      const female = isFemale(person);
+      spouses.forEach((wifeName, i) => {
+        const label = female
+          ? "муж"
+          : spouses.length > 1
+            ? `${i + 1}-я жена`
+            : "жена";
+        boxes.push({
+          x: p.x + SLOT * (i + 1),
+          y: p.y,
+          w: NODE_W,
+          h: NODE_H,
+          text: `⚭ ${label}\n${wifeName}`,
+          fill: "#F9EDF0",
+          line: "#B0788A",
+          textColor: "#5A3A42",
+        });
+      });
+    }
+
+    const PAD = 40;
+    const xml = buildVdx(full.width + PAD * 2, full.height + PAD * 2, 
+      boxes.map((b) => ({ ...b, x: b.x + PAD, y: b.y + PAD })),
+      lines.map((l) => ({ ...l, x1: l.x1 + PAD, y1: l.y1 + PAD, x2: l.x2 + PAD, y2: l.y2 + PAD })),
+    );
+    downloadBlob(
+      "vorhda-drevo.vdx",
+      "application/vnd.visio",
+      new TextEncoder().encode(xml),
+    );
   }, [people]);
 
   const tree = (
@@ -1799,15 +1963,54 @@ export function TreeView({
             <Maximize2 className="h-4 w-4" />
           )}
         </button>
-        <button
-          type="button"
-          onClick={exportPng}
-          aria-label="Сохранить как изображение"
-          title="Сохранить как изображение"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
-        >
-          <Download className="h-4 w-4" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExportOpen((v) => !v);
+            }}
+            aria-label="Скачать древо"
+            title="Скачать древо"
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 backdrop-blur transition-colors hover:text-foreground",
+              exportOpen ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            <Download className="h-4 w-4" />
+          </button>
+          {exportOpen ? (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-full top-1/2 z-40 mr-2 w-52 -translate-y-1/2 overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+            >
+              {(
+                [
+                  ["PNG", "изображение", exportPng],
+                  ["PDF", "документ для печати", exportPdf],
+                  ["Excel", "таблица людей (.xlsx)", exportXlsx],
+                  ["Visio", "схема (.vdx)", exportVdx],
+                ] as const
+              ).map(([label, hint, run]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExportOpen(false);
+                    run();
+                  }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-secondary"
+                >
+                  <span className="w-11 shrink-0 font-mono text-[11px] font-semibold text-primary">
+                    {label}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{hint}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
       <div
         ref={scrollRef}
