@@ -260,11 +260,16 @@ function computeTreeLayout(people: Person[], editable: boolean) {
   const unitOf = (rootId: string): string[] => {
     const ids = subtreeIds(rootId);
     if (ids.length !== 1) return ids;
+    // ручной лист — сам себе юнит: пользователь поставил его отдельно,
+    // расширение до стопки склеивало обе стороны конфликта в один юнит
+    // (сдвиг двигал обе карточки разом и наложение уносилось в бесконечность)
+    if (manual.has(rootId)) return ids;
     const par = parentOf.get(rootId);
     const base = pos[rootId];
     if (!par || !base) return ids;
     const mates = (childrenMap.get(par) ?? []).filter(
       (k) =>
+        !manual.has(k.id) &&
         !(childrenMap.get(k.id)?.length) &&
         pos[k.id] &&
         Math.abs(pos[k.id].x - base.x) < NODE_W * 0.5,
@@ -370,23 +375,32 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         // A внутри той же ветви — сдвигом ветви наложение не разрулить
         // (в т.ч. конфликт внутри одной стопки листьев)
         if (unitB.includes(A.id)) continue;
-        // Ручная (перетащенная) ветвь неприкосновенна. Сдвиги — ТОЛЬКО
-        // вправо и только авто-ветвей: любые «встречные» коррекции
-        // (влево/прыжки через ветвь) раскачивали древо до разлёта.
-        // Наложение на ручную ветвь слева оставляем — так поставил юзер.
-        if (hasManual(unitB)) continue;
         const dx = qa.x + wa + H_GAP - qb.x;
         if (dx <= 0) continue;
-        // «Сдвиг стеной»: уезжает не только ветвь B, а ВСЕ карточки правее
-        // её левого края. Взаимное расположение правой части сохраняется,
-        // поэтому сдвиг не рождает новых наложений. Локальный сдвиг одной
-        // ветви вбрасывал её в соседей и лавиной разносил всё древо.
         const x0 = Math.min(...unitB.map((id) => pos[id]?.x ?? Infinity));
-        if (qa.x >= x0) continue; // стену не открыть, не сдвинув сам A
-        for (const p of placed) {
-          if (manual.has(p.id)) continue;
-          const q = pos[p.id];
-          if (q && q.x >= x0) q.x += dx;
+        // Сдвиги — ТОЛЬКО вправо: любые «встречные» коррекции (влево)
+        // раскачивали древо до разлёта.
+        if (hasManual(unitB) || (qa.x >= x0 && !manual.has(A.id))) {
+          // Стена не годится: ручные карточки она не двигает, а когда A
+          // стоит внутри пролёта юнита B — утащила бы A вместе со стеной
+          // и конфликт бы не разрешился. Юнит B прыгает вправо ЦЕЛИКОМ
+          // (включая ручные карточки — ветвь остаётся цельной). Сдвиг не
+          // запекается в offsets: исчезнет конфликт — ветвь вернётся на
+          // место, поставленное пользователем.
+          for (const id of unitB) {
+            const q = pos[id];
+            if (q) q.x += dx;
+          }
+        } else {
+          // «Сдвиг стеной»: уезжает не только ветвь B, а ВСЕ карточки правее
+          // её левого края. Взаимное расположение правой части сохраняется,
+          // поэтому сдвиг не рождает новых наложений. Локальный сдвиг одной
+          // ветви вбрасывал её в соседей и лавиной разносил всё древо.
+          for (const p of placed) {
+            if (manual.has(p.id)) continue;
+            const q = pos[p.id];
+            if (q && q.x >= x0) q.x += dx;
+          }
         }
         movedAny = true;
       }
@@ -430,11 +444,16 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         if (subtreeIds(rootCard).includes(seg.owner)) continue;
         const ownerIds = unitOf(rootOwner);
         const cardIds = unitOf(rootCard);
+        // юниты пересеклись (одна стопка листьев) — сдвиг двигает обе
+        // стороны разом и конфликт не разрешает, только уносит вправо
+        if (ownerIds.some((id) => cardIds.includes(id))) continue;
         // ручная ветвь не двигается (её ставил пользователь) — двигать
-        // можно только авто-сторону; обе ручные — оставляем как есть
+        // предпочитаем авто-сторону. Обе ручные — наложение всё равно
+        // разруливаем: уступает более правая; сдвиг не запекается в
+        // offsets, позиция пользователя не портится навсегда.
         const pinOwner = hasManual(ownerIds);
         const pinCard = hasManual(cardIds);
-        if (pinOwner && pinCard) continue;
+        const bothPinned = pinOwner && pinCard;
         const minX = (ids: string[]) =>
           Math.min(...ids.map((id) => pos[id]?.x ?? Infinity));
         const mxCard = minX(cardIds);
@@ -446,7 +465,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         // растаскивала древо (+656 вместо +200). Вторичные наложения после
         // прыжка разруливает card×card-стена — она структуру сохраняет.
         const tryCard = () => {
-          if (pinCard) return null;
+          if (pinCard && !bothPinned) return null;
           // юнит уводим сразу ВСЕМИ карточками, попавшими в полосу линии:
           // прыжки по одной карточке за проход накачивали сдвиг
           let mxConf = Infinity;
@@ -463,7 +482,7 @@ function computeTreeLayout(people: Person[], editable: boolean) {
           return { dx, ids: cardIds };
         };
         const tryOwner = () => {
-          if (pinOwner) return null;
+          if (pinOwner && !bothPinned) return null;
           const dx = qb.x + wb + 16 - seg.x;
           if (dx <= 0) return null;
           return { dx, ids: ownerIds };
@@ -472,8 +491,9 @@ function computeTreeLayout(people: Person[], editable: boolean) {
         const mv =
           mxCard >= mxOwner ? tryCard() ?? tryOwner() : tryOwner() ?? tryCard();
         if (!mv) continue;
+        // юнит двигаем целиком, включая ручные карточки: не-ручной юнит
+        // ручных не содержит, а при bothPinned рвать ветвь нельзя
         for (const id of mv.ids) {
-          if (manual.has(id)) continue;
           const q = pos[id];
           if (q) q.x += mv.dx;
         }
