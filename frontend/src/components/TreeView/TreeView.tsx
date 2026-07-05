@@ -1654,7 +1654,10 @@ export function TreeView({
       className={cn(
         fs
           ? "fixed inset-0 z-[55] flex flex-col bg-background p-4"
-          : "relative",
+          : // min-w-0 и max-w-full: в grid/flex-родителе блок не должен
+            // растягиваться под ширину холста древа — иначе страница
+            // скроллится вбок и древо «уезжает» за экран.
+            "relative min-w-0 max-w-full",
       )}
     >
       {/* Счётчик людей — как на Familio, сверху по центру */}

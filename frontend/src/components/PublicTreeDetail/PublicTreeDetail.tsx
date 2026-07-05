@@ -70,7 +70,7 @@ export function PublicTreeDetail({
   const selected = nodes.find((n) => String(n.id) === selectedId) ?? null;
 
   return (
-    <div className="grid gap-6">
+    <div className="grid min-w-0 gap-6">
       <Link
         href="/trees"
         className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
