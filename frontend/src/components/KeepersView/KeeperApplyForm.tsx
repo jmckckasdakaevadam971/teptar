@@ -188,7 +188,7 @@ export function KeeperApplyForm() {
   return (
     <div className="max-w-xl">
       {wasRejected ? (
-        <div className={`${CARD} mb-6 border-[#5b2c25]`}>
+        <div className={`${CARD} mb-6 border-danger-border`}>
           <p className="text-sm leading-relaxed text-muted-foreground">
             Ваша прошлая заявка была отклонена. Вы можете подать новую —
             расскажите о своих знаниях подробнее.

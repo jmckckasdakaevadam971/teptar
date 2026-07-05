@@ -49,15 +49,15 @@ export const FORM_ROW =
 
 // Бейдж пола
 const BADGE = "rounded-full px-2.5 py-0.5 text-xs font-medium";
-export const BADGE_M = `${BADGE} bg-[#16304d] text-[#9ec5ff]`;
-export const BADGE_F = `${BADGE} bg-[#3f1730] text-[#ff9ed4]`;
+export const BADGE_M = `${BADGE} bg-male-bg text-male`;
+export const BADGE_F = `${BADGE} bg-female-bg text-female`;
 
 // Бейдж статуса видимости
 const VIS_BADGE =
   "inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium";
 export const VIS_PENDING = `${VIS_BADGE} bg-primary/15 text-primary`;
-export const VIS_PUBLIC = `${VIS_BADGE} bg-[#14321f] text-[#7ee0a6]`;
-export const VIS_REJECTED = `${VIS_BADGE} bg-[#341818] text-[#f0a0a0]`;
+export const VIS_PUBLIC = `${VIS_BADGE} bg-success-bg text-success`;
+export const VIS_REJECTED = `${VIS_BADGE} bg-danger-bg text-danger`;
 export const VIS_PRIVATE = `${VIS_BADGE} bg-secondary text-muted-foreground`;
 
 // Сегментированные вкладки
@@ -86,11 +86,11 @@ export function toggleBtn(active: boolean) {
 export const CHIP =
   "rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground";
 export const CHIP_EXTINCT =
-  "rounded-lg border border-[#5b2c25] bg-[#2a1714] px-3 py-2 text-sm text-[#e6c9c2]";
+  "rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-sm text-danger-fg";
 
 // Текст ошибки / успеха под формой
-export const ERR_TEXT = "mt-3 text-sm text-[#f0a0a0]";
-export const OK_TEXT = "mt-3 text-sm text-[#7ee0a6]";
+export const ERR_TEXT = "mt-3 text-sm text-danger";
+export const OK_TEXT = "mt-3 text-sm text-success";
 
 // Таблица данных (admin / модерация)
 export const TABLE_WRAP = "overflow-x-auto rounded-2xl border border-border";
@@ -99,7 +99,7 @@ export const TABLE =
 
 // Текстовая кнопка-ссылка (опасное действие)
 export const LINK_DANGER =
-  "cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-[#f0a0a0] transition hover:underline disabled:opacity-50";
+  "cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-danger transition hover:underline disabled:opacity-50";
 
 // Выпадающий список роли
 export const ROLE_SELECT =

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth, clearAuth, canModerate } from "@/lib/auth";
+import { ThemeToggle } from "@/components/ThemeToggle/ThemeToggle";
 
 const BASE_LINKS = [
   { label: "Главная", href: "/" },
@@ -38,6 +39,9 @@ export function SiteHeader() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
+  // Шапка прозрачна и лежит прямо на фото hero — тексту нужна тень, кнопкам подложка
+  const overPhoto = !scrolled && pathname === "/";
+
   const accountHref = ready && user ? "/profile" : "/login";
   const accountLabel = ready && user ? "Профиль" : "Войти";
 
@@ -53,7 +57,10 @@ export function SiteHeader() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-8">
         <Link
           href="/"
-          className="font-serif text-3xl font-bold tracking-tight text-primary md:text-4xl"
+          className={cn(
+            "font-serif text-3xl font-bold tracking-tight md:text-4xl",
+            overPhoto ? "hero-text-gold" : "text-foreground dark:text-primary",
+          )}
         >
           Vorhda
         </Link>
@@ -64,8 +71,13 @@ export function SiteHeader() {
               key={link.label}
               href={link.href}
               className={cn(
-                "text-sm font-medium transition-colors hover:text-foreground",
-                isActive(link.href) ? "text-primary" : "text-muted-foreground",
+                "text-sm font-medium transition-colors",
+                overPhoto
+                  ? cn("hero-nav font-semibold", isActive(link.href) && "hero-nav-active")
+                  : cn(
+                      "hover:text-foreground",
+                      isActive(link.href) ? "text-primary" : "text-muted-foreground",
+                    ),
               )}
             >
               {link.label}
@@ -74,13 +86,18 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-4 md:flex">
+          <ThemeToggle
+            className={cn(
+              overPhoto && "border-primary/50 bg-background/80 shadow-md backdrop-blur",
+            )}
+          />
           <Link
             href={accountHref}
             className={cn(
-              "rounded-xl border px-6 py-2.5 text-base font-medium transition-colors",
+              "rounded-xl border bg-background/80 px-6 py-2.5 text-base font-semibold shadow-md backdrop-blur transition-colors",
               isActive("/profile")
                 ? "border-primary text-primary"
-                : "border-border text-foreground hover:border-primary hover:text-primary",
+                : "border-primary/50 text-foreground hover:border-primary hover:text-primary",
             )}
           >
             {accountLabel}
@@ -89,22 +106,38 @@ export function SiteHeader() {
             <button
               type="button"
               onClick={clearAuth}
-              className="text-base font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className={cn(
+                "text-base font-medium transition-colors",
+                overPhoto
+                  ? "hero-nav"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
               Выйти
             </button>
           ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground md:hidden"
-          aria-label="Меню"
-          aria-expanded={open}
-        >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle
+            className={cn(
+              "h-10 w-10 rounded-lg",
+              overPhoto && "border-primary/50 bg-background/80 shadow-md backdrop-blur",
+            )}
+          />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground",
+              overPhoto && "border-primary/50 bg-background/80 shadow-md backdrop-blur",
+            )}
+            aria-label="Меню"
+            aria-expanded={open}
+          >
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}

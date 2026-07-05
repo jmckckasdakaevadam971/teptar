@@ -8,7 +8,7 @@ export function AboutSection() {
         aria-hidden="true"
         style={{
           background:
-            'radial-gradient(60% 70% at 50% 0%, rgba(201,162,39,0.10) 0%, transparent 70%)',
+            'radial-gradient(60% 70% at 50% 0%, rgb(var(--primary) / 0.10) 0%, transparent 70%)',
         }}
       />
       <div className="mx-auto max-w-3xl px-5 text-center md:px-8">

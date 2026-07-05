@@ -131,7 +131,7 @@ function AdminPageInner() {
       {isSuperAdmin && (
         <>
           {error && (
-            <div className="rounded border border-[#5b2c25] bg-[#2a1714] p-[18px] text-[#e08a7a]">
+            <div className="rounded border border-danger-border bg-danger-bg p-[18px] text-danger">
               {error}
             </div>
           )}
@@ -364,7 +364,7 @@ function PublishedTreesCard({ onChanged }: { onChanged?: () => void }) {
       </p>
 
       {error && (
-        <div className="mb-3 rounded border border-[#5b2c25] bg-[#2a1714] p-3 text-sm text-[#e08a7a]">
+        <div className="mb-3 rounded border border-danger-border bg-danger-bg p-3 text-sm text-danger">
           {error}
         </div>
       )}

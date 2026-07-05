@@ -864,7 +864,7 @@ export function MyTreeClient() {
 
       {/* Баннер: древо отклонено модератором — показываем причину. */}
       {rejectInfo && !submitted ? (
-        <div className="mb-5 rounded-2xl border border-[#c62828]/40 bg-[#c62828]/[0.07] p-4">
+        <div className="mb-5 rounded-2xl border border-danger-strong/40 bg-danger-strong/[0.07] p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="m-0 font-semibold text-foreground">
@@ -1032,8 +1032,8 @@ export function MyTreeClient() {
                 {/* Подтверждение удаления — открывается пунктом «Удалить» в бургер-меню карточки. */}
                 {confirmDelete ? (
                   <div className="mt-6 border-t border-border pt-6">
-                    <div className="rounded-xl border border-[#5b2c25] bg-[#2a1714] p-4">
-                      <p className="text-sm text-[#e6c9c2]">
+                    <div className="rounded-xl border border-danger-border bg-danger-bg p-4">
+                      <p className="text-sm text-danger-fg">
                         Удалить «{displayName(selected)}»? Его дети перейдут к
                         родителю
                         выше. Действие нельзя отменить.
@@ -1042,7 +1042,7 @@ export function MyTreeClient() {
                         <button
                           type="button"
                           onClick={() => deletePerson(selected.id)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7a2f26] px-4 py-2.5 text-sm font-semibold text-[#ffd9d2] transition-colors hover:bg-[#8f372d]"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-danger-btn px-4 py-2.5 text-sm font-semibold text-danger-btn-fg transition-colors hover:bg-danger-btn-hover"
                         >
                           <Trash2 className="h-4 w-4" />
                           Удалить
@@ -1087,14 +1087,14 @@ export function MyTreeClient() {
 
                 {wifeDialog.mode === "info" ? (
                   <>
-                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8a5560] font-serif text-xl font-bold text-[#f6e8ea]">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-blush-strong font-serif text-xl font-bold text-blush-strong-fg">
                       {wifeName.charAt(0)}
                     </span>
                     <h2 className="mt-4 font-serif text-2xl font-bold text-foreground">
                       {wifeName}
                     </h2>
                     <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Heart className="h-4 w-4 text-[#d8a7b1]" />
+                      <Heart className="h-4 w-4 text-blush" />
                       {isFemale(wifeHolder)
                         ? `Муж — ${wifeHolder.name}`
                         : getSpouses(wifeHolder).length > 1
@@ -1122,7 +1122,7 @@ export function MyTreeClient() {
                         onClick={() =>
                           setWifeDialog({ ...wifeDialog, mode: "delete" })
                         }
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#5b2c25] bg-transparent px-4 py-2.5 text-sm font-semibold text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-danger-border bg-transparent px-4 py-2.5 text-sm font-semibold text-danger transition-colors hover:bg-danger-bg"
                       >
                         <Trash2 className="h-4 w-4" />
                         Удалить
@@ -1191,8 +1191,8 @@ export function MyTreeClient() {
                     <h2 className="pr-10 font-serif text-2xl font-bold text-foreground">
                       Удалить с древа?
                     </h2>
-                    <div className="mt-4 rounded-xl border border-[#5b2c25] bg-[#2a1714] p-4">
-                      <p className="text-sm text-[#e6c9c2]">
+                    <div className="mt-4 rounded-xl border border-danger-border bg-danger-bg p-4">
+                      <p className="text-sm text-danger-fg">
                         Удалить «{wifeName}» с карточки «{wifeHolder.name}»?
                         Действие нельзя отменить.
                       </p>
@@ -1201,7 +1201,7 @@ export function MyTreeClient() {
                       <button
                         type="button"
                         onClick={removeWife}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7a2f26] px-4 py-2.5 text-sm font-semibold text-[#ffd9d2] transition-colors hover:bg-[#8f372d]"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-danger-btn px-4 py-2.5 text-sm font-semibold text-danger-btn-fg transition-colors hover:bg-danger-btn-hover"
                       >
                         <Trash2 className="h-4 w-4" />
                         Удалить

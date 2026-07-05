@@ -29,7 +29,7 @@ export function PageShell({
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{
             background:
-              'radial-gradient(60% 80% at 80% -10%, rgba(201,162,39,0.18), transparent 60%)',
+              'radial-gradient(60% 80% at 80% -10%, rgb(var(--primary) / 0.18), transparent 60%)',
           }}
           aria-hidden="true"
         />

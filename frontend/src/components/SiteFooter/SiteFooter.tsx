@@ -20,7 +20,7 @@ export function SiteFooter() {
         aria-hidden="true"
         style={{
           background:
-            "linear-gradient(90deg, transparent 0%, rgba(201,162,39,0.6) 50%, transparent 100%)",
+            "linear-gradient(90deg, transparent 0%, rgb(var(--primary) / 0.6) 50%, transparent 100%)",
         }}
       />
       <div className="mx-auto max-w-6xl px-5 py-16 md:px-8">

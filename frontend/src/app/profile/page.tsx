@@ -156,7 +156,7 @@ export default function ProfilePage() {
   if (error || !profile) {
     return (
       <PageShell eyebrow="Профиль" title="Профиль">
-        <p className="py-6 text-center text-[#f08a7a]">
+        <p className="py-6 text-center text-danger">
           {error ?? 'Профиль недоступен.'}
         </p>
         <div className="text-center">
@@ -216,7 +216,7 @@ export default function ProfilePage() {
                 clearAuth()
                 window.location.href = '/'
               }}
-              className="mt-5 text-xs text-[#e08a7a] transition-colors hover:underline"
+              className="mt-5 text-xs text-danger transition-colors hover:underline"
             >
               Выйти из аккаунта
             </button>
@@ -295,7 +295,7 @@ export default function ProfilePage() {
                   />
                 </div>
                 {profileErr ? (
-                  <p className="text-sm text-[#f08a7a]">{profileErr}</p>
+                  <p className="text-sm text-danger">{profileErr}</p>
                 ) : null}
                 <div className="flex gap-3">
                   <button
@@ -379,7 +379,7 @@ export default function ProfilePage() {
                   />
                 </div>
                 {pwErr ? (
-                  <p className="text-sm text-[#f08a7a]">{pwErr}</p>
+                  <p className="text-sm text-danger">{pwErr}</p>
                 ) : null}
                 <div>
                   <button

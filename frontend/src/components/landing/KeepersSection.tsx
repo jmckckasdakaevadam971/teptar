@@ -12,7 +12,7 @@ export function KeepersSection() {
           aria-hidden="true"
           style={{
             background:
-              "radial-gradient(70% 90% at 50% 0%, rgba(201,162,39,0.14) 0%, transparent 70%)",
+              "radial-gradient(70% 90% at 50% 0%, rgb(var(--primary) / 0.14) 0%, transparent 70%)",
           }}
         />
 

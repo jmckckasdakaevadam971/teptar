@@ -8,6 +8,7 @@ import type { Config } from 'tailwindcss';
  * сцена HeroScene).
  */
 const config: Config = {
+  darkMode: ['class'],
   content: ['./src/**/*.{ts,tsx}'],
   corePlugins: {
     container: false, // используем свой .container из globals.css
@@ -44,28 +45,59 @@ const config: Config = {
           foreground: 'rgb(var(--accent-foreground) / <alpha-value>)',
         },
         border: 'rgb(var(--border) / <alpha-value>)',
+        'border-strong': 'rgb(var(--border-strong) / <alpha-value>)',
         input: 'rgb(var(--input) / <alpha-value>)',
         ring: 'rgb(var(--ring) / <alpha-value>)',
 
-        // Старые токены — для ещё не переписанных страниц.
-        stone: {
-          DEFAULT: '#0c0a07',
-          900: '#0c0a07',
-          800: '#15110d',
-          700: '#1f1812',
-          600: '#2a2118',
+        // Статусные токены (меняются вместе с темой)
+        success: {
+          DEFAULT: 'rgb(var(--success) / <alpha-value>)',
+          bg: 'rgb(var(--success-bg) / <alpha-value>)',
+          border: 'rgb(var(--success-border) / <alpha-value>)',
         },
+        danger: {
+          DEFAULT: 'rgb(var(--danger) / <alpha-value>)',
+          fg: 'rgb(var(--danger-fg) / <alpha-value>)',
+          bg: 'rgb(var(--danger-bg) / <alpha-value>)',
+          border: 'rgb(var(--danger-border) / <alpha-value>)',
+          strong: 'rgb(var(--danger-strong) / <alpha-value>)',
+          'strong-fg': 'rgb(var(--danger-strong-fg) / <alpha-value>)',
+          btn: 'rgb(var(--danger-btn) / <alpha-value>)',
+          'btn-hover': 'rgb(var(--danger-btn-hover) / <alpha-value>)',
+          'btn-fg': 'rgb(var(--danger-btn-fg) / <alpha-value>)',
+        },
+        warning: {
+          DEFAULT: 'rgb(var(--warning) / <alpha-value>)',
+          bg: 'rgb(var(--warning-bg) / <alpha-value>)',
+          border: 'rgb(var(--warning-border) / <alpha-value>)',
+        },
+        male: {
+          DEFAULT: 'rgb(var(--male) / <alpha-value>)',
+          bg: 'rgb(var(--male-bg) / <alpha-value>)',
+        },
+        female: {
+          DEFAULT: 'rgb(var(--female) / <alpha-value>)',
+          bg: 'rgb(var(--female-bg) / <alpha-value>)',
+        },
+        blush: {
+          DEFAULT: 'rgb(var(--blush) / <alpha-value>)',
+          card: 'rgb(var(--blush-card) / <alpha-value>)',
+          strong: 'rgb(var(--blush-strong) / <alpha-value>)',
+          'strong-fg': 'rgb(var(--blush-strong-fg) / <alpha-value>)',
+        },
+
+        // Старые токены — алиасы на переменные темы (используются в ModerationPanel и др.)
+        stone: 'rgb(var(--background) / <alpha-value>)',
         gold: {
-          DEFAULT: '#c9a227',
-          light: '#eccd63',
-          bright: '#f7e6a8',
-          soft: '#6f5a16',
+          DEFAULT: 'rgb(var(--primary) / <alpha-value>)',
+          light: 'rgb(var(--accent) / <alpha-value>)',
+          soft: 'rgb(var(--gold-soft) / <alpha-value>)',
         },
-        cream: '#f3ecdd',
-        sand: '#b0a489',
+        cream: 'rgb(var(--foreground) / <alpha-value>)',
+        sand: 'rgb(var(--muted-foreground) / <alpha-value>)',
         line: {
-          DEFAULT: '#322a1e',
-          strong: '#463b2a',
+          DEFAULT: 'rgb(var(--border) / <alpha-value>)',
+          strong: 'rgb(var(--border-strong) / <alpha-value>)',
         },
       },
       fontFamily: {
@@ -83,13 +115,13 @@ const config: Config = {
         '3xl': '1.5rem',
       },
       boxShadow: {
-        gold: '0 6px 18px rgba(201, 162, 39, 0.22)',
-        'gold-lg': '0 10px 26px rgba(201, 162, 39, 0.32)',
+        gold: '0 6px 18px rgb(var(--primary) / 0.22)',
+        'gold-lg': '0 10px 26px rgb(var(--primary) / 0.32)',
         soft: '0 10px 30px rgba(0, 0, 0, 0.3)',
         'soft-lg': '0 18px 44px rgba(0, 0, 0, 0.5)',
       },
       ringColor: {
-        gold: 'rgba(201, 162, 39, 0.45)',
+        gold: 'rgb(var(--primary) / 0.45)',
       },
       maxWidth: {
         container: '1080px',

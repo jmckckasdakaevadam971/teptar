@@ -2427,7 +2427,7 @@ export function TreeView({
                                   setMenuId(null);
                                   onDelete(person.id);
                                 }}
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-danger transition-colors hover:bg-danger-bg"
                               >
                                 <Trash2 className="h-4 w-4" />
                                 Удалить
@@ -2514,7 +2514,7 @@ export function TreeView({
                         height: NODE_H,
                         zIndex: menuId === wifeKey ? 40 : undefined,
                       }}
-                      className="rounded-2xl border border-[#8a5560]/60 bg-[#221619] p-4 text-left"
+                      className="rounded-2xl border border-blush-strong/60 bg-blush-card p-4 text-left"
                       title={w.name}
                     >
                       {/* Бургер-меню карточки жены — та же механика, что у карточек людей */}
@@ -2567,7 +2567,7 @@ export function TreeView({
                                     setMenuId(null);
                                     onWifeDelete(person.id, i);
                                   }}
-                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-[#f0a0a0] transition-colors hover:bg-[#2a1714]"
+                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-danger transition-colors hover:bg-danger-bg"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                   Удалить
@@ -2580,7 +2580,7 @@ export function TreeView({
 
                       <p
                         className={cn(
-                          "text-[10px] font-medium uppercase tracking-wider text-[#d8a7b1]",
+                          "text-[10px] font-medium uppercase tracking-wider text-blush",
                           onWifeInfo && "pr-6",
                         )}
                       >

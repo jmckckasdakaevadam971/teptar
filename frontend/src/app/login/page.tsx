@@ -306,7 +306,7 @@ function LoginPageInner() {
               />
             </div>
 
-            {error && <p className="m-0 text-[#f0a0a0]">{error}</p>}
+            {error && <p className="m-0 text-danger">{error}</p>}
 
             <button type="submit" className={BTN_PRIMARY} disabled={busy}>
               {busy ? "…" : "Подтвердить"}
@@ -401,7 +401,7 @@ function LoginPageInner() {
                 </p>
               )}
               {siteKey && captchaState === "error" && (
-                <p className="m-0 text-sm text-[#f0a0a0]">
+                <p className="m-0 text-sm text-danger">
                   Не удалось загрузить проверку. Обновите страницу
                   (Ctrl+Shift+R).
                 </p>
@@ -414,7 +414,7 @@ function LoginPageInner() {
                     type="checkbox"
                     checked={agreed}
                     onChange={(e) => setAgreed(e.target.checked)}
-                    className="mt-1 h-4 w-4 shrink-0 accent-[#c9a227]"
+                    className="mt-1 h-4 w-4 shrink-0 accent-primary"
                   />
                   <span>
                     Принимаю{" "}
@@ -439,7 +439,7 @@ function LoginPageInner() {
                 </label>
               )}
 
-              {error && <p className="m-0 text-[#f0a0a0]">{error}</p>}
+              {error && <p className="m-0 text-danger">{error}</p>}
 
               <button
                 type="submit"

@@ -24,7 +24,7 @@ export function PageHeader({
         aria-hidden
         style={{
           background:
-            'radial-gradient(60% 80% at 50% 0%, rgba(201,162,39,0.12) 0%, transparent 70%)',
+            'radial-gradient(60% 80% at 50% 0%, rgb(var(--primary) / 0.12) 0%, transparent 70%)',
         }}
       />
       <p className="font-mono text-xs uppercase tracking-[0.25em] text-primary">{eyebrow}</p>

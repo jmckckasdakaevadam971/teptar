@@ -22,21 +22,14 @@ export function HeroSection() {
         className="absolute inset-0 -z-10 h-full w-full object-cover"
         style={{ objectPosition: "center 26%" }}
       />
-      {/* Sunset gradient + dark wash for readability */}
+      {/* Плёнка в цвет фона поверх фото — для читаемости текста в обеих темах
+          (переменная --hero-wash: тёмная в .dark, кремовая в светлой) */}
       <div
         className="absolute inset-0 -z-10"
         aria-hidden="true"
         style={{
           background:
-            "linear-gradient(180deg, rgba(12,10,7,0.55) 0%, rgba(12,10,7,0.7) 45%, rgba(12,10,7,0.95) 100%)",
-        }}
-      />
-      <div
-        className="absolute inset-x-0 top-0 -z-10 h-2/3"
-        aria-hidden="true"
-        style={{
-          background:
-            "radial-gradient(80% 60% at 50% 18%, rgba(236,205,99,0.18) 0%, rgba(201,162,39,0.06) 40%, transparent 72%)",
+            "linear-gradient(180deg, rgb(var(--hero-wash) / var(--hero-film-top)) 0%, rgb(var(--hero-wash) / var(--hero-film-mid)) 40%, rgb(var(--hero-wash) / var(--hero-film-mid)) 62%, rgb(var(--hero-wash) / var(--hero-film-top)) 86%, rgb(var(--hero-wash) / 1) 100%)",
         }}
       />
 
@@ -47,7 +40,7 @@ export function HeroSection() {
           <div className="flex justify-center">
             <Link
               href="/keepers"
-              className="group inline-flex items-center gap-2 rounded-full border border-primary/50 bg-background/40 px-4 py-1.5 text-xs font-medium text-primary backdrop-blur transition-colors hover:border-primary hover:bg-primary/10 md:text-sm"
+              className="group inline-flex items-center gap-2 rounded-full border border-primary/60 bg-background/80 px-4 py-1.5 text-xs font-semibold text-primary shadow-md backdrop-blur transition-colors hover:border-primary hover:bg-background md:text-sm"
             >
               <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />
               Ищем хранителей тейпов
@@ -62,21 +55,21 @@ export function HeroSection() {
         </Reveal>
 
         <Reveal delay={60}>
-          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.32em] text-primary md:text-sm">
+          <p className="hero-text-gold mt-6 text-xs font-bold uppercase tracking-[0.32em] md:text-sm">
             Ворх Да · Семь Отцов
           </p>
         </Reveal>
 
         <Reveal delay={120}>
-          <h1 className="mt-6 font-serif text-4xl font-bold leading-[1.08] text-balance text-foreground sm:text-5xl md:text-6xl lg:text-7xl">
+          <h1 className="hero-text mt-6 font-serif text-4xl font-bold leading-[1.08] text-balance sm:text-5xl md:text-6xl lg:text-7xl">
             Родовая память
             <br />
-            <span className="text-primary">чеченских тейпов</span>
+            <span className="hero-text-gold">чеченских тейпов</span>
           </h1>
         </Reveal>
 
         <Reveal delay={200}>
-          <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground md:text-lg">
+          <p className="hero-subtext mx-auto mt-6 max-w-2xl text-base font-medium leading-relaxed md:text-lg">
             Постройте родовое древо своей семьи, найдите общих предков и
             сохраните историю рода. Справочник тейпов, гаров и сёл чеченского
             народа — в одном месте.
@@ -88,13 +81,13 @@ export function HeroSection() {
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <a
               href="/reference"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground transition-all hover:-translate-y-0.5 hover:bg-accent sm:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground shadow-gold-lg transition-all hover:-translate-y-0.5 hover:bg-accent sm:w-auto"
             >
               Открыть справочник
             </a>
             <Link
               href="/keepers/apply"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/50 bg-background/30 px-6 py-3 text-base font-semibold text-foreground backdrop-blur transition-all hover:-translate-y-0.5 hover:border-primary hover:text-primary sm:w-auto"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary/60 bg-background/85 px-6 py-3 text-base font-semibold text-foreground shadow-lg backdrop-blur transition-all hover:-translate-y-0.5 hover:border-primary hover:bg-background hover:text-primary sm:w-auto"
             >
               <ShieldCheck className="h-5 w-5" strokeWidth={1.5} />
               Стать хранителем

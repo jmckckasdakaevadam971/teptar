@@ -87,7 +87,7 @@ export function DirectoryView() {
       {loading ? (
         <p className="py-12 text-center text-muted-foreground">Загрузка…</p>
       ) : error ? (
-        <p className="py-12 text-center text-[#f08a7a]">{error}</p>
+        <p className="py-12 text-center text-danger">{error}</p>
       ) : (
         <>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">

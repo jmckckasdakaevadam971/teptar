@@ -192,7 +192,7 @@ export function TeipMapModal({
                   </div>
                 </div>
                 {error ? (
-                  <p className="text-sm text-[#f08a7a]">{error}</p>
+                  <p className="text-sm text-danger">{error}</p>
                 ) : null}
                 <div className="flex justify-end gap-2">
                   <button

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Metadata, Viewport } from 'next';
 import { Manrope, Playfair_Display } from 'next/font/google';
+import { ThemeProvider } from '@/components/ThemeProvider';
 import './globals.css';
 
 // Современная двухшрифтовая система (обе с кириллицей).
@@ -91,14 +92,24 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: 'dark',
-  themeColor: '#0c0a07',
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#0c0a07' },
+    { media: '(prefers-color-scheme: light)', color: '#f9f5eb' },
+  ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" className={`${sans.variable} ${display.variable} bg-background`}>
-      <body className="font-sans antialiased">{children}</body>
+    // suppressHydrationWarning: next-themes выставляет класс темы на <html>
+    // до гидрации, что иначе вызывало бы предупреждение React.
+    <html
+      lang="ru"
+      suppressHydrationWarning
+      className={`${sans.variable} ${display.variable} bg-background`}
+    >
+      <body className="font-sans antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

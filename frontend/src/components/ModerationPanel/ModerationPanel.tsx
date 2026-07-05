@@ -240,8 +240,8 @@ function StatusChip({ status }: { status: "pending" | DoneStatus }) {
     <span
       className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
         good
-          ? "border-[#2f6b3f] bg-[#122416] text-[#7ed99b]"
-          : "border-[#6b2f2f] bg-[#241212] text-[#e08a7a]"
+          ? "border-success-border bg-success-bg text-success"
+          : "border-danger-border bg-danger-bg text-danger"
       }`}
     >
       {DONE_LABEL[status]}
@@ -264,7 +264,7 @@ function Chevron({ open }: { open: boolean }) {
 /** Оранжевый чип «Возможный дубликат» на карточке древа в очереди. */
 function DuplicateChip() {
   return (
-    <span className="rounded-full border border-[#8a5a1f] bg-[#2a1f0f] px-2 py-0.5 text-[11px] font-semibold text-[#f0b95e]">
+    <span className="rounded-full border border-warning-border bg-warning-bg px-2 py-0.5 text-[11px] font-semibold text-warning">
       ⚠ Возможный дубликат
     </span>
   );
@@ -513,7 +513,7 @@ function RejectTreeForm({
   const reason = [preset, custom.trim()].filter(Boolean).join("\n");
 
   return (
-    <div className="mt-3 w-full rounded-xl border border-[#b91c1c]/40 bg-[#b91c1c]/[0.06] p-3">
+    <div className="mt-3 w-full rounded-xl border border-danger-strong/40 bg-danger-strong/[0.06] p-3">
       <p className="m-0 mb-2 text-[13px] font-semibold text-cream">
         Почему отклоняете? Выберите причину или напишите свою — автор увидит её
         в письме.
@@ -550,7 +550,7 @@ function RejectTreeForm({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#b91c1c] px-3 py-1.5 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-danger-strong px-3 py-1.5 text-[13px] font-semibold text-danger-strong-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={busy}
           onClick={() => onReject(reason || undefined)}
         >
@@ -596,8 +596,8 @@ function TreeBody({
         годы по чек-листу и примите решение.
       </p>
       {tree.duplicate && (
-        <div className="mb-3 rounded-xl border border-[#8a5a1f] bg-[#f0b95e]/[0.07] px-3 py-2.5">
-          <p className="m-0 text-[13px] font-semibold text-[#f0b95e]">
+        <div className="mb-3 rounded-xl border border-warning-border bg-warning/[0.07] px-3 py-2.5">
+          <p className="m-0 text-[13px] font-semibold text-warning">
             ⚠ Похоже на дубликат древа «{tree.duplicate.owner_name}»
           </p>
           <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-sand">
@@ -1523,7 +1523,7 @@ export function ModerationPanel() {
             </button>
           </div>
 
-          {error && <p className="mb-2 text-sm text-[#b91c1c]">{error}</p>}
+          {error && <p className="mb-2 text-sm text-danger-strong">{error}</p>}
 
           {loading ? (
             <p className="text-sand">Загрузка…</p>
@@ -1653,7 +1653,7 @@ export function ModerationPanel() {
             )}
 
             <div className="flex-1 overflow-auto p-4">
-              {error && <p className="mb-3 text-sm text-[#b91c1c]">{error}</p>}
+              {error && <p className="mb-3 text-sm text-danger-strong">{error}</p>}
               {viewer.loading ? (
                 <p className="text-sand">Загрузка древа…</p>
               ) : viewer.persons && viewer.persons.length > 0 ? (

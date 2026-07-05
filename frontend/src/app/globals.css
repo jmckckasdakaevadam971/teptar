@@ -2,10 +2,75 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Дизайн-токены двух тем. Все цвета — RGB-каналы (поддержка прозрачности
+ * в Tailwind: bg-card/60). :root — светлая тема, .dark — тёмная
+ * (исходная «Башни на закате»). Переключение — next-themes (класс на <html>).
+ */
 :root {
+  color-scheme: light;
+
+  /* Палитра «Башни на рассвете» — светлая версия */
+  --background: 249 245 235; /* #f9f5eb */
+  --foreground: 44 37 23; /* #2c2517 */
+  --card: 255 253 247; /* #fffdf7 */
+  --card-foreground: 44 37 23;
+  --popover: 255 253 247;
+  --popover-foreground: 44 37 23;
+  --primary: 154 116 21; /* #9a7415 — тёмное золото */
+  --primary-foreground: 255 253 247;
+  --secondary: 242 234 213; /* #f2ead5 */
+  --secondary-foreground: 44 37 23;
+  --muted: 242 234 213;
+  --muted-foreground: 122 108 80; /* #7a6c50 */
+  --accent: 125 94 15; /* #7d5e0f — затемнение золота при hover */
+  --accent-foreground: 255 253 247;
+  --border: 226 215 186; /* #e2d7ba */
+  --input: 226 215 186;
+  --ring: 154 116 21;
+  --radius: 0.875rem;
+
+  /* Дополнительные структурные токены */
+  --border-strong: 209 195 158; /* #d1c39e */
+  --gold-soft: 216 198 142; /* #d8c68e — золотистые рамки */
+  --hero-wash: 249 245 235; /* подложка hero-фото = цвету фона (бесшовный стык) */
+  --hero-film-top: 0; /* светлая тема: фото без плёнки, только растворение снизу */
+  --hero-film-mid: 0;
+  --hero-title: 255 252 243; /* светлый шрифт hero поверх фото */
+  --hero-title-gold: 240 213 118; /* светлое золото акцента в заголовке */
+  --hero-subtitle: 252 248 238; /* подзаголовок hero */
+  --hero-shadow: 0 1px 3px rgb(31 26 15 / 0.65), 0 3px 14px rgb(31 26 15 / 0.4); /* тонкая тень букв */
+
+  /* Статусные токены */
+  --success: 21 128 61; /* #15803d */
+  --success-bg: 226 244 232;
+  --success-border: 167 216 182;
+  --danger: 179 38 30; /* #b3261e — текст ошибок */
+  --danger-fg: 122 46 40; /* текст внутри красных плашек */
+  --danger-bg: 251 234 231;
+  --danger-border: 233 199 192;
+  --danger-strong: 185 28 28; /* #b91c1c — кнопки удаления */
+  --danger-strong-fg: 255 255 255;
+  --danger-btn: 179 38 30;
+  --danger-btn-hover: 154 31 24;
+  --danger-btn-fg: 255 255 255;
+  --warning: 138 90 31; /* #8a5a1f */
+  --warning-bg: 247 236 215;
+  --warning-border: 226 205 157;
+  --male: 29 78 216; /* бейдж «муж.» */
+  --male-bg: 219 231 251;
+  --female: 176 42 110; /* бейдж «жен.» */
+  --female-bg: 251 227 240;
+  --blush: 160 82 101; /* акценты жён/брака */
+  --blush-card: 253 241 244;
+  --blush-strong: 138 85 96;
+  --blush-strong-fg: 246 232 234;
+}
+
+.dark {
   color-scheme: dark;
 
-  /* Палитра «Башни на закате» — RGB-каналы для Tailwind (поддержка прозрачности) */
+  /* Палитра «Башни на закате» — исходная тёмная */
   --background: 12 10 7; /* #0c0a07 */
   --foreground: 243 236 221; /* #f3ecdd */
   --card: 20 17 11; /* #14110b */
@@ -23,19 +88,69 @@
   --border: 50 42 30; /* #322a1e */
   --input: 50 42 30;
   --ring: 201 162 39;
-  --radius: 0.875rem;
 
-  /* Прямые hex — для инлайн-градиентов и ещё не переписанных страниц */
-  --stone: #0c0a07;
-  --gold: #c9a227;
-  --gold-2: #eccd63;
-  --gold-soft: #6f5a16;
-  --cream: #f3ecdd;
-  --line: #322a1e;
+  --border-strong: 70 59 42; /* #463b2a */
+  --gold-soft: 111 90 22; /* #6f5a16 */
+  --hero-wash: 12 10 7;
+  --hero-film-top: 0; /* фото без плёнки — как в светлой теме */
+  --hero-film-mid: 0;
+  --hero-title: 255 252 243; /* светлый шрифт hero поверх фото */
+  --hero-title-gold: 240 213 118; /* светлое золото акцента в заголовке */
+  --hero-subtitle: 252 248 238; /* подзаголовок hero */
+  --hero-shadow: 0 1px 3px rgb(31 26 15 / 0.65), 0 3px 14px rgb(31 26 15 / 0.4); /* тонкая тень букв */
+
+  --success: 126 224 166; /* #7ee0a6 */
+  --success-bg: 20 50 31; /* #14321f */
+  --success-border: 47 107 63; /* #2f6b3f */
+  --danger: 240 160 160; /* #f0a0a0 */
+  --danger-fg: 230 201 194; /* #e6c9c2 */
+  --danger-bg: 42 23 20; /* #2a1714 */
+  --danger-border: 91 44 37; /* #5b2c25 */
+  --danger-strong: 185 28 28;
+  --danger-strong-fg: 255 255 255;
+  --danger-btn: 122 47 38; /* #7a2f26 */
+  --danger-btn-hover: 143 55 45; /* #8f372d */
+  --danger-btn-fg: 255 217 210; /* #ffd9d2 */
+  --warning: 240 185 94; /* #f0b95e */
+  --warning-bg: 42 31 15; /* #2a1f0f */
+  --warning-border: 138 90 31; /* #8a5a1f */
+  --male: 158 197 255; /* #9ec5ff */
+  --male-bg: 22 48 77; /* #16304d */
+  --female: 255 158 212; /* #ff9ed4 */
+  --female-bg: 63 23 48; /* #3f1730 */
+  --blush: 216 167 177; /* #d8a7b1 */
+  --blush-card: 34 22 25; /* #221619 */
+  --blush-strong: 138 85 96; /* #8a5560 */
+  --blush-strong-fg: 246 232 234; /* #f6e8ea */
 }
 
 html {
   scroll-behavior: smooth;
+}
+
+/* Текст hero поверх фото: светлый шрифт с тонкой тёмной тенью в светлой
+   теме (в тёмной тень отключена — читаемость даёт плёнка) */
+.hero-text {
+  color: rgb(var(--hero-title));
+  text-shadow: var(--hero-shadow);
+}
+.hero-text-gold {
+  color: rgb(var(--hero-title-gold));
+  text-shadow: var(--hero-shadow);
+}
+.hero-subtext {
+  color: rgb(var(--hero-subtitle));
+  text-shadow: var(--hero-shadow);
+}
+
+/* Ссылки шапки, пока она прозрачна и лежит поверх фото */
+.hero-nav {
+  color: rgb(var(--hero-subtitle));
+  text-shadow: var(--hero-shadow);
+}
+.hero-nav:hover,
+.hero-nav-active {
+  color: rgb(var(--hero-title-gold));
 }
 
 /* Скрыть скроллбары, сохранив прокрутку (панорамирование древа) */
