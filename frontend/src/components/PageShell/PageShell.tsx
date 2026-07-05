@@ -2,18 +2,22 @@ import type { ReactNode } from 'react'
 import { SiteHeader } from '@/components/SiteHeader/SiteHeader'
 import { SiteFooter } from '@/components/SiteFooter/SiteFooter'
 import { Reveal } from '@/components/Reveal/Reveal'
+import { cn } from '@/lib/utils'
 
 export function PageShell({
   eyebrow,
   title,
   description,
   actions,
+  wide = false,
   children,
 }: {
   eyebrow: string
   title: string
   description?: string
   actions?: ReactNode
+  /** Широкая раскладка контента — для страниц с редактором/просмотром древа. */
+  wide?: boolean
   children: ReactNode
 }) {
   return (
@@ -49,7 +53,12 @@ export function PageShell({
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 py-12 md:px-8 md:py-16">
+      <main
+        className={cn(
+          'mx-auto px-5 py-12 md:px-8 md:py-16',
+          wide ? 'max-w-[1800px]' : 'max-w-6xl',
+        )}
+      >
         <Reveal>{children}</Reveal>
       </main>
 
