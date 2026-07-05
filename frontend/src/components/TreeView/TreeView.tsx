@@ -11,6 +11,7 @@ import {
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import {
+  ChevronDown,
   ChevronUp,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -737,6 +738,8 @@ export function TreeView({
   } | null>(null);
   // что тянуть за карточку: всю ветвь или только её саму
   const [dragMode, setDragMode] = useState<"branch" | "single">("branch");
+  // панель настроек древа: свёрнута по умолчанию, чтобы не закрывать карточки
+  const [panelOpen, setPanelOpen] = useState(false);
   // свёрнутые ветви: id узлов, чьи потомки скрыты
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -1608,67 +1611,90 @@ export function TreeView({
         </span>
       </div>
 
-      {/* Панель древа: перетаскивание + сворачивание ветвей (правый верхний угол) */}
-      <div className="absolute right-2 top-2 z-30 w-64 rounded-2xl border border-border bg-card/95 p-3 text-xs shadow-xl backdrop-blur">
-        {movable ? (
-          <div className="mb-3">
-            <div
-              className="mb-1.5 flex items-center gap-1.5 text-muted-foreground"
-              title="Что двигается при перетаскивании карточки (Shift — наоборот). Ветвь можно тянуть и за её линию"
+      {/* Панель древа: перетаскивание + сворачивание ветвей (правый верхний угол).
+          Сворачивается в компактную кнопку, чтобы не закрывать древо. */}
+      {panelOpen ? (
+        <div className="absolute right-2 top-2 z-30 w-64 rounded-2xl border border-border bg-card/95 p-3 text-xs shadow-xl backdrop-blur">
+          <button
+            type="button"
+            onClick={() => setPanelOpen(false)}
+            aria-label="Свернуть панель"
+            title="Свернуть панель"
+            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </button>
+          {movable ? (
+            <div className="mb-3">
+              <div
+                className="mb-1.5 flex items-center gap-1.5 pr-7 text-muted-foreground"
+                title="Что двигается при перетаскивании карточки (Shift — наоборот). Ветвь можно тянуть и за её линию"
+              >
+                <Move className="h-3.5 w-3.5" />
+                <span>Тянуть:</span>
+              </div>
+              <div className="flex items-center gap-1 rounded-full border border-border p-1">
+                <button
+                  type="button"
+                  onClick={() => setDragMode("branch")}
+                  className={cn(
+                    "flex-1 rounded-full px-2.5 py-1 transition-colors",
+                    dragMode === "branch"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Ветвь
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDragMode("single")}
+                  className={cn(
+                    "flex-1 rounded-full px-2.5 py-1 transition-colors",
+                    dragMode === "single"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Карточку
+                </button>
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+                За линию — ветвь или стопка
+              </p>
+            </div>
+          ) : null}
+          <div className={cn("flex flex-col gap-1", !movable && "pr-7")}>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
-              <Move className="h-3.5 w-3.5" />
-              <span>Тянуть:</span>
-            </div>
-            <div className="flex items-center gap-1 rounded-full border border-border p-1">
-              <button
-                type="button"
-                onClick={() => setDragMode("branch")}
-                className={cn(
-                  "flex-1 rounded-full px-2.5 py-1 transition-colors",
-                  dragMode === "branch"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                Ветвь
-              </button>
-              <button
-                type="button"
-                onClick={() => setDragMode("single")}
-                className={cn(
-                  "flex-1 rounded-full px-2.5 py-1 transition-colors",
-                  dragMode === "single"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                Карточку
-              </button>
-            </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground/70">
-              За линию — ветвь или стопка
-            </p>
+              <ChevronsDownUp className="h-4 w-4" />
+              Свернуть все ветви
+            </button>
+            <button
+              type="button"
+              onClick={expandAll}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <ChevronsUpDown className="h-4 w-4" />
+              Развернуть все ветви
+            </button>
           </div>
-        ) : null}
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={collapseAll}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <ChevronsDownUp className="h-4 w-4" />
-            Свернуть все ветви
-          </button>
-          <button
-            type="button"
-            onClick={expandAll}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <ChevronsUpDown className="h-4 w-4" />
-            Развернуть все ветви
-          </button>
         </div>
-      </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          aria-label="Развернуть панель"
+          className="absolute right-2 top-2 z-30 flex items-center gap-1.5 rounded-full border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+        >
+          <Move className="h-3.5 w-3.5" />
+          Панель
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       {/* Панель управления — колонка справа (как на Familio) */}
       <div className="absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1.5">
