@@ -18,6 +18,7 @@ import {
   Download,
   Info,
   Maximize2,
+  Menu,
   Minimize2,
   Minus,
   MoreVertical,
@@ -737,6 +738,8 @@ export function TreeView({
   } | null>(null);
   // что тянуть за карточку: всю ветвь или только её саму
   const [dragMode, setDragMode] = useState<"branch" | "single">("branch");
+  // выпадающее меню настроек древа (правый верхний угол)
+  const [treeMenuOpen, setTreeMenuOpen] = useState(false);
   // свёрнутые ветви: id узлов, чьи потомки скрыты
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -1608,43 +1611,98 @@ export function TreeView({
         </span>
       </div>
 
-      {/* Переключатель перетаскивания: что двигать за карточку (Shift — наоборот) */}
-      {movable ? (
-        <div
-          className="absolute left-2 top-2 z-20 flex items-center gap-1 rounded-full border border-border bg-card/80 p-1 text-xs backdrop-blur"
-          title="Что двигается при перетаскивании карточки (Shift — наоборот). Ветвь можно тянуть и за её линию"
+      {/* Меню древа: перетаскивание + сворачивание ветвей (правый верхний угол) */}
+      <div className="absolute right-2 top-2 z-30">
+        <button
+          type="button"
+          onClick={() => setTreeMenuOpen((v) => !v)}
+          aria-label="Меню древа"
+          aria-expanded={treeMenuOpen}
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 backdrop-blur transition-colors",
+            treeMenuOpen
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
         >
-          <Move className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" />
-          <span className="pr-0.5 text-muted-foreground">Тянуть:</span>
-          <button
-            type="button"
-            onClick={() => setDragMode("branch")}
-            className={cn(
-              "rounded-full px-2.5 py-1 transition-colors",
-              dragMode === "branch"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Ветвь
-          </button>
-          <button
-            type="button"
-            onClick={() => setDragMode("single")}
-            className={cn(
-              "rounded-full px-2.5 py-1 transition-colors",
-              dragMode === "single"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Карточку
-          </button>
-          <span className="hidden pl-1 pr-1.5 text-muted-foreground/70 sm:inline">
-            · за линию — ветвь или стопка
-          </span>
-        </div>
-      ) : null}
+          <Menu className="h-4 w-4" />
+        </button>
+        {treeMenuOpen ? (
+          <>
+            {/* клик мимо меню закрывает его */}
+            <div
+              className="fixed inset-0 z-[-1]"
+              onClick={() => setTreeMenuOpen(false)}
+            />
+            <div className="absolute right-0 top-11 w-64 rounded-2xl border border-border bg-card/95 p-3 text-xs shadow-xl backdrop-blur">
+              {movable ? (
+                <div className="mb-3">
+                  <div
+                    className="mb-1.5 flex items-center gap-1.5 text-muted-foreground"
+                    title="Что двигается при перетаскивании карточки (Shift — наоборот). Ветвь можно тянуть и за её линию"
+                  >
+                    <Move className="h-3.5 w-3.5" />
+                    <span>Тянуть:</span>
+                  </div>
+                  <div className="flex items-center gap-1 rounded-full border border-border p-1">
+                    <button
+                      type="button"
+                      onClick={() => setDragMode("branch")}
+                      className={cn(
+                        "flex-1 rounded-full px-2.5 py-1 transition-colors",
+                        dragMode === "branch"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Ветвь
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDragMode("single")}
+                      className={cn(
+                        "flex-1 rounded-full px-2.5 py-1 transition-colors",
+                        dragMode === "single"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Карточку
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+                    За линию — ветвь или стопка
+                  </p>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    collapseAll();
+                    setTreeMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <ChevronsDownUp className="h-4 w-4" />
+                  Свернуть все ветви
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    expandAll();
+                    setTreeMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <ChevronsUpDown className="h-4 w-4" />
+                  Развернуть все ветви
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
 
       {/* Панель управления — колонка справа (как на Familio) */}
       <div className="absolute right-2 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1.5">
@@ -1679,24 +1737,6 @@ export function TreeView({
           className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
         >
           <Crosshair className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={collapseAll}
-          aria-label="Свернуть все ветви"
-          title="Свернуть все ветви"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
-        >
-          <ChevronsDownUp className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={expandAll}
-          aria-label="Развернуть все ветви"
-          title="Развернуть все ветви"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/80 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
-        >
-          <ChevronsUpDown className="h-4 w-4" />
         </button>
         <button
           type="button"
