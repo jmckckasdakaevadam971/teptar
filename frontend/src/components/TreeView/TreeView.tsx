@@ -1377,7 +1377,16 @@ export function TreeView({
       if (e.key === "Escape") setIsFullscreen(false);
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // блокируем прокрутку страницы, чтобы её скроллбар не налезал на кнопки
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
+    };
   }, [isFullscreen]);
 
   const fs = isFullscreen && mounted;
@@ -1755,7 +1764,7 @@ export function TreeView({
       <div
         ref={scrollRef}
         className={cn(
-          "overflow-auto pb-4",
+          "no-scrollbar overflow-auto pb-4",
           fs && "flex-1",
           grabbing ? "cursor-grabbing" : "cursor-grab",
         )}
