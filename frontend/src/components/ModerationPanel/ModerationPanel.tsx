@@ -548,6 +548,65 @@ function completeness(a: MergeAnchor): number {
   );
 }
 
+/** Одна сторона объединения — сигналы для автоматического выбора основы. */
+interface BaseSide {
+  id: number;
+  /** Имя отца над общим предком в этом древе (есть ли поколения выше). */
+  father: string | null;
+  /** Размер древа владельца. */
+  size: number;
+  owner: string | null;
+  /** Заполненность записи (годы, примечание) — как последний критерий. */
+  score: number;
+}
+
+/**
+ * Система сама выбирает запись-основу для общего предка:
+ * 1) если поколения выше общего предка есть только в одном древе — основа
+ *    оттуда: второе древо лишь продолжает его ветвь;
+ * 2) иначе — большее древо (предок там в более полном контексте);
+ * 3) иначе — запись, заполненная полнее (годы, примечание).
+ */
+function autoBaseChoice(
+  a: BaseSide,
+  b: BaseSide,
+): { id: number; owner: string | null; reason: string } {
+  if (Boolean(a.father) !== Boolean(b.father)) {
+    const w = a.father ? a : b;
+    return {
+      id: w.id,
+      owner: w.owner,
+      reason:
+        "в нём есть поколения выше общего предка, а второе древо лишь продолжает эту ветвь",
+    };
+  }
+  if (a.size !== b.size) {
+    const w = a.size > b.size ? a : b;
+    const l = w.id === a.id ? b : a;
+    return {
+      id: w.id,
+      owner: w.owner,
+      reason: `оно больше (${w.size} чел. против ${l.size}), меньшее присоединяется как ветвь`,
+    };
+  }
+  if (a.score !== b.score) {
+    const w = a.score > b.score ? a : b;
+    return { id: w.id, owner: w.owner, reason: "его запись заполнена полнее" };
+  }
+  return { id: a.id, owner: a.owner, reason: "записи равнозначны" };
+}
+
+/** Сигналы стороны из карточки сверки (ручное объединение). */
+function sideOf(p: MergeCheckPerson): BaseSide {
+  return {
+    id: p.id,
+    father: p.father_name,
+    size: p.tree_size,
+    owner: p.owner_name,
+    score: (p.birth_year != null ? 1 : 0) + (p.death_year != null ? 1 : 0),
+  };
+}
+
 /** Быстрые варианты причин отклонения — автор увидит текст в письме. */
 const REJECT_PRESETS = [
   "Не хватает данных: у многих людей не указаны годы жизни или тейп.",
@@ -900,14 +959,27 @@ function SuggestionBody({
   ) => void;
   onDismiss: () => void;
 }) {
-  const defaultBase =
-    completeness(s.anchor_b) > completeness(s.anchor_a)
-      ? s.anchor_b.id
-      : s.anchor_a.id;
+  // Система сама выбирает запись-основу — модератору выбор не даётся.
+  const auto = autoBaseChoice(
+    {
+      id: s.anchor_a.id,
+      father: s.anchor_a.father_name,
+      size: s.owner_a.tree_size,
+      owner: s.owner_a.owner_name,
+      score: completeness(s.anchor_a),
+    },
+    {
+      id: s.anchor_b.id,
+      father: s.anchor_b.father_name,
+      size: s.owner_b.tree_size,
+      owner: s.owner_b.owner_name,
+      score: completeness(s.anchor_b),
+    },
+  );
+  const keepId = auto.id;
 
   const [open, setOpen] = useState(false);
   const [confirmDismiss, setConfirmDismiss] = useState(false);
-  const [keepId, setKeepId] = useState(defaultBase);
 
   // Автоматическая сверка данных двух записей (чек-лист ok/warn/block).
   const [check, setCheck] = useState<MergeCheck | null>(null);
@@ -955,16 +1027,6 @@ function SuggestionBody({
     (base.death_year ?? other.death_year ?? "").toString(),
   );
   const [note, setNote] = useState<string>(base.note ?? other.note ?? "");
-
-  function chooseBase(id: number) {
-    setKeepId(id);
-    const b = id === s.anchor_a.id ? s.anchor_a : s.anchor_b;
-    const o = id === s.anchor_a.id ? s.anchor_b : s.anchor_a;
-    setName(b.full_name);
-    setBirth((b.birth_year ?? o.birth_year ?? "").toString());
-    setDeath((b.death_year ?? o.death_year ?? "").toString());
-    setNote(b.note ?? o.note ?? "");
-  }
 
   function submit() {
     onMerge(keepId, {
@@ -1025,31 +1087,12 @@ function SuggestionBody({
           <div className="mb-2 text-[13px] font-semibold text-cream">
             Данные общего предка после объединения
           </div>
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-sand">
-            За основу:
-            <button
-              type="button"
-              className={
-                keepId === s.anchor_a.id
-                  ? `${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`
-                  : `${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`
-              }
-              onClick={() => chooseBase(s.anchor_a.id)}
-            >
-              {s.owner_a.owner_name ?? "Древо A"}
-            </button>
-            <button
-              type="button"
-              className={
-                keepId === s.anchor_b.id
-                  ? `${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`
-                  : `${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`
-              }
-              onClick={() => chooseBase(s.anchor_b.id)}
-            >
-              {s.owner_b.owner_name ?? "Древо B"}
-            </button>
-          </div>
+          <p className="m-0 mb-2 rounded-md border border-line bg-background/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-sand">
+            За основу система взяла древо{" "}
+            <b className="text-cream">{auto.owner ?? "—"}</b>: {auto.reason}.
+            Недостающие поля дополнены из второй записи — при необходимости
+            поправьте их ниже.
+          </p>
 
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="text-[12px] text-sand">
@@ -1290,8 +1333,7 @@ function ManualMergePanel({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Поля общего предка.
-  const [keepId, setKeepId] = useState<number | null>(null);
+  // Поля общего предка (основу выбирает система — autoBaseChoice).
   const [name, setName] = useState("");
   const [birth, setBirth] = useState("");
   const [death, setDeath] = useState("");
@@ -1311,10 +1353,10 @@ function ManualMergePanel({
       .then((c) => {
         if (!alive) return;
         setCheck(c);
-        // По умолчанию за основу — более заполненная запись.
-        const base = c.a.tree_size >= c.b.tree_size ? c.a : c.b;
+        // Основу выбирает система: поколения выше > размер древа > полнота.
+        const chosen = autoBaseChoice(sideOf(c.a), sideOf(c.b));
+        const base = chosen.id === c.a.id ? c.a : c.b;
         const other = base.id === c.a.id ? c.b : c.a;
-        setKeepId(base.id);
         setName(base.full_name);
         setBirth((base.birth_year ?? other.birth_year ?? "").toString());
         setDeath((base.death_year ?? other.death_year ?? "").toString());
@@ -1332,15 +1374,7 @@ function ManualMergePanel({
     };
   }, [selA, selB]);
 
-  function chooseBase(id: number) {
-    if (!check) return;
-    const base = id === check.a.id ? check.a : check.b;
-    const other = id === check.a.id ? check.b : check.a;
-    setKeepId(id);
-    setName(base.full_name);
-    setBirth((base.birth_year ?? other.birth_year ?? "").toString());
-    setDeath((base.death_year ?? other.death_year ?? "").toString());
-  }
+  const auto = check ? autoBaseChoice(sideOf(check.a), sideOf(check.b)) : null;
 
   async function submit() {
     if (!selA || !selB) return;
@@ -1350,7 +1384,7 @@ function ManualMergePanel({
       const res = await api.moderation.manualMerge({
         anchor_a_id: selA.id,
         anchor_b_id: selB.id,
-        keep_id: keepId ?? undefined,
+        keep_id: auto?.id,
         full_name: name.trim() || undefined,
         birth_year: birth.trim() ? Number(birth) : null,
         death_year: death.trim() ? Number(death) : null,
@@ -1410,31 +1444,14 @@ function ManualMergePanel({
           <div className="mb-2 text-[13px] font-semibold text-cream">
             Данные общего предка после объединения
           </div>
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-sand">
-            За основу:
-            <button
-              type="button"
-              className={
-                keepId === check.a.id
-                  ? `${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`
-                  : `${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`
-              }
-              onClick={() => chooseBase(check.a.id)}
-            >
-              {check.a.owner_name ?? "Древо A"}
-            </button>
-            <button
-              type="button"
-              className={
-                keepId === check.b.id
-                  ? `${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`
-                  : `${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`
-              }
-              onClick={() => chooseBase(check.b.id)}
-            >
-              {check.b.owner_name ?? "Древо B"}
-            </button>
-          </div>
+          {auto && (
+            <p className="m-0 mb-2 rounded-md border border-line bg-background/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-sand">
+              За основу система взяла древо{" "}
+              <b className="text-cream">{auto.owner ?? "—"}</b>: {auto.reason}.
+              Недостающие поля дополнены из второй записи — при необходимости
+              поправьте их ниже.
+            </p>
+          )}
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="text-[12px] text-sand">
               Имя
