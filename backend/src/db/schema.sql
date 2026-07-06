@@ -311,6 +311,34 @@ CREATE UNIQUE INDEX uq_tree_merge_pair  ON tree_merges(anchor_a_id, anchor_b_id)
 CREATE INDEX        idx_tree_merge_stat ON tree_merges(status);
 
 -- ============================================================================
+--  ЗАПРОСЫ ДОСТУПА К ВЕТВИ РОДОСЛОВНОЙ
+-- ============================================================================
+--  Зарегистрированный пользователь выбирает человека в опубликованном древе
+--  и просит у владельца доступ к его ветви (человек + все потомки).
+--  При одобрении он может редактировать ТОЛЬКО эту ветвь; правки уходят
+--  в pending_diff и применяются после одобрения модератором.
+
+CREATE TABLE branch_access_requests (
+    id             BIGSERIAL PRIMARY KEY,
+    requester_id   BIGINT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    owner_id       BIGINT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    branch_root_id BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+    comment        TEXT,
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending','approved','rejected')),
+    resolved_at    TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_bar_owner     ON branch_access_requests(owner_id, status);
+CREATE INDEX idx_bar_requester ON branch_access_requests(requester_id, status);
+-- Не больше одного активного (pending/approved) запроса на пару
+-- «пользователь + начало ветви».
+CREATE UNIQUE INDEX uq_bar_active
+    ON branch_access_requests(requester_id, branch_root_id)
+    WHERE status IN ('pending','approved');
+
+-- ============================================================================
 --  ИНДЕКСЫ
 -- ============================================================================
 

@@ -2408,11 +2408,13 @@ export function TreeView({
                         : "transition-all duration-200",
                       isSelected
                         ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
-                        : person.mergeAdded
-                          ? "border-success-border shadow-[0_0_0_1px_rgb(var(--success-border))] hover:border-success"
-                          : isAncestor
-                            ? "border-primary/50"
-                            : "border-border hover:border-primary/40",
+                        : person.highlighted
+                          ? "border-amber-500 shadow-[0_0_0_2px_rgb(245_158_11_/_0.55)]"
+                          : person.mergeAdded
+                            ? "border-success-border shadow-[0_0_0_1px_rgb(var(--success-border))] hover:border-success"
+                            : isAncestor
+                              ? "border-primary/50"
+                              : "border-border hover:border-primary/40",
                     )}
                   >
                     {/* Метки объединённого древа: добавленная ветвь и точка соединения */}

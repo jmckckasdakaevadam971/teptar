@@ -30,6 +30,10 @@ import type {
   Keeper,
   KeeperApplication,
   KeeperStatus,
+  BranchAccessRequest,
+  BranchAccessIncoming,
+  BranchAccessMine,
+  BranchGrantInfo,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
@@ -487,6 +491,33 @@ export const api = {
       request<{ rejected: boolean }>(`/keepers/applications/${id}/reject`, {
         method: "POST",
       }),
+  },
+
+  /** Запросы доступа к ветви родословной. */
+  branchAccess: {
+    /** Отправить запрос владельцу выбранной ветви. */
+    request: (input: { branch_root_id: number; comment?: string | null }) =>
+      request<BranchAccessRequest>("/branch-access", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    /** Входящие запросы (я — владелец). */
+    incoming: () => request<BranchAccessIncoming[]>("/branch-access/incoming"),
+    /** Мои исходящие запросы. */
+    mine: () => request<BranchAccessMine[]>("/branch-access/mine"),
+    /** Предоставить доступ. */
+    approve: (id: number) =>
+      request<{ approved: boolean }>(`/branch-access/${id}/approve`, {
+        method: "POST",
+      }),
+    /** Отклонить запрос. */
+    reject: (id: number) =>
+      request<{ rejected: boolean }>(`/branch-access/${id}/reject`, {
+        method: "POST",
+      }),
+    /** Мои права на древе rootId (владелец / одобренные ветви). */
+    myGrant: (rootId: number) =>
+      request<BranchGrantInfo>(`/branch-access/my-grant/${rootId}`),
   },
 
   /** Ссылка для скачивания экспорта (открывается напрямую). */

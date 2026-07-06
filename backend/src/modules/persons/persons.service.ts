@@ -10,6 +10,7 @@ import type {
   BulkPersonInput,
 } from "./persons.types.js";
 import type { MergedTreeStats } from "../ancestors/ancestors.service.js";
+import { hasBranchGrant } from "../branch-access/branch-access.service.js";
 
 /** Кто запрашивает данные — для контроля видимости. */
 export interface Viewer {
@@ -358,7 +359,9 @@ export async function createPerson(
   });
 }
 
-/** Обновить персону. Менять можно только своё древо (или админам). */
+/** Обновить персону. Менять можно только своё древо (или админам).
+ *  Исключение: пользователь с одобренным доступом к ветви (branch_access_requests)
+ *  может править персон своей ветви — правки уйдут в pending_diff ниже. */
 export async function updatePerson(
   id: number,
   input: UpdatePersonInput,
@@ -366,7 +369,11 @@ export async function updatePerson(
 ): Promise<PersonRow> {
   const existing = await getPerson(id); // проверка существования
   if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
-    throw new ApiError(403, "Можно редактировать только своё древо");
+    const granted =
+      viewer.userId != null && (await hasBranchGrant(viewer.userId, id));
+    if (!granted) {
+      throw new ApiError(403, "Можно редактировать только своё древо");
+    }
   }
   // Нельзя привязать свою персону к родителю из чужого древа.
   await assertOwnsParents(

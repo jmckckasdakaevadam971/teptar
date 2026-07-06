@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageShell } from "@/components/PageShell/PageShell";
 import { MyTreeClient } from "@/components/MyTreeClient/MyTreeClient";
+import { BranchAccessInbox } from "@/components/BranchAccess/BranchAccessInbox";
 
 export const metadata: Metadata = {
   title: "Моё древо — Vorhda",
@@ -17,6 +18,9 @@ export default function MyTreePage() {
       description="Создайте родовое древо и начните с самого старшего предка, о котором у вас есть сведения."
       wide
     >
+      <div className="mb-6">
+        <BranchAccessInbox />
+      </div>
       <MyTreeClient />
     </PageShell>
   );

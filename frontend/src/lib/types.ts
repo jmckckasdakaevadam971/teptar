@@ -429,6 +429,39 @@ export interface KeeperStatus {
   application: KeeperApplication | null;
 }
 
+/** Запрос доступа к ветви родословной. */
+export interface BranchAccessRequest {
+  id: number;
+  requester_id: number;
+  owner_id: number;
+  branch_root_id: number;
+  comment: string | null;
+  status: "pending" | "approved" | "rejected";
+  resolved_at: string | null;
+  created_at: string;
+}
+
+/** Входящий запрос владельцу (с данными для карточки). */
+export interface BranchAccessIncoming extends BranchAccessRequest {
+  requester_name: string;
+  person_name: string;
+  branch_count: number;
+  tree_root_id: number;
+}
+
+/** Мой исходящий запрос (со статусом). */
+export interface BranchAccessMine extends BranchAccessRequest {
+  person_name: string;
+  tree_root_id: number;
+}
+
+/** Мои права на конкретном древе: владелец / одобренные ветви. */
+export interface BranchGrantInfo {
+  is_owner: boolean;
+  grants: { id: number; branch_root_id: number; branch_root_name: string }[];
+  editable_ids: number[];
+}
+
 /** Сводные счётчики для обзора. */
 export interface AdminStats {
   users: number;

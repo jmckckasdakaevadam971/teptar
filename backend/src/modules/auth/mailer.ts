@@ -206,6 +206,124 @@ export async function sendKeeperRejectedEmail(
   });
 }
 
+/** Письмо владельцу древа: поступил запрос доступа к ветви. */
+export async function sendBranchRequestEmail(
+  email: string,
+  ownerName: string,
+  requesterName: string,
+  personName: string,
+  branchCount: number,
+  comment?: string | null,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «запрос доступа к ветви» для ${email}`);
+    return;
+  }
+
+  const trimmed = comment?.trim() || null;
+  const commentText = trimmed ? `Комментарий:\n${trimmed}\n\n` : "";
+  const commentHtml = trimmed
+    ? `<p style="background:#faf6ec;border-left:4px solid #c9a227;padding:12px 16px;` +
+      `border-radius:0 8px 8px 0;margin:16px 0"><strong>Комментарий:</strong><br/>` +
+      `${escapeHtml(trimmed)}</p>`
+    : "";
+
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
+    to: email,
+    subject: "Запрос доступа к ветви вашей родословной — Vorhda",
+    text:
+      `Здравствуйте, ${ownerName}!\n\n` +
+      `Пользователь ${requesterName} просит доступ к ветви вашей родословной, ` +
+      `начинающейся с «${personName}» (людей в ветви: ${branchCount}).\n\n` +
+      commentText +
+      `Рассмотреть запрос можно в личном кабинете: https://vorhda.ru/my\n` +
+      `Если вы предоставите доступ, пользователь сможет предлагать правки ` +
+      `только по этой ветви; изменения применяются после проверки модератором.`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${escapeHtml(ownerName)}</strong>!</p>` +
+        `<p>Пользователь <strong>${escapeHtml(requesterName)}</strong> просит доступ ` +
+        `к ветви вашей родословной, начинающейся с ` +
+        `<strong>«${escapeHtml(personName)}»</strong> (людей в ветви: ${branchCount}).</p>` +
+        commentHtml +
+        `<p>Если вы предоставите доступ, пользователь сможет предлагать правки только ` +
+        `по этой ветви; изменения применяются после проверки модератором.</p>` +
+        `<p style="margin:24px 0"><a href="https://vorhda.ru/my" ` +
+        `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +
+        `text-decoration:none;font-weight:bold">Рассмотреть запрос</a></p>`,
+    ),
+  });
+}
+
+/** Письмо запросившему: владелец предоставил доступ к ветви. */
+export async function sendBranchApprovedEmail(
+  email: string,
+  displayName: string,
+  personName: string,
+  treeRootId: number,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «доступ к ветви предоставлен» для ${email}`);
+    return;
+  }
+
+  const url = `https://vorhda.ru/trees/${treeRootId}`;
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
+    to: email,
+    subject: "Вам предоставлен доступ к ветви родословной — Vorhda",
+    text:
+      `Здравствуйте, ${displayName}!\n\n` +
+      `Владелец родословной предоставил вам доступ к ветви, начинающейся ` +
+      `с «${personName}».\n\n` +
+      `Откройте древо и нажмите «Редактировать ветвь»: ${url}\n\n` +
+      `Ваши правки будут применены после проверки модератором.`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${escapeHtml(displayName)}</strong>!</p>` +
+        `<p>Владелец родословной <strong style="color:#2e7d32">предоставил вам доступ</strong> ` +
+        `к ветви, начинающейся с <strong>«${escapeHtml(personName)}»</strong>.</p>` +
+        `<p>Откройте древо и нажмите «Редактировать ветвь». Ваши правки будут ` +
+        `применены после проверки модератором.</p>` +
+        `<p style="margin:24px 0"><a href="${url}" ` +
+        `style="background:#c9a227;color:#0c0a07;padding:12px 24px;border-radius:8px;` +
+        `text-decoration:none;font-weight:bold">Открыть древо</a></p>`,
+    ),
+  });
+}
+
+/** Письмо запросившему: владелец отклонил запрос доступа к ветви. */
+export async function sendBranchRejectedEmail(
+  email: string,
+  displayName: string,
+  personName: string,
+): Promise<void> {
+  if (!transporter) {
+    console.log(`[mailer] DEV: письмо «доступ к ветви отклонён» для ${email}`);
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.smtpFrom,
+    replyTo: env.smtpReplyTo,
+    to: email,
+    subject: "Запрос доступа к ветви отклонён — Vorhda",
+    text:
+      `Здравствуйте, ${displayName}!\n\n` +
+      `К сожалению, владелец родословной отклонил ваш запрос доступа к ветви, ` +
+      `начинающейся с «${personName}».\n\n` +
+      `Вы можете связаться с владельцем или отправить новый запрос позже.`,
+    html: wrapHtml(
+      `<p>Здравствуйте, <strong>${escapeHtml(displayName)}</strong>!</p>` +
+        `<p>К сожалению, владелец родословной <strong style="color:#c62828">отклонил</strong> ` +
+        `ваш запрос доступа к ветви, начинающейся с ` +
+        `<strong>«${escapeHtml(personName)}»</strong>.</p>` +
+        `<p style="color:#666">Вы можете связаться с владельцем или отправить новый запрос позже.</p>`,
+    ),
+  });
+}
+
 /** Отправить код подтверждения на почту. */
 export async function sendVerificationCode(
   email: string,

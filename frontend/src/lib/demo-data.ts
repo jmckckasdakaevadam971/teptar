@@ -38,6 +38,8 @@ export type Person = {
   mergeAuthor?: string;
   /** Точка соединения — общий человек, через которого слиты древа. */
   mergeAnchor?: boolean;
+  /** Подсветка ветви (выбор/редактирование ветви по запросу доступа). */
+  highlighted?: boolean;
 };
 
 /** Все жёны человека: новое поле spouseNames + устаревшее spouseName. */

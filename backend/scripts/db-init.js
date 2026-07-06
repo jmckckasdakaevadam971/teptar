@@ -130,6 +130,26 @@ async function run() {
          CREATE INDEX        IF NOT EXISTS idx_tree_merge_stat ON tree_merges(status);`,
       );
 
+      // Запросы доступа к ветви родословной (создаётся, если ещё нет).
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS branch_access_requests (
+           id             BIGSERIAL PRIMARY KEY,
+           requester_id   BIGINT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+           owner_id       BIGINT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+           branch_root_id BIGINT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+           comment        TEXT,
+           status         TEXT NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending','approved','rejected')),
+           resolved_at    TIMESTAMPTZ,
+           created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_bar_owner     ON branch_access_requests(owner_id, status);
+         CREATE INDEX IF NOT EXISTS idx_bar_requester ON branch_access_requests(requester_id, status);
+         CREATE UNIQUE INDEX IF NOT EXISTS uq_bar_active
+             ON branch_access_requests(requester_id, branch_root_id)
+             WHERE status IN ('pending','approved');`,
+      );
+
       // Черновики «Моего древа» — синхронизация редактора между устройствами.
       await client.query(
         `CREATE TABLE IF NOT EXISTS tree_drafts (
