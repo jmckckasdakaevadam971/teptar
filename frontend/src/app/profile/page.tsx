@@ -6,6 +6,8 @@ import {
   Phone,
   Calendar,
   ShieldCheck,
+  Users,
+  MapPin,
 } from 'lucide-react'
 import { PageShell } from '@/components/PageShell/PageShell'
 import { api } from '@/lib/api'
@@ -171,6 +173,8 @@ export default function ProfilePage() {
   const INFO = [
     { icon: Mail, label: 'Эл. почта', value: profile.email ?? '—' },
     { icon: Phone, label: 'Телефон', value: profile.phone ?? '—' },
+    { icon: Users, label: 'Тейп', value: profile.teip_name ?? '—' },
+    { icon: MapPin, label: 'Населённый пункт', value: profile.village_name ?? '—' },
     { icon: ShieldCheck, label: 'Роль', value: ROLE_LABELS[profile.role] },
     { icon: Calendar, label: 'С нами с', value: formatDate(profile.created_at) },
   ]

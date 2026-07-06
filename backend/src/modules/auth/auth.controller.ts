@@ -8,15 +8,29 @@ import * as service from "./auth.service.js";
 
 // Регистрация — ТОЛЬКО по e-mail. Телефон в регистрации запрещён:
 // поле phone намеренно отсутствует в схеме и отбрасывается при парсинге.
+// ФИО: просим «Фамилия Имя Отчество», требуем минимум два слова.
+const fullNameSchema = z
+  .string()
+  .min(2, "Укажите фамилию, имя и отчество")
+  .max(120, "Имя слишком длинное")
+  .refine((v) => v.trim().split(/\s+/).length >= 2, {
+    message: "Укажите полное ФИО (минимум фамилию и имя)",
+  });
+
 const registerSchema = z.object({
-  display_name: z
-    .string()
-    .min(2, "Имя не короче 2 символов")
-    .max(120, "Имя слишком длинное"),
+  display_name: fullNameSchema,
   email: z
     .string({ required_error: "Укажите e-mail — регистрация по телефону недоступна" })
     .email("Некорректный e-mail"),
   password: z.string().min(8, "Пароль не короче 8 символов"),
+  teip_id: z
+    .number({ required_error: "Выберите тейп" })
+    .int()
+    .positive("Выберите тейп"),
+  village_id: z
+    .number({ required_error: "Выберите населённый пункт" })
+    .int()
+    .positive("Выберите населённый пункт"),
   turnstile_token: z.string().optional(),
 });
 
@@ -40,6 +54,8 @@ export async function register(req: Request, res: Response): Promise<void> {
         display_name: input.display_name,
         email: input.email,
         password: input.password,
+        teip_id: input.teip_id,
+        village_id: input.village_id,
       });
       res.status(202).json(ok(result));
       return;
@@ -70,9 +86,14 @@ export async function verifyEmail(req: Request, res: Response): Promise<void> {
 }
 
 const resendSchema = z.object({
-  display_name: z.string().min(2).max(120),
+  display_name: fullNameSchema,
   email: z.string().email("Некорректный e-mail"),
   password: z.string().min(8),
+  teip_id: z.number({ required_error: "Выберите тейп" }).int().positive(),
+  village_id: z
+    .number({ required_error: "Выберите населённый пункт" })
+    .int()
+    .positive(),
 });
 
 /** Повторная отправка кода (те же данные регистрации). */

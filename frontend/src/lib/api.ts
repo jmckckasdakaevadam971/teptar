@@ -254,6 +254,8 @@ export const api = {
       display_name: string;
       email: string;
       password: string;
+      teip_id: number;
+      village_id: number;
       turnstile_token?: string;
     }) =>
       request<AuthResult | { pending: true; email: string }>("/auth/register", {
@@ -271,6 +273,8 @@ export const api = {
       display_name: string;
       email: string;
       password: string;
+      teip_id: number;
+      village_id: number;
     }) =>
       request<{ pending: true; email: string }>("/auth/resend-code", {
         method: "POST",

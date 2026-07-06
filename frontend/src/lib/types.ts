@@ -11,6 +11,9 @@ export interface User {
   phone: string | null;
   email: string | null;
   role: UserRole;
+  /** Тейп и село, указанные при регистрации (может отсутствовать у старых аккаунтов). */
+  teip_id?: number | null;
+  village_id?: number | null;
 }
 
 export interface AuthResult {
@@ -23,6 +26,8 @@ export interface UserProfile extends User {
   created_at: string;
   persons_count: number;
   root_person_id: number | null;
+  teip_name?: string | null;
+  village_name?: string | null;
 }
 
 export interface Person {
@@ -368,6 +373,9 @@ export interface CommonAncestor {
 /** Пользователь в админке (с датой регистрации). */
 export interface AdminUser extends User {
   created_at: string;
+  /** Тейп/село, указанные при регистрации. */
+  teip_name?: string | null;
+  village_name?: string | null;
   /** Закреплённые тейпы (для хранителей). */
   teips: { id: number; name: string }[];
 }

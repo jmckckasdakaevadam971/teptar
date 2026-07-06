@@ -89,6 +89,10 @@ CREATE TABLE users (
     password_hash TEXT,
     role          TEXT NOT NULL DEFAULT 'viewer'
                   CHECK (role IN ('viewer','editor','teip_admin','super_admin')),
+    -- Принадлежность пользователя: тейп и село указываются при регистрации,
+    -- чтобы пользователь сразу был прикреплён к модераторам своего тейпа.
+    teip_id       BIGINT REFERENCES teips(id)    ON DELETE SET NULL,
+    village_id    BIGINT REFERENCES villages(id) ON DELETE SET NULL,
     -- Явный корень личного древа (самый старший добавленный предок).
     -- FK на persons добавляется ALTER-ом ниже (persons создаётся позже).
     root_person_id BIGINT,
@@ -103,6 +107,8 @@ CREATE TABLE email_verifications (
     code          TEXT NOT NULL,               -- 6 цифр
     display_name  TEXT NOT NULL,
     password_hash TEXT NOT NULL,
+    teip_id       BIGINT REFERENCES teips(id)    ON DELETE SET NULL,
+    village_id    BIGINT REFERENCES villages(id) ON DELETE SET NULL,
     attempts      INT  NOT NULL DEFAULT 0,     -- неверные попытки ввода
     expires_at    TIMESTAMPTZ NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()

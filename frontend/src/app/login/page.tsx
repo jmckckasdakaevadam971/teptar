@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
 import { saveAuth } from "@/lib/auth";
+import type { Teip, Village } from "@/lib/types";
 import { PageHeader } from "@/components/PageHeader/PageHeader";
 import { AppFrame } from "@/components/AppFrame/AppFrame";
 import {
@@ -53,6 +54,33 @@ function LoginPageInner() {
   // Доп. поля регистрации
   const [displayName, setDisplayName] = useState("");
   const [agreed, setAgreed] = useState(false);
+
+  // Тейп и населённый пункт — обязательны при регистрации: пользователь
+  // сразу прикрепляется к модераторам своего тейпа.
+  const [teipId, setTeipId] = useState("");
+  const [villageId, setVillageId] = useState("");
+  const [teips, setTeips] = useState<Teip[] | null>(null);
+  const [villages, setVillages] = useState<Village[] | null>(null);
+  const [dictsError, setDictsError] = useState(false);
+
+  // Справочники грузим один раз при первом открытии вкладки «Регистрация».
+  useEffect(() => {
+    if (tab !== "register" || (teips && villages)) return;
+    let cancelled = false;
+    setDictsError(false);
+    Promise.all([api.teips.list(), api.villages.list()])
+      .then(([t, v]) => {
+        if (cancelled) return;
+        setTeips(t);
+        setVillages(v);
+      })
+      .catch(() => {
+        if (!cancelled) setDictsError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, teips, villages]);
 
   // Шаг подтверждения почты: после отправки формы ждём код из письма.
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
@@ -180,8 +208,16 @@ function LoginPageInner() {
         setError("Введите корректный e-mail — например, mail@example.com.");
         return;
       }
-      if (displayName.trim().length < 2) {
-        setError("Введите имя — минимум 2 символа.");
+      if (displayName.trim().split(/\s+/).length < 2) {
+        setError("Укажите полное ФИО — минимум фамилию и имя.");
+        return;
+      }
+      if (!teipId) {
+        setError("Выберите тейп.");
+        return;
+      }
+      if (!villageId) {
+        setError("Выберите населённый пункт.");
         return;
       }
       if (password.length < 8) {
@@ -218,6 +254,8 @@ function LoginPageInner() {
           display_name: displayName.trim(),
           password,
           email: login.trim(),
+          teip_id: Number(teipId),
+          village_id: Number(villageId),
           turnstile_token: token ?? undefined,
         });
         // Если включено подтверждение почты — сервер вернёт pending,
@@ -269,6 +307,8 @@ function LoginPageInner() {
         display_name: displayName.trim(),
         email: pendingEmail,
         password,
+        teip_id: Number(teipId),
+        village_id: Number(villageId),
       });
       setResendIn(60);
     } catch (e) {
@@ -354,15 +394,66 @@ function LoginPageInner() {
 
             <form className={FORM_GRID} onSubmit={submit}>
               {tab === "register" && (
-                <div className={FIELD}>
-                  <label className={LABEL}>Имя</label>
-                  <input
-                    className={INPUT}
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Как вас называть"
-                  />
-                </div>
+                <>
+                  <div className={FIELD}>
+                    <label className={LABEL}>Фамилия Имя Отчество</label>
+                    <input
+                      className={INPUT}
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Например: Магомадов Ахмед Салманович"
+                      autoComplete="name"
+                    />
+                  </div>
+
+                  <div className={FIELD}>
+                    <label className={LABEL}>Тейп</label>
+                    <select
+                      className={INPUT}
+                      value={teipId}
+                      onChange={(e) => setTeipId(e.target.value)}
+                    >
+                      <option value="">
+                        {teips ? "Выберите тейп…" : "Загрузка…"}
+                      </option>
+                      {(teips ?? []).map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.tukhum_name ? ` — ${t.tukhum_name}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="m-0 text-xs text-muted-foreground">
+                      Вы будете прикреплены к модераторам своего тейпа.
+                    </p>
+                  </div>
+
+                  <div className={FIELD}>
+                    <label className={LABEL}>Населённый пункт</label>
+                    <select
+                      className={INPUT}
+                      value={villageId}
+                      onChange={(e) => setVillageId(e.target.value)}
+                    >
+                      <option value="">
+                        {villages ? "Выберите населённый пункт…" : "Загрузка…"}
+                      </option>
+                      {(villages ?? []).map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
+                          {v.district ? ` (${v.district})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {dictsError && (
+                    <p className="m-0 text-sm text-danger">
+                      Не удалось загрузить справочники тейпов и сёл. Обновите
+                      страницу.
+                    </p>
+                  )}
+                </>
               )}
 
               <div className={FIELD}>

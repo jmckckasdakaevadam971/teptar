@@ -55,6 +55,8 @@ async function run() {
          ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_by BIGINT;
          ALTER TABLE persons ADD COLUMN IF NOT EXISTS pending_at TIMESTAMPTZ;
          ALTER TABLE users   ADD COLUMN IF NOT EXISTS root_person_id BIGINT;
+         ALTER TABLE users   ADD COLUMN IF NOT EXISTS teip_id BIGINT REFERENCES teips(id) ON DELETE SET NULL;
+         ALTER TABLE users   ADD COLUMN IF NOT EXISTS village_id BIGINT REFERENCES villages(id) ON DELETE SET NULL;
          ALTER TABLE teips   ADD COLUMN IF NOT EXISTS origin_place TEXT;
          ALTER TABLE teips   ADD COLUMN IF NOT EXISTS origin_lat DOUBLE PRECISION;
          ALTER TABLE teips   ADD COLUMN IF NOT EXISTS origin_lng DOUBLE PRECISION;
@@ -83,7 +85,9 @@ async function run() {
            expires_at    TIMESTAMPTZ NOT NULL,
            created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
          );
-         CREATE UNIQUE INDEX IF NOT EXISTS uq_email_verif_email ON email_verifications(email);`,
+         CREATE UNIQUE INDEX IF NOT EXISTS uq_email_verif_email ON email_verifications(email);
+         ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS teip_id BIGINT REFERENCES teips(id) ON DELETE SET NULL;
+         ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS village_id BIGINT REFERENCES villages(id) ON DELETE SET NULL;`,
       );
 
       // Очередь предложений объединения древ (создаётся, если ещё нет).

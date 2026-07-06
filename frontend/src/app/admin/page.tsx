@@ -175,6 +175,7 @@ function AdminPageInner() {
                       <th>Имя</th>
                       <th>Телефон</th>
                       <th>E-mail</th>
+                      <th>Тейп · Село</th>
                       <th>Роль</th>
                       <th>Тейпы</th>
                       <th>Регистрация</th>
@@ -192,6 +193,11 @@ function AdminPageInner() {
                           </td>
                           <td className="whitespace-nowrap">{u.phone ?? '—'}</td>
                           <td className="whitespace-nowrap">{u.email ?? '—'}</td>
+                          <td className="whitespace-nowrap">
+                            {u.teip_name || u.village_name
+                              ? [u.teip_name, u.village_name].filter(Boolean).join(' · ')
+                              : '—'}
+                          </td>
                           <td>
                             <select
                               className={ROLE_SELECT}

@@ -12,6 +12,10 @@ export interface AdminUserRow {
   email: string | null;
   role: UserRole;
   created_at: string;
+  /** Тейп/село, указанные пользователем при регистрации. */
+  teip_name: string | null;
+  village_name: string | null;
+  /** Тейпы, которыми пользователь назначен управлять (admin_assignments). */
   teips: { id: number; name: string }[];
 }
 
@@ -44,6 +48,8 @@ export async function getStats(): Promise<AdminStats> {
 export async function listUsers(): Promise<AdminUserRow[]> {
   return query<AdminUserRow>(
     `SELECT u.id, u.display_name, u.phone, u.email, u.role, u.created_at,
+            ut.name AS teip_name,
+            uv.name AS village_name,
             COALESCE(
               (SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY t.name)
                FROM (SELECT DISTINCT aa.teip_id FROM admin_assignments aa WHERE aa.user_id = u.id) x
@@ -51,6 +57,8 @@ export async function listUsers(): Promise<AdminUserRow[]> {
               '[]'::json
             ) AS teips
      FROM users u
+     LEFT JOIN teips ut    ON ut.id = u.teip_id
+     LEFT JOIN villages uv ON uv.id = u.village_id
      ORDER BY u.created_at DESC, u.id DESC`,
   );
 }

@@ -18,6 +18,8 @@ interface UserRow {
   email: string | null;
   password_hash: string | null;
   role: UserRole;
+  teip_id: number | null;
+  village_id: number | null;
 }
 
 /** Хеш пароля через scrypt (без внешних зависимостей). Формат: salt:hash. */
@@ -48,7 +50,27 @@ function publicUser(u: UserRow) {
     phone: u.phone,
     email: u.email,
     role: u.role,
+    teip_id: u.teip_id ?? null,
+    village_id: u.village_id ?? null,
   };
+}
+
+/**
+ * Проверка, что выбранные тейп и село существуют в справочниках.
+ * Возвращаем понятную 400-ошибку вместо 500 от нарушения FK.
+ */
+async function validateTeipAndVillage(
+  teipId: number,
+  villageId: number,
+): Promise<void> {
+  const [teip, village] = await Promise.all([
+    query<{ id: number }>("SELECT id FROM teips WHERE id = $1", [teipId]),
+    query<{ id: number }>("SELECT id FROM villages WHERE id = $1", [villageId]),
+  ]);
+  if (teip.length === 0) throw new ApiError(400, "Выбранный тейп не найден");
+  if (village.length === 0) {
+    throw new ApiError(400, "Выбранный населённый пункт не найден");
+  }
 }
 
 /**
@@ -59,6 +81,8 @@ export async function register(input: {
   display_name: string;
   email: string;
   password: string;
+  teip_id: number;
+  village_id: number;
 }): Promise<{ token: string; user: ReturnType<typeof publicUser> }> {
   const email = input.email.trim().toLowerCase();
   const existing = await query<UserRow>(
@@ -68,11 +92,18 @@ export async function register(input: {
   if (existing.length > 0) {
     throw new ApiError(409, "Пользователь с таким e-mail уже существует");
   }
+  await validateTeipAndVillage(input.teip_id, input.village_id);
 
   const rows = await query<UserRow>(
-    `INSERT INTO users (display_name, email, password_hash, role)
-     VALUES ($1,$2,$3,'viewer') RETURNING *`,
-    [input.display_name, email, hashPassword(input.password)],
+    `INSERT INTO users (display_name, email, password_hash, role, teip_id, village_id)
+     VALUES ($1,$2,$3,'viewer',$4,$5) RETURNING *`,
+    [
+      input.display_name,
+      email,
+      hashPassword(input.password),
+      input.teip_id,
+      input.village_id,
+    ],
   );
   const user = rows[0];
   return { token: signToken(user), user: publicUser(user) };
@@ -88,6 +119,8 @@ export async function requestEmailVerification(input: {
   display_name: string;
   email: string;
   password: string;
+  teip_id: number;
+  village_id: number;
 }): Promise<{ pending: true; email: string }> {
   const email = input.email.trim().toLowerCase();
 
@@ -98,6 +131,7 @@ export async function requestEmailVerification(input: {
   if (existing.length > 0) {
     throw new ApiError(409, "Пользователь с таким e-mail уже существует");
   }
+  await validateTeipAndVillage(input.teip_id, input.village_id);
 
   // Антиспам: новый код на тот же адрес — не чаще раза в минуту.
   const recent = await query<{ created_at: string }>(
@@ -115,16 +149,25 @@ export async function requestEmailVerification(input: {
   const code = String(randomInt(100000, 1000000)); // 6 цифр
 
   await query(
-    `INSERT INTO email_verifications (email, code, display_name, password_hash, attempts, expires_at)
-     VALUES ($1, $2, $3, $4, 0, now() + interval '15 minutes')
+    `INSERT INTO email_verifications (email, code, display_name, password_hash, teip_id, village_id, attempts, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 0, now() + interval '15 minutes')
      ON CONFLICT (email) DO UPDATE SET
        code = EXCLUDED.code,
        display_name = EXCLUDED.display_name,
        password_hash = EXCLUDED.password_hash,
+       teip_id = EXCLUDED.teip_id,
+       village_id = EXCLUDED.village_id,
        attempts = 0,
        expires_at = EXCLUDED.expires_at,
        created_at = now()`,
-    [email, code, input.display_name, hashPassword(input.password)],
+    [
+      email,
+      code,
+      input.display_name,
+      hashPassword(input.password),
+      input.teip_id,
+      input.village_id,
+    ],
   );
 
   try {
@@ -150,10 +193,12 @@ export async function verifyEmail(input: {
     code: string;
     display_name: string;
     password_hash: string;
+    teip_id: number | null;
+    village_id: number | null;
     attempts: number;
     expired: boolean;
   }>(
-    `SELECT id, code, display_name, password_hash, attempts, (expires_at < now()) AS expired
+    `SELECT id, code, display_name, password_hash, teip_id, village_id, attempts, (expires_at < now()) AS expired
      FROM email_verifications WHERE email = $1`,
     [email],
   );
@@ -191,9 +236,9 @@ export async function verifyEmail(input: {
     throw new ApiError(409, "Пользователь с таким e-mail уже существует");
   }
   const created = await query<UserRow>(
-    `INSERT INTO users (display_name, email, password_hash, role)
-     VALUES ($1,$2,$3,'viewer') RETURNING *`,
-    [row.display_name, email, row.password_hash],
+    `INSERT INTO users (display_name, email, password_hash, role, teip_id, village_id)
+     VALUES ($1,$2,$3,'viewer',$4,$5) RETURNING *`,
+    [row.display_name, email, row.password_hash, row.teip_id, row.village_id],
   );
   await query("DELETE FROM email_verifications WHERE id = $1", [row.id]);
 
@@ -249,11 +294,17 @@ export interface UserProfile {
   created_at: string;
   persons_count: number;
   root_person_id: number | null;
+  teip_id: number | null;
+  teip_name: string | null;
+  village_id: number | null;
+  village_name: string | null;
 }
 
 export async function getProfile(userId: number): Promise<UserProfile> {
   const rows = await query<UserProfile>(
     `SELECT u.id, u.display_name, u.phone, u.email, u.role, u.created_at,
+            u.teip_id, t.name AS teip_name,
+            u.village_id, v.name AS village_name,
             (SELECT COUNT(*)::int FROM persons WHERE created_by = u.id) AS persons_count,
             COALESCE(
               u.root_person_id,
@@ -263,7 +314,10 @@ export async function getProfile(userId: number): Promise<UserProfile> {
                           COALESCE(birth_year, 9999), id
                  LIMIT 1)
             ) AS root_person_id
-     FROM users u WHERE u.id = $1`,
+     FROM users u
+     LEFT JOIN teips t    ON t.id = u.teip_id
+     LEFT JOIN villages v ON v.id = u.village_id
+     WHERE u.id = $1`,
     [userId],
   );
   if (rows.length === 0) throw new ApiError(404, "Пользователь не найден");
