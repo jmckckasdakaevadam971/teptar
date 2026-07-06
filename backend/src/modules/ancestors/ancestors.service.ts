@@ -4,6 +4,7 @@ import type { UserRole } from "../../middleware/auth.js";
 import {
   findSimilarApproved,
   FATHER_MIN_SIMILARITY,
+  CHECK_NAME_OK,
 } from "../persons/persons.service.js";
 
 /** Кто запрашивает дерево — для контроля видимости. */
@@ -141,11 +142,13 @@ export async function getFullTree(
 }
 
 /**
- * Объединённое древо (модель «стекло»): собирается на лету из ПОЛНЫХ древ
- * обоих владельцев, связанных общим предком (запись tree_merges). Исходные
- * древа не меняются — якорь B «приравнивается» к якорю A. Включаются предки
- * и боковые ветви обеих сторон: получается одно большое общее древо,
- * а не только потомки точки соединения.
+ * Объединённое древо (модель «стекло»): собирается на лету из полных древ
+ * обоих владельцев, связанных общим человеком (запись tree_merges). Исходные
+ * древа не меняются. Это не «две схемы рядом»: от точки соединения система
+ * идёт вверх по родителям и вниз по потомкам, приравнивая совпадающих людей,
+ * — каждый общий человек остаётся в древе ОДИН раз, а недостающие ветви
+ * второго древа прирастают к первому через него. Получается одно
+ * непрерывное дерево.
  *
  * Видимость: одобренное (approved) видно всем; на модерации (pending)
  * — только админам (иначе 404, чтобы не раскрывать до проверки).
@@ -207,36 +210,163 @@ export async function getMergedTree(
     sideNodes(m.owner_b == null ? null : Number(m.owner_b), anchorB),
   ]);
 
-  // node-pg отдаёт BIGINT строками — приводим к числам, иначе сравнение
-  // с якорями (числами) не сработает и ветки не сольются.
+  // node-pg отдаёт BIGINT строками — приводим к числам сразу, иначе
+  // сравнения id не сработают и ветки не сольются.
   const num = (v: number | null): number | null =>
     v == null ? null : Number(v);
-  const alias = (personId: number | null): number | null =>
-    Number(personId) === anchorB ? anchorA : num(personId);
+  const norm = (n: TreeNode): TreeNode => ({
+    ...n,
+    id: Number(n.id),
+    birth_year: num(n.birth_year),
+    death_year: num(n.death_year),
+    father_id: num(n.father_id),
+    mother_id: num(n.mother_id),
+  });
+  const nodesA = sideA.map(norm);
+  const nodesB = sideB.map(norm);
 
-  const byId = new Map<number, TreeNode>();
-  // Родители якоря: отец из древа A, а если там не указан — из древа B
-  // (противоречие «два разных отца» блокируется ещё до объединения).
-  let anchorFatherB: number | null = null;
-  let anchorMotherB: number | null = null;
-  for (const n of [...sideA, ...sideB]) {
-    const id = alias(n.id)!;
-    if (Number(n.id) === anchorB) {
-      anchorFatherB = num(n.father_id);
-      anchorMotherB = num(n.mother_id);
+  // Якорь обязан быть в своей стороне — иначе склейке не от чего идти.
+  const ensureAnchor = async (
+    list: TreeNode[],
+    anchorId: number,
+  ): Promise<void> => {
+    if (list.some((n) => n.id === anchorId)) return;
+    const extra = await query<TreeNode>(
+      `SELECT id, full_name, gender, birth_year, death_year,
+              father_id, mother_id, spouse_names, 0 AS depth
+       FROM persons WHERE id = $1`,
+      [anchorId],
+    );
+    if (extra.length > 0) list.push(norm(extra[0]));
+  };
+  await ensureAnchor(nodesA, anchorA);
+  await ensureAnchor(nodesB, anchorB);
+
+  const byIdA = new Map(nodesA.map((n) => [n.id, n]));
+  const byIdB = new Map(nodesB.map((n) => [n.id, n]));
+
+  // Сходство имён всех пар A×B одним запросом (pg_trgm — тот же алгоритм,
+  // что в чек-листе сверки). Порог минимальный (как у отцов), точнее
+  // фильтруем уже при матчинге.
+  const simRows = await query<{ a_id: number; b_id: number; sim: number }>(
+    `SELECT a.id AS a_id, b.id AS b_id,
+            similarity(a.full_name, b.full_name) AS sim
+     FROM persons a
+     JOIN persons b
+       ON similarity(a.full_name, b.full_name) >= ${FATHER_MIN_SIMILARITY}
+     WHERE a.id = ANY($1::bigint[]) AND b.id = ANY($2::bigint[])`,
+    [nodesA.map((n) => n.id), nodesB.map((n) => n.id)],
+  );
+  const simMap = new Map<string, number>();
+  for (const r of simRows)
+    simMap.set(`${Number(r.a_id)}:${Number(r.b_id)}`, Number(r.sim));
+  const simOf = (aId: number, bId: number): number =>
+    simMap.get(`${aId}:${bId}`) ?? 0;
+
+  // Индекс детей по родителю для обеих сторон.
+  const childrenIndex = (nodes: TreeNode[]): Map<number, TreeNode[]> => {
+    const map = new Map<number, TreeNode[]>();
+    for (const n of nodes) {
+      for (const pid of [n.father_id, n.mother_id]) {
+        if (pid == null) continue;
+        const list = map.get(pid);
+        if (list) list.push(n);
+        else map.set(pid, [n]);
+      }
     }
-    if (byId.has(id)) continue; // якорь встречается в обеих сторонах — берём A
-    byId.set(id, {
+    return map;
+  };
+  const kidsA = childrenIndex(nodesA);
+  const kidsB = childrenIndex(nodesB);
+
+  // Рекурсивная склейка от точки соединения: от пары якорей идём вверх
+  // (родители) и вниз (дети), приравнивая совпадающих людей. Каждый общий
+  // человек остаётся в итоговом древе один раз.
+  const matched = new Map<number, number>(); // id в древе B -> id в древе A
+  const usedA = new Set<number>();
+  const queue: Array<[number, number]> = [];
+  const pairUp = (aId: number, bId: number): void => {
+    if (matched.has(bId) || usedA.has(aId)) return;
+    matched.set(bId, aId);
+    usedA.add(aId);
+    queue.push([aId, bId]);
+  };
+  pairUp(anchorA, anchorB);
+
+  const yearsClose = (a: TreeNode, b: TreeNode): boolean =>
+    a.birth_year == null ||
+    b.birth_year == null ||
+    Math.abs(a.birth_year - b.birth_year) <= 10;
+
+  while (queue.length > 0) {
+    const [aId, bId] = queue.shift()!;
+    const a = byIdA.get(aId);
+    const b = byIdB.get(bId);
+    if (!a || !b) continue;
+
+    // Родители: порог тот же, что в проверке «два разных отца»
+    // (более сильное расхождение блокируется ещё чек-листом).
+    for (const key of ["father_id", "mother_id"] as const) {
+      const pa = a[key];
+      const pb = b[key];
+      if (pa == null || pb == null) continue;
+      if (simOf(pa, pb) >= FATHER_MIN_SIMILARITY) pairUp(pa, pb);
+    }
+
+    // Дети: совпадает пол, имя заметно похоже, года рождения не расходятся.
+    // Жадно от самых похожих пар, чтобы тёзки не перепутались.
+    const listA = kidsA.get(aId) ?? [];
+    const listB = kidsB.get(bId) ?? [];
+    const cand: Array<{ ca: TreeNode; cb: TreeNode; s: number }> = [];
+    for (const ca of listA) {
+      for (const cb of listB) {
+        if (ca.gender !== cb.gender) continue;
+        if (!yearsClose(ca, cb)) continue;
+        const s = simOf(ca.id, cb.id);
+        if (s >= CHECK_NAME_OK) cand.push({ ca, cb, s });
+      }
+    }
+    cand.sort((x, y) => y.s - x.s);
+    for (const { ca, cb } of cand) pairUp(ca.id, cb.id);
+  }
+
+  const remap = (id: number | null): number | null =>
+    id == null ? null : (matched.get(id) ?? id);
+
+  // Сборка: сторона A целиком; из B — только несовпавшие люди, их связи
+  // переводятся на общие узлы (так ветвь Б прирастает через точку
+  // соединения). Совпавшие узлы B дополняют узел A недостающими сведениями
+  // и связями: якорь A получает потомков якоря B, а если у него не указан
+  // родитель — родителя из древа B.
+  const byId = new Map<number, TreeNode>();
+  for (const n of nodesA) byId.set(n.id, { ...n });
+  for (const n of nodesB) {
+    const aId = matched.get(n.id);
+    if (aId != null) {
+      const target = byId.get(aId);
+      if (!target) continue;
+      if (target.birth_year == null) target.birth_year = n.birth_year;
+      if (target.death_year == null) target.death_year = n.death_year;
+      if (
+        (!target.spouse_names || target.spouse_names.length === 0) &&
+        n.spouse_names &&
+        n.spouse_names.length > 0
+      )
+        target.spouse_names = n.spouse_names;
+      if (target.father_id == null && n.father_id != null)
+        target.father_id = remap(n.father_id);
+      if (target.mother_id == null && n.mother_id != null)
+        target.mother_id = remap(n.mother_id);
+      continue;
+    }
+    byId.set(n.id, {
       ...n,
-      id,
-      birth_year: num(n.birth_year),
-      death_year: num(n.death_year),
-      father_id: alias(n.father_id),
-      mother_id: alias(n.mother_id),
+      father_id: remap(n.father_id),
+      mother_id: remap(n.mother_id),
     });
   }
 
-  // Общий предок (якорь A) — «шапка» с полями, выбранными модератором.
+  // Точка соединения — поля, выбранные модератором.
   const anchor = byId.get(anchorA);
   if (anchor) {
     if (m.merged_name != null && m.merged_name.trim())
@@ -245,14 +375,10 @@ export async function getMergedTree(
       anchor.birth_year = Number(m.merged_birth_year);
     if (m.merged_death_year != null)
       anchor.death_year = Number(m.merged_death_year);
-    if (anchor.father_id == null && anchorFatherB != null)
-      anchor.father_id = alias(anchorFatherB);
-    if (anchor.mother_id == null && anchorMotherB != null)
-      anchor.mother_id = alias(anchorMotherB);
   }
 
   // Ссылки на родителей вне собранного набора обнуляем: такие узлы —
-  // корни своих ветвей (лес прекрасно раскладывается схемой).
+  // корни своих ветвей.
   for (const n of byId.values()) {
     if (n.father_id != null && !byId.has(n.father_id)) n.father_id = null;
     if (n.mother_id != null && !byId.has(n.mother_id)) n.mother_id = null;
