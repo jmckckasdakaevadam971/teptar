@@ -21,6 +21,9 @@ export function toTreePeople(nodes: TreeNode[]): TreePerson[] {
     teip: "",
     generation: n.depth,
     spouseNames: n.spouse_names ?? undefined,
+    mergeAdded: n.merge_added || undefined,
+    mergeAuthor: n.merge_author ?? undefined,
+    mergeAnchor: n.merge_anchor || undefined,
     parentId:
       n.father_id != null && ids.has(n.father_id)
         ? String(n.father_id)
@@ -97,6 +100,15 @@ export function PublicTreeDetail({
           <p className="text-sm text-muted-foreground">
             Всего персон в древе: {people.length}
           </p>
+          {people.some((p) => p.mergeAdded) ? (
+            <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span className="rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-[10px] font-medium text-success">
+                Добавлено
+              </span>
+              — ветвь, присоединённая при объединении родословных. Наведите на
+              карточку, чтобы увидеть источник.
+            </p>
+          ) : null}
           <TreeView
             people={people}
             selectedId={selectedId}
@@ -111,6 +123,18 @@ export function PublicTreeDetail({
                 {selected.birth_year ?? "?"}
                 {selected.death_year ? ` – ${selected.death_year}` : ""}
               </p>
+              {selected.merge_added ? (
+                <p className="mt-2 text-sm text-success">
+                  Добавлено при объединении родословных
+                  {selected.merge_author
+                    ? ` · Источник: родословная пользователя ${selected.merge_author}`
+                    : ""}
+                </p>
+              ) : selected.merge_anchor ? (
+                <p className="mt-2 text-sm text-primary">
+                  Точка объединения родословных
+                </p>
+              ) : null}
             </div>
           ) : null}
         </>

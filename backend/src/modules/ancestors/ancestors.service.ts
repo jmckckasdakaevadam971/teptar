@@ -51,6 +51,12 @@ export interface TreeNode {
   depth: number;
   /** Имена жён (жён может быть несколько); хранятся строками при муже. */
   spouse_names?: string[] | null;
+  /** Узел пришёл из второго древа при объединении — выделяется в интерфейсе. */
+  merge_added?: boolean;
+  /** Имя хранителя, из чьей родословной добавлена ветвь. */
+  merge_author?: string | null;
+  /** Точка соединения — общий человек, через которого слиты древа. */
+  merge_anchor?: boolean;
 }
 
 export interface CommonAncestorResult {
@@ -167,13 +173,16 @@ export async function getMergedTree(
     status: string;
     owner_a: number | null;
     owner_b: number | null;
+    owner_b_name: string | null;
   }>(
     `SELECT tm.anchor_a_id, tm.anchor_b_id, tm.merged_name,
             tm.merged_birth_year, tm.merged_death_year, tm.status,
-            pa.created_by AS owner_a, pb.created_by AS owner_b
+            pa.created_by AS owner_a, pb.created_by AS owner_b,
+            ub.display_name AS owner_b_name
      FROM tree_merges tm
      JOIN persons pa ON pa.id = tm.anchor_a_id
      JOIN persons pb ON pb.id = tm.anchor_b_id
+     LEFT JOIN users ub ON ub.id = pb.created_by
      WHERE tm.id = $1`,
     [mergeId],
   );
@@ -346,7 +355,9 @@ export async function getMergedTree(
   // переводятся на общие узлы (так ветвь Б прирастает через точку
   // соединения). Совпавшие узлы B дополняют узел A недостающими сведениями
   // и связями: якорь A получает потомков якоря B, а если у него не указан
-  // родитель — родителя из древа B.
+  // родитель — родителя из древа B. Несовпавшие узлы B помечаются как
+  // «добавленные при объединении» — интерфейс выделяет всю новую ветвь.
+  const mergeAuthor = m.owner_b_name?.trim() || null;
   const byId = new Map<number, TreeNode>();
   for (const n of nodesA) byId.set(n.id, { ...n });
   for (const n of nodesB) {
@@ -372,12 +383,15 @@ export async function getMergedTree(
       ...n,
       father_id: remap(n.father_id),
       mother_id: remap(n.mother_id),
+      merge_added: true,
+      merge_author: mergeAuthor,
     });
   }
 
   // Точка соединения — поля, выбранные модератором.
   const anchor = byId.get(anchorA);
   if (anchor) {
+    anchor.merge_anchor = true;
     if (m.merged_name != null && m.merged_name.trim())
       anchor.full_name = m.merged_name;
     if (m.merged_birth_year != null)

@@ -272,6 +272,12 @@ export interface TreeNode {
   depth: number;
   /** Имена жён (жён может быть несколько). */
   spouse_names?: string[] | null;
+  /** Узел добавлен из второго древа при объединении родословных. */
+  merge_added?: boolean;
+  /** Имя хранителя, из чьей родословной добавлена ветвь. */
+  merge_author?: string | null;
+  /** Точка соединения — общий человек, через которого слиты древа. */
+  merge_anchor?: boolean;
 }
 
 export interface Teip {

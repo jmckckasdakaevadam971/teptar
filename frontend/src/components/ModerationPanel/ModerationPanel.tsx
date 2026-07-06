@@ -105,6 +105,9 @@ function fullTreeToPeople(nodes: TreeNode[]): TreePerson[] {
     role: n.gender === "f" ? "дочь" : "сын",
     teip: "",
     generation: n.depth,
+    mergeAdded: n.merge_added || undefined,
+    mergeAuthor: n.merge_author ?? undefined,
+    mergeAnchor: n.merge_anchor || undefined,
     parentId:
       n.father_id != null && ids.has(n.father_id)
         ? String(n.father_id)
@@ -2447,16 +2450,27 @@ export function ModerationPanel() {
               {mergePreview.loading && !mergePreview.nodes ? (
                 <p className="text-sand">Строим общее древо…</p>
               ) : mergePreview.nodes && mergePreview.nodes.length > 0 ? (
-                <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
-                  <TreeView
-                    people={fullTreeToPeople(mergePreview.nodes)}
-                    selectedId={mergePreview.selectedId}
-                    onSelect={(id) =>
-                      setMergePreview((prev) =>
-                        prev ? { ...prev, selectedId: id } : prev,
-                      )
-                    }
-                  />
+                <div className="grid gap-2">
+                  {mergePreview.nodes.some((n) => n.merge_added) ? (
+                    <p className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
+                      <span className="rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-[10px] font-medium text-success">
+                        Добавлено
+                      </span>
+                      — ветвь, присоединённая при объединении. Наведите на
+                      карточку, чтобы увидеть источник.
+                    </p>
+                  ) : null}
+                  <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
+                    <TreeView
+                      people={fullTreeToPeople(mergePreview.nodes)}
+                      selectedId={mergePreview.selectedId}
+                      onSelect={(id) =>
+                        setMergePreview((prev) =>
+                          prev ? { ...prev, selectedId: id } : prev,
+                        )
+                      }
+                    />
+                  </div>
                 </div>
               ) : (
                 <p className="text-sand">Построить схему не удалось.</p>

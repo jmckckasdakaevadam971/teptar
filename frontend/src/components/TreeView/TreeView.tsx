@@ -2297,6 +2297,17 @@ export function TreeView({
                 const isCollapsed = collapsed.has(person.id);
                 const kidsCount = descendantCount.get(person.id) ?? 0;
                 const branchColor = branchColors.get(person.id);
+                // Подсказка для узлов объединённого древа: добавленная ветвь
+                // и точка соединения поясняются при наведении.
+                const mergeHint = person.mergeAdded
+                  ? `Добавлено при объединении родословных${
+                      person.mergeAuthor
+                        ? `\nИсточник: родословная пользователя ${person.mergeAuthor}`
+                        : ""
+                    }`
+                  : person.mergeAnchor
+                    ? "Точка объединения родословных"
+                    : undefined;
                 const p = displayPos[person.id];
                 if (!p) return null;
                 return (
@@ -2312,6 +2323,7 @@ export function TreeView({
                       movable ? (e) => startCardDrag(e, person.id) : undefined
                     }
                     onClick={() => onSelect(person.id)}
+                    title={mergeHint}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
@@ -2343,11 +2355,23 @@ export function TreeView({
                         : "transition-all duration-200",
                       isSelected
                         ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
-                        : isAncestor
-                          ? "border-primary/50"
-                          : "border-border hover:border-primary/40",
+                        : person.mergeAdded
+                          ? "border-success-border shadow-[0_0_0_1px_rgb(var(--success-border))] hover:border-success"
+                          : isAncestor
+                            ? "border-primary/50"
+                            : "border-border hover:border-primary/40",
                     )}
                   >
+                    {/* Метки объединённого древа: добавленная ветвь и точка соединения */}
+                    {person.mergeAdded ? (
+                      <span className="pointer-events-none absolute -top-2.5 left-3 z-10 rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-[10px] font-medium text-success">
+                        Добавлено
+                      </span>
+                    ) : person.mergeAnchor ? (
+                      <span className="pointer-events-none absolute -top-2.5 left-3 z-10 rounded-full border border-primary/50 bg-secondary px-2 py-0.5 text-[10px] font-medium text-primary">
+                        Точка объединения
+                      </span>
+                    ) : null}
                     {/* Цветная метка ветви, назначенная пользователем */}
                     {branchColor ? (
                       <span
