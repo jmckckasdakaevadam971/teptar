@@ -61,6 +61,12 @@ const MIN_SCALE = 0.05;
 // свободные поля вокруг древа — чтобы осматриваться за его краями
 const PAN_PAD_X = 640;
 const PAN_PAD_Y = 480;
+// потолок динамического запаса: страховка от лавины «контейнер растёт от
+// контента → запас растёт от контейнера → …» в разметке без min-width:0
+const PAN_PAD_MAX = 4096;
+/** Запас панорамирования: не меньше константы, не больше потолка. */
+const clampPad = (constant: number, viewport: number) =>
+  Math.min(PAN_PAD_MAX, Math.max(constant, viewport));
 // цвет линий связей: токен --tree-line задаётся в globals.css отдельно для
 // светлой (тёмное золото, высокая непрозрачность) и тёмной темы
 const TREE_LINE = "rgb(var(--tree-line) / var(--tree-line-a))";
@@ -1143,8 +1149,8 @@ export function TreeView({
     if (!el) return;
     const update = () => {
       setPanPad((prev) => {
-        const x = Math.max(PAN_PAD_X, el.clientWidth);
-        const y = Math.max(PAN_PAD_Y, el.clientHeight);
+        const x = clampPad(PAN_PAD_X, el.clientWidth);
+        const y = clampPad(PAN_PAD_Y, el.clientHeight);
         return prev.x === x && prev.y === y ? prev : { x, y };
       });
     };
@@ -1442,8 +1448,8 @@ export function TreeView({
       return;
     // ждём, пока panPad догонит фактический размер вьюпорта (sizer в DOM
     // уже нужного размера) — иначе браузер заклампит выставляемый скролл
-    const wantX = Math.max(PAN_PAD_X, el.clientWidth);
-    const wantY = Math.max(PAN_PAD_Y, el.clientHeight);
+    const wantX = clampPad(PAN_PAD_X, el.clientWidth);
+    const wantY = clampPad(PAN_PAD_Y, el.clientHeight);
     if (panPad.x !== wantX || panPad.y !== wantY) return;
     initialFitDone.current = true;
     const fit = Math.min(
@@ -2060,7 +2066,12 @@ export function TreeView({
           fs && "flex-1",
           grabbing ? "cursor-grabbing" : "cursor-grab",
         )}
-        style={{ maxHeight: fs ? "100%" : "75vh" }}
+        style={{
+          maxHeight: fs ? "100%" : "75vh",
+          // ширина контейнера не зависит от содержимого: без этого разметка
+          // без min-width:0 растёт от sizer, а panPad — от контейнера (лавина)
+          contain: "inline-size",
+        }}
       >
         <div
           ref={sizerRef}

@@ -2500,7 +2500,7 @@ export function ModerationPanel() {
                 <p className="text-sand">Загрузка древа…</p>
               ) : viewer.persons && viewer.persons.length > 0 ? (
                 <>
-                  <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
+                  <div className="min-w-0 max-w-full rounded-xl border border-line bg-gold/[0.03] p-2">
                     <TreeView
                       people={toTreePeople(viewer.persons)}
                       selectedId={viewer.selectedId}
@@ -2702,7 +2702,7 @@ export function ModerationPanel() {
               {mergePreview.loading && !mergePreview.nodes ? (
                 <p className="text-sand">Строим общее древо…</p>
               ) : mergePreview.nodes && mergePreview.nodes.length > 0 ? (
-                <div className="grid gap-2">
+                <div className="grid min-w-0 gap-2">
                   {mergePreview.nodes.some((n) => n.merge_added) ? (
                     <p className="flex flex-wrap items-center gap-2 text-[13px] text-sand">
                       <span className="rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-[10px] font-medium text-success">
@@ -2712,7 +2712,7 @@ export function ModerationPanel() {
                       карточку, чтобы увидеть источник.
                     </p>
                   ) : null}
-                  <div className="rounded-xl border border-line bg-gold/[0.03] p-2">
+                  <div className="min-w-0 max-w-full rounded-xl border border-line bg-gold/[0.03] p-2">
                     <TreeView
                       people={fullTreeToPeople(mergePreview.nodes)}
                       selectedId={mergePreview.selectedId}
