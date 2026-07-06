@@ -113,6 +113,24 @@ export const manualMergeSchema = z.object({
 export type ManualMergeInput = z.infer<typeof manualMergeSchema>;
 
 /**
+ * Опубликовать древо и сразу объединить с опубликованным древом другого
+ * автора по предложенной системой точке соединения — одно решение модератора.
+ */
+export const approveWithMergeSchema = z.object({
+  /** Якорь в проверяемом (pending) древе. */
+  anchor_own_id: z.coerce.number().int().positive(),
+  /** Якорь в уже опубликованном древе другого автора. */
+  anchor_other_id: z.coerce.number().int().positive(),
+  /** Чьи поля станут «шапкой» общего предка (по умолчанию — свой якорь). */
+  keep_id: z.coerce.number().int().positive().optional(),
+  full_name: z.string().min(2).max(200).optional(),
+  birth_year: z.number().int().min(0).max(2100).nullable().optional(),
+  death_year: z.number().int().min(0).max(2100).nullable().optional(),
+  note: z.string().max(5000).nullable().optional(),
+});
+export type ApproveWithMergeInput = z.infer<typeof approveWithMergeSchema>;
+
+/**
  * Пакетная замена всего своего древа одним запросом (из редактора `/my`).
  * Родитель указывается по временному temp_id из этого же пакета, чтобы не
  * зависеть от реальных id, которые ещё не созданы. Одна транзакция вместо

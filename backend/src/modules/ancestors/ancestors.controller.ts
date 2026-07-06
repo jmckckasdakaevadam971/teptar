@@ -37,6 +37,21 @@ export async function mergedTree(req: Request, res: Response): Promise<void> {
   res.json(ok(data));
 }
 
+const previewSchema = z.object({
+  a: z.coerce.number().int().positive(),
+  b: z.coerce.number().int().positive(),
+});
+
+/** Предпросмотр общего древа по паре якорей (только модератор). */
+export async function mergedTreePreview(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const { a, b } = previewSchema.parse(req.query);
+  const data = await service.getMergedTreePreview(a, b, viewerOf(req));
+  res.json(ok(data));
+}
+
 const commonSchema = z.object({
   a: z.coerce.number().int().positive(),
   b: z.coerce.number().int().positive(),

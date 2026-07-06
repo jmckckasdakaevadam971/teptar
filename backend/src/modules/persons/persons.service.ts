@@ -1,4 +1,5 @@
 import { query, withTransaction } from "../../db/pool.js";
+import type pg from "pg";
 import { ApiError } from "../../utils/http.js";
 import type { UserRole } from "../../middleware/auth.js";
 import type {
@@ -8,6 +9,7 @@ import type {
   ListPersonsQuery,
   BulkPersonInput,
 } from "./persons.types.js";
+import type { MergedTreeStats } from "../ancestors/ancestors.service.js";
 
 /** Кто запрашивает данные — для контроля видимости. */
 export interface Viewer {
@@ -893,7 +895,19 @@ export async function approveTree(
   ownerId: number,
   adminId: number,
 ): Promise<{ count: number }> {
-  return withTransaction(async (client) => {
+  return withTransaction((client) => approveTreeTx(client, ownerId, adminId));
+}
+
+/**
+ * Ядро одобрения древа — выполняется внутри уже открытой транзакции,
+ * чтобы «опубликовать и объединить» было одним атомарным решением.
+ */
+async function approveTreeTx(
+  client: pg.PoolClient,
+  ownerId: number,
+  adminId: number,
+): Promise<{ count: number }> {
+  {
     // Есть ли новая версия на модерации?
     const pending = await client.query<{ id: number }>(
       `SELECT id FROM persons
@@ -1048,6 +1062,129 @@ export async function approveTree(
     );
 
     return { count: rows.rowCount ?? 0 };
+  }
+}
+
+/**
+ * Опубликовать древо И объединить его с уже опубликованным древом другого
+ * владельца — одно атомарное решение модератора. Система сама предложила
+ * точку соединения (listTreeMergeCandidates); здесь пара сверяется ещё раз,
+ * древо публикуется (как approveTree), и в той же транзакции создаётся
+ * ОДОБРЕННАЯ связь tree_merges — в каталоге сразу появляется общее древо.
+ */
+export async function approveTreeWithMerge(
+  ownerId: number,
+  adminId: number,
+  anchorOwnId: number,
+  anchorOtherId: number,
+  overrides?: MergeOverrides & { keep_id?: number },
+): Promise<{ count: number; tree_merge_id: number }> {
+  // Свой якорь — из присланной на проверку версии (её ID переживут
+  // одобрение), чужой — из опубликованного древа другого владельца.
+  const anchors = await query<{
+    id: number;
+    created_by: number | null;
+    status: string;
+    visibility: string;
+  }>(
+    `SELECT id, created_by, status, visibility FROM persons
+     WHERE id = ANY($1::bigint[])`,
+    [[anchorOwnId, anchorOtherId]],
+  );
+  const own = anchors.find((r) => Number(r.id) === anchorOwnId);
+  const other = anchors.find((r) => Number(r.id) === anchorOtherId);
+  if (!own || !other)
+    throw new ApiError(404, "Точка соединения не найдена");
+  if (Number(own.created_by) !== ownerId || own.status !== "pending")
+    throw new ApiError(
+      400,
+      "Свой якорь должен быть из проверяемого древа этого пользователя",
+    );
+  if (
+    other.created_by == null ||
+    Number(other.created_by) === ownerId ||
+    other.status !== "approved"
+  )
+    throw new ApiError(
+      400,
+      "Второй якорь должен быть из опубликованного древа другого автора",
+    );
+
+  // Полная сверка пары — те же жёсткие блокировки, что при ручном слиянии.
+  const check = await checkMergePair(anchorOwnId, anchorOtherId);
+  if (!check.can_merge) {
+    const reasons = check.items
+      .filter((i) => i.level === "block")
+      .map((i) => i.message)
+      .join("; ");
+    throw new ApiError(400, `Объединение заблокировано: ${reasons}`);
+  }
+
+  const keep = overrides?.keep_id === anchorOtherId ? check.b : check.a;
+  const name =
+    overrides?.full_name != null && overrides.full_name.trim()
+      ? overrides.full_name.trim()
+      : keep.full_name;
+  const birth =
+    overrides?.birth_year !== undefined
+      ? overrides.birth_year
+      : keep.birth_year;
+  const death =
+    overrides?.death_year !== undefined
+      ? overrides.death_year
+      : keep.death_year;
+  const note = overrides?.note !== undefined ? overrides.note : null;
+
+  const lo = Math.min(anchorOwnId, anchorOtherId);
+  const hi = Math.max(anchorOwnId, anchorOtherId);
+
+  return withTransaction(async (client) => {
+    const { count } = await approveTreeTx(client, ownerId, adminId);
+
+    const ins = await client.query<{ id: number }>(
+      `INSERT INTO tree_merges
+         (anchor_a_id, anchor_b_id, merged_name, merged_birth_year,
+          merged_death_year, merged_note, status, proposed_by,
+          approved_by, resolved_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'approved', $7, $7, now())
+       ON CONFLICT (anchor_a_id, anchor_b_id) DO UPDATE
+         SET merged_name = EXCLUDED.merged_name,
+             merged_birth_year = EXCLUDED.merged_birth_year,
+             merged_death_year = EXCLUDED.merged_death_year,
+             merged_note = EXCLUDED.merged_note,
+             status = 'approved',
+             proposed_by = EXCLUDED.proposed_by,
+             approved_by = EXCLUDED.approved_by,
+             resolved_at = now()
+       RETURNING id`,
+      [lo, hi, name, birth, death, note, adminId],
+    );
+
+    // Автопредложение на эту пару (если успело создаться) — закрываем.
+    await client.query(
+      `UPDATE merge_suggestions
+       SET status = 'merged', resolved_by = $3, resolved_at = now()
+       WHERE person_a_id = $1 AND person_b_id = $2 AND status = 'pending'`,
+      [lo, hi, adminId],
+    );
+
+    await client.query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES ($1, $2, 'approve_with_merge', $3)`,
+      [
+        anchorOwnId,
+        adminId,
+        JSON.stringify({
+          owner: ownerId,
+          count,
+          anchor_a: lo,
+          anchor_b: hi,
+          merge_id: Number(ins.rows[0].id),
+        }),
+      ],
+    );
+
+    return { count, tree_merge_id: Number(ins.rows[0].id) };
   });
 }
 
@@ -1471,26 +1608,34 @@ const ANCHOR_MIN_SIMILARITY = 0.62;
 const ANCHOR_STRICT_SIMILARITY = 0.82;
 export const FATHER_MIN_SIMILARITY = 0.45;
 
+/** Лучший якорь (общий предок) для пары «наше древо × древо владельца N». */
+interface BestAnchor {
+  ownerPersonId: number;
+  otherPersonId: number;
+  similarity: number;
+  score: number;
+}
+
 /**
- * Найти точки пересечения древа владельца с ЧУЖИМИ древами и поставить в
- * очередь ОДНО предложение на каждую пару древ — по самому надёжному общему
- * предку (якорю). Именно по нему потом древа срастаются в одно.
+ * Ядро авто-поиска точек соединения: для каждой персоны владельца ищем
+ * похожих людей в чужих древах (в заданных статусах) и оставляем ОДИН
+ * самый надёжный якорь на каждого чужого владельца.
  *
  * Почему один якорь, а не все похожие имена: у двух пересекающихся древ
  * совпадает конкретный предок, а его потомки (например, родные братья)
  * похожи лишь отчества́ми — их объединять НЕЛЬЗЯ. Поэтому берём только самое
  * сильное совпадение на пару владельцев.
- *
- * Вызывается автоматически при отправке древа и при его одобрении.
  */
-export async function generateMergeSuggestionsForOwner(
+async function computeBestAnchors(
   ownerId: number,
-): Promise<{ created: number }> {
+  statuses: ("approved" | "pending")[],
+  ownStatuses: string[] = ["approved", "pending"],
+): Promise<Map<number, BestAnchor>> {
   const persons = await query<PersonRow>(
     `SELECT * FROM persons
      WHERE created_by = $1 AND visibility = 'public'
-       AND status IN ('approved', 'pending')`,
-    [ownerId],
+       AND status = ANY($2)`,
+    [ownerId, ownStatuses],
   );
 
   // Имя отца внутри своего же древа — для сверки отцов с кандидатами.
@@ -1501,15 +1646,7 @@ export async function generateMergeSuggestionsForOwner(
   // Лучший якорь на каждого чужого владельца: otherOwnerId → пара + оценка.
   // score = сходство имени + бонус за подтверждения (отец, год) — чтобы при
   // равных именах побеждал кандидат с бо́льшим числом подтверждений.
-  const best = new Map<
-    number,
-    {
-      ownerPersonId: number;
-      otherPersonId: number;
-      similarity: number;
-      score: number;
-    }
-  >();
+  const best = new Map<number, BestAnchor>();
 
   for (const p of persons) {
     const fatherName = p.father_id ? (nameById.get(p.father_id) ?? null) : null;
@@ -1523,7 +1660,7 @@ export async function generateMergeSuggestionsForOwner(
         father_name: fatherName,
         village_id: p.village_id,
       },
-      ["approved", "pending"],
+      statuses,
     );
     for (const c of candidates) {
       if (c.created_by == null) continue;
@@ -1559,6 +1696,45 @@ export async function generateMergeSuggestionsForOwner(
       }
     }
   }
+  return best;
+}
+
+/**
+ * Владельцы, с чьими древами уже есть живое объединение (в очереди или
+ * одобренное). Повторно предлагать их не нужно — древа уже связаны.
+ */
+async function ownersWithActiveMerges(ownerId: number): Promise<Set<number>> {
+  const rows = await query<{ owner: number | null }>(
+    `SELECT CASE WHEN pa.created_by = $1 THEN pb.created_by
+                 ELSE pa.created_by END AS owner
+     FROM tree_merges tm
+     JOIN persons pa ON pa.id = tm.anchor_a_id
+     JOIN persons pb ON pb.id = tm.anchor_b_id
+     WHERE tm.status IN ('pending', 'approved')
+       AND (pa.created_by = $1 OR pb.created_by = $1)`,
+    [ownerId],
+  );
+  const out = new Set<number>();
+  for (const r of rows) if (r.owner != null) out.add(Number(r.owner));
+  return out;
+}
+
+/**
+ * Найти точки пересечения древа владельца с ЧУЖИМИ древами и поставить в
+ * очередь ОДНО предложение на каждую пару древ — по самому надёжному общему
+ * предку (якорю). Именно по нему потом древа срастаются в одно.
+ *
+ * Вызывается автоматически при отправке древа и при его одобрении.
+ */
+export async function generateMergeSuggestionsForOwner(
+  ownerId: number,
+): Promise<{ created: number }> {
+  const [best, linked] = await Promise.all([
+    computeBestAnchors(ownerId, ["approved", "pending"]),
+    ownersWithActiveMerges(ownerId),
+  ]);
+  for (const otherOwner of best.keys())
+    if (linked.has(otherOwner)) best.delete(otherOwner);
 
   // Обновляем очередь: сносим прежние НЕобработанные предложения этого древа
   // (чтобы не копить устаревшие), затем вставляем по одному лучшему якорю.
@@ -1587,6 +1763,76 @@ export async function generateMergeSuggestionsForOwner(
     }
     return { created };
   });
+}
+
+/** Кандидат на объединение — для карточки модерации присланного древа. */
+export interface TreeMergeCandidate {
+  other_owner_id: number;
+  other_owner_name: string | null;
+  /** Сходство имён в предложенной точке соединения (0..1). */
+  similarity: number;
+  /** Якорь в проверяемом древе (pending-версия — ID переживёт одобрение). */
+  anchor_own_id: number;
+  /** Якорь в уже опубликованном древе другого владельца. */
+  anchor_other_id: number;
+  /** Полный чек-лист сверки пары: a — проверяемое древо, b — опубликованное. */
+  check: MergeCheck;
+  /** Каким станет итоговое общее древо, если объединение подтвердить. */
+  merged_stats: MergedTreeStats;
+}
+
+/**
+ * Возможные продолжения присланного древа в опубликованной базе — система
+ * сама находит точки соединения при модерации. Модератор видит всю картину
+ * (обе стороны, чек-лист, сводку итогового древа, предпросмотр) и принимает
+ * ОДНО решение: «опубликовать отдельно» или «опубликовать и объединить».
+ */
+export async function listTreeMergeCandidates(
+  ownerId: number,
+): Promise<TreeMergeCandidate[]> {
+  // Своя сторона — только присланная на проверку версия (pending): её ID
+  // сохраняются при одобрении, а старая approved-версия будет удалена.
+  const [best, linked] = await Promise.all([
+    computeBestAnchors(ownerId, ["approved"], ["pending"]),
+    ownersWithActiveMerges(ownerId),
+  ]);
+
+  const ranked = [...best.entries()]
+    .filter(([otherOwner]) => !linked.has(otherOwner))
+    .sort((x, y) => y[1].score - x[1].score)
+    .slice(0, 3);
+  if (ranked.length === 0) return [];
+
+  // Динамический импорт: ancestors.service сам импортирует наш модуль,
+  // статическая ссылка замкнула бы цикл.
+  const { getMergedTreePreview, statsFromMergedNodes } = await import(
+    "../ancestors/ancestors.service.js"
+  );
+  const viewer = { userId: null, role: "super_admin" as const };
+
+  const out: TreeMergeCandidate[] = [];
+  for (const [otherOwner, m] of ranked) {
+    try {
+      const check = await checkMergePair(m.ownerPersonId, m.otherPersonId);
+      const nodes = await getMergedTreePreview(
+        m.ownerPersonId,
+        m.otherPersonId,
+        viewer,
+      );
+      out.push({
+        other_owner_id: otherOwner,
+        other_owner_name: check.b.owner_name,
+        similarity: m.similarity,
+        anchor_own_id: m.ownerPersonId,
+        anchor_other_id: m.otherPersonId,
+        check,
+        merged_stats: statsFromMergedNodes(nodes),
+      });
+    } catch {
+      // Кандидат со сбоем сверки не должен ронять всю карточку модерации.
+    }
+  }
+  return out;
 }
 
 /** Общий предок (якорь) одного из двух древ — с контекстом для мини-схемы. */

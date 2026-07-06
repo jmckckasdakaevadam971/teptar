@@ -148,6 +148,42 @@ export async function getFullTree(
   return getDescendants(root.id, 40, viewer);
 }
 
+/** Сторона объединения: якорь + полный набор узлов этой родословной. */
+interface MergeSide {
+  anchorId: number;
+  /** Имя хранителя стороны — для подписи «Источник: родословная …». */
+  ownerName: string | null;
+  nodes: TreeNode[];
+}
+
+/** Поля точки соединения, выбранные модератором (перекрывают якорь). */
+interface MergedHeader {
+  merged_name?: string | null;
+  merged_birth_year?: number | null;
+  merged_death_year?: number | null;
+}
+
+/**
+ * Полное древо стороны: все публичные персоны владельца в заданных
+ * статусах. Если автора нет (наследие), берём хотя бы ветку потомков
+ * от якоря.
+ */
+async function ownerSideNodes(
+  ownerId: number | null,
+  anchorId: number,
+  statuses: string[],
+  viewer: Viewer,
+): Promise<TreeNode[]> {
+  if (ownerId == null) return getDescendants(anchorId, 40, viewer);
+  return query<TreeNode>(
+    `SELECT id, full_name, gender, birth_year, death_year,
+            father_id, mother_id, spouse_names, 0 AS depth
+     FROM persons
+     WHERE created_by = $1 AND visibility = 'public' AND status = ANY($2)`,
+    [ownerId, statuses],
+  );
+}
+
 /**
  * Объединённое древо (модель «стекло»): собирается на лету из полных древ
  * обоих владельцев, связанных общим человеком (запись tree_merges). Исходные
@@ -173,15 +209,18 @@ export async function getMergedTree(
     status: string;
     owner_a: number | null;
     owner_b: number | null;
+    owner_a_name: string | null;
     owner_b_name: string | null;
   }>(
     `SELECT tm.anchor_a_id, tm.anchor_b_id, tm.merged_name,
             tm.merged_birth_year, tm.merged_death_year, tm.status,
             pa.created_by AS owner_a, pb.created_by AS owner_b,
+            ua.display_name AS owner_a_name,
             ub.display_name AS owner_b_name
      FROM tree_merges tm
      JOIN persons pa ON pa.id = tm.anchor_a_id
      JOIN persons pb ON pb.id = tm.anchor_b_id
+     LEFT JOIN users ua ON ua.id = pa.created_by
      LEFT JOIN users ub ON ub.id = pb.created_by
      WHERE tm.id = $1`,
     [mergeId],
@@ -198,28 +237,101 @@ export async function getMergedTree(
   const anchorA = Number(m.anchor_a_id);
   const anchorB = Number(m.anchor_b_id);
 
-  // Полное древо каждой стороны: все публичные персоны владельца
-  // (модератору — включая ожидающие проверки). Если автора нет (наследие),
-  // берём хотя бы ветку потомков от якоря.
+  // Полное древо каждой стороны (модератору — включая ожидающие проверки).
   const statuses = isAdmin ? ["approved", "pending"] : ["approved"];
-  const sideNodes = async (
-    ownerId: number | null,
-    anchorId: number,
-  ): Promise<TreeNode[]> => {
-    if (ownerId == null) return getDescendants(anchorId, 40, viewer);
-    return query<TreeNode>(
-      `SELECT id, full_name, gender, birth_year, death_year,
-              father_id, mother_id, spouse_names, 0 AS depth
-       FROM persons
-       WHERE created_by = $1 AND visibility = 'public' AND status = ANY($2)`,
-      [ownerId, statuses],
-    );
-  };
   const [sideA, sideB] = await Promise.all([
-    sideNodes(m.owner_a == null ? null : Number(m.owner_a), anchorA),
-    sideNodes(m.owner_b == null ? null : Number(m.owner_b), anchorB),
+    ownerSideNodes(
+      m.owner_a == null ? null : Number(m.owner_a),
+      anchorA,
+      statuses,
+      viewer,
+    ),
+    ownerSideNodes(
+      m.owner_b == null ? null : Number(m.owner_b),
+      anchorB,
+      statuses,
+      viewer,
+    ),
   ]);
 
+  return buildMergedTree(
+    { anchorId: anchorA, ownerName: m.owner_a_name, nodes: sideA },
+    { anchorId: anchorB, ownerName: m.owner_b_name, nodes: sideB },
+    m,
+  );
+}
+
+/**
+ * Предпросмотр общего древа по паре якорей — ДО создания записи слияния.
+ * Используется модератором при проверке присланного древа: система сама
+ * предлагает точку соединения, а этот предпросмотр показывает, каким
+ * станет итоговое древо, если решение подтвердить.
+ *
+ * Каждая сторона берётся в том виде, в каком будет опубликована: для
+ * pending-якоря — присланная на проверку версия древа, для approved —
+ * уже опубликованная.
+ */
+export async function getMergedTreePreview(
+  anchorAId: number,
+  anchorBId: number,
+  viewer: Viewer,
+): Promise<TreeNode[]> {
+  const isAdmin = viewer.role === "teip_admin" || viewer.role === "super_admin";
+  if (!isAdmin) throw new ApiError(403, "Доступно только модератору");
+  if (anchorAId === anchorBId)
+    throw new ApiError(400, "Укажите двух разных людей");
+
+  const rows = await query<{
+    id: number;
+    created_by: number | null;
+    status: string;
+    owner_name: string | null;
+  }>(
+    `SELECT p.id, p.created_by, p.status, u.display_name AS owner_name
+     FROM persons p
+     LEFT JOIN users u ON u.id = p.created_by
+     WHERE p.id = ANY($1::bigint[])`,
+    [[anchorAId, anchorBId]],
+  );
+  const pa = rows.find((r) => Number(r.id) === anchorAId);
+  const pb = rows.find((r) => Number(r.id) === anchorBId);
+  if (!pa || !pb) throw new ApiError(404, "Персона не найдена");
+
+  const statusesOf = (s: string): string[] =>
+    s === "pending" ? ["pending"] : ["approved"];
+  const [sideA, sideB] = await Promise.all([
+    ownerSideNodes(
+      pa.created_by == null ? null : Number(pa.created_by),
+      anchorAId,
+      statusesOf(pa.status),
+      viewer,
+    ),
+    ownerSideNodes(
+      pb.created_by == null ? null : Number(pb.created_by),
+      anchorBId,
+      statusesOf(pb.status),
+      viewer,
+    ),
+  ]);
+
+  return buildMergedTree(
+    { anchorId: anchorAId, ownerName: pa.owner_name, nodes: sideA },
+    { anchorId: anchorBId, ownerName: pb.owner_name, nodes: sideB },
+    {},
+  );
+}
+
+/**
+ * Ядро склейки двух родословных через общего человека. Стороны
+ * ориентируются детерминированно: базой становится БОЛЬШЕЕ древо, меньшее
+ * прирастает к нему и помечается как добавленная ветвь (merge_added) —
+ * и в предпросмотре, и в опубликованном древе картина одна и та же.
+ */
+async function buildMergedTree(
+  rawA: MergeSide,
+  rawB: MergeSide,
+  header: MergedHeader,
+): Promise<TreeNode[]> {
   // node-pg отдаёт BIGINT строками — приводим к числам сразу, иначе
   // сравнения id не сработают и ветки не сольются.
   const num = (v: number | null): number | null =>
@@ -232,8 +344,8 @@ export async function getMergedTree(
     father_id: num(n.father_id),
     mother_id: num(n.mother_id),
   });
-  const nodesA = sideA.map(norm);
-  const nodesB = sideB.map(norm);
+  let sideA: MergeSide = { ...rawA, nodes: rawA.nodes.map(norm) };
+  let sideB: MergeSide = { ...rawB, nodes: rawB.nodes.map(norm) };
 
   // Якорь обязан быть в своей стороне — иначе склейке не от чего идти.
   const ensureAnchor = async (
@@ -249,8 +361,20 @@ export async function getMergedTree(
     );
     if (extra.length > 0) list.push(norm(extra[0]));
   };
-  await ensureAnchor(nodesA, anchorA);
-  await ensureAnchor(nodesB, anchorB);
+  await ensureAnchor(sideA.nodes, sideA.anchorId);
+  await ensureAnchor(sideB.nodes, sideB.anchorId);
+
+  // База — большее древо: присоединённой (и подсвеченной) всегда
+  // считается меньшая ветвь, независимо от порядка якорей в записи.
+  if (sideB.nodes.length > sideA.nodes.length) {
+    const t = sideA;
+    sideA = sideB;
+    sideB = t;
+  }
+  const anchorA = sideA.anchorId;
+  const anchorB = sideB.anchorId;
+  const nodesA = sideA.nodes;
+  const nodesB = sideB.nodes;
 
   const byIdA = new Map(nodesA.map((n) => [n.id, n]));
   const byIdB = new Map(nodesB.map((n) => [n.id, n]));
@@ -357,7 +481,7 @@ export async function getMergedTree(
   // и связями: якорь A получает потомков якоря B, а если у него не указан
   // родитель — родителя из древа B. Несовпавшие узлы B помечаются как
   // «добавленные при объединении» — интерфейс выделяет всю новую ветвь.
-  const mergeAuthor = m.owner_b_name?.trim() || null;
+  const mergeAuthor = sideB.ownerName?.trim() || null;
   const byId = new Map<number, TreeNode>();
   for (const n of nodesA) byId.set(n.id, { ...n });
   for (const n of nodesB) {
@@ -392,12 +516,12 @@ export async function getMergedTree(
   const anchor = byId.get(anchorA);
   if (anchor) {
     anchor.merge_anchor = true;
-    if (m.merged_name != null && m.merged_name.trim())
-      anchor.full_name = m.merged_name;
-    if (m.merged_birth_year != null)
-      anchor.birth_year = Number(m.merged_birth_year);
-    if (m.merged_death_year != null)
-      anchor.death_year = Number(m.merged_death_year);
+    if (header.merged_name != null && header.merged_name.trim())
+      anchor.full_name = header.merged_name;
+    if (header.merged_birth_year != null)
+      anchor.birth_year = Number(header.merged_birth_year);
+    if (header.merged_death_year != null)
+      anchor.death_year = Number(header.merged_death_year);
   }
 
   // Ссылки на родителей вне собранного набора обнуляем: такие узлы —
@@ -440,11 +564,7 @@ export interface MergedTreeStats {
  * если присоединённая ветвь добавила предков НАД точкой соединения, корень
  * (и название древа) смещается на них — пересчёт после объединения.
  */
-export async function getMergedTreeStats(
-  mergeId: number,
-  viewer: Viewer = ANON,
-): Promise<MergedTreeStats> {
-  const nodes = await getMergedTree(mergeId, viewer);
+export function statsFromMergedNodes(nodes: TreeNode[]): MergedTreeStats {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const anchor = nodes.find((n) => n.merge_anchor) ?? nodes[0] ?? null;
 
@@ -465,6 +585,13 @@ export async function getMergedTreeStats(
     root_birth_year: root ? root.birth_year : null,
     root_death_year: root ? root.death_year : null,
   };
+}
+
+export async function getMergedTreeStats(
+  mergeId: number,
+  viewer: Viewer = ANON,
+): Promise<MergedTreeStats> {
+  return statsFromMergedNodes(await getMergedTree(mergeId, viewer));
 }
 
 /**

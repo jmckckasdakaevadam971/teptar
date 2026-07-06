@@ -25,6 +25,7 @@ import type {
   MergeCheck,
   MergeSearchHit,
   TreeMerge,
+  TreeMergeCandidate,
   TreeChange,
   Keeper,
   KeeperApplication,
@@ -179,6 +180,9 @@ export const api = {
     /** Общее (объединённое) древо по связи tree_merges. */
     mergedTree: (id: number) =>
       request<TreeNode[]>(`/ancestors/merged/${id}/full`),
+    /** Предпросмотр общего древа по паре якорей — до объединения (модератор). */
+    mergedTreePreview: (a: number, b: number) =>
+      request<TreeNode[]>(`/ancestors/merged/preview?a=${a}&b=${b}`),
     commonAncestor: (a: number, b: number) =>
       request<CommonAncestor>(`/ancestors/common?a=${a}&b=${b}`),
     /** Примерное родство с другими древами. */
@@ -328,6 +332,29 @@ export const api = {
       request<{ count: number }>(`/persons/moderation/${ownerId}/approve`, {
         method: "POST",
       }),
+    /** Возможные продолжения проверяемого древа в опубликованной базе —
+     *  система сама предлагает точки объединения. */
+    mergeCandidates: (ownerId: number) =>
+      request<TreeMergeCandidate[]>(
+        `/persons/moderation/${ownerId}/merge-candidates`,
+      ),
+    /** Одно решение: опубликовать древо и объединить по предложенной точке. */
+    approveWithMerge: (
+      ownerId: number,
+      input: {
+        anchor_own_id: number;
+        anchor_other_id: number;
+        keep_id?: number;
+        full_name?: string;
+        birth_year?: number | null;
+        death_year?: number | null;
+        note?: string | null;
+      },
+    ) =>
+      request<{ count: number; tree_merge_id: number }>(
+        `/persons/moderation/${ownerId}/approve-with-merge`,
+        { method: "POST", body: JSON.stringify(input) },
+      ),
     reject: (ownerId: number, reason?: string) =>
       request<{ count: number }>(`/persons/moderation/${ownerId}/reject`, {
         method: "POST",

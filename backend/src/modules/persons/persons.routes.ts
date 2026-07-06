@@ -81,6 +81,18 @@ personsRouter.post(
   requireRole("teip_admin", "super_admin"),
   asyncHandler(controller.approve),
 );
+personsRouter.get(
+  "/moderation/:ownerId/merge-candidates",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.mergeCandidates),
+);
+personsRouter.post(
+  "/moderation/:ownerId/approve-with-merge",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.approveWithMerge),
+);
 personsRouter.post(
   "/moderation/:ownerId/reject",
   requireAuth,

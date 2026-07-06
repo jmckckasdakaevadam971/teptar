@@ -246,6 +246,33 @@ export interface MergeCheck {
   can_merge: boolean;
 }
 
+/** Сводка итогового общего древа (если объединение подтвердить). */
+export interface MergedTreeStats {
+  total: number;
+  added_count: number;
+  root_id: number | null;
+  root_name: string | null;
+  root_birth_year: number | null;
+  root_death_year: number | null;
+}
+
+/**
+ * Возможное продолжение проверяемого древа в опубликованной базе — система
+ * сама нашла точку соединения; модератор принимает одно итоговое решение.
+ */
+export interface TreeMergeCandidate {
+  other_owner_id: number;
+  other_owner_name: string | null;
+  similarity: number;
+  /** Якорь в проверяемом древе. */
+  anchor_own_id: number;
+  /** Якорь в опубликованном древе другого автора. */
+  anchor_other_id: number;
+  /** Чек-лист сверки: a — проверяемое древо, b — опубликованное. */
+  check: MergeCheck;
+  merged_stats: MergedTreeStats;
+}
+
 /** Найденная персона для ручного выбора точки соединения. */
 export interface MergeSearchHit {
   id: number;

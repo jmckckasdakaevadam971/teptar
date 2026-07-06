@@ -9,6 +9,7 @@ import {
   mergeSchema,
   resolveMergeSchema,
   manualMergeSchema,
+  approveWithMergeSchema,
   bulkTreeSchema,
   rejectTreeSchema,
   treeDraftSchema,
@@ -175,6 +176,49 @@ export async function approve(req: Request, res: Response): Promise<void> {
     .generateMergeSuggestionsForOwner(Number(req.params.ownerId))
     .catch(() => undefined);
   // Уведомляем владельца на почту — фоново, не задерживая ответ.
+  notifyOwnerModeration(Number(req.params.ownerId), "approved");
+  res.json(ok(result));
+}
+
+/**
+ * Возможные продолжения проверяемого древа в опубликованной базе — система
+ * сама предлагает точки объединения, модератор видит всю картину сразу.
+ */
+export async function mergeCandidates(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const candidates = await service.listTreeMergeCandidates(
+    Number(req.params.ownerId),
+  );
+  res.json(ok(candidates));
+}
+
+/** Одно итоговое решение: опубликовать древо и объединить по точке. */
+export async function approveWithMerge(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
+  const input = approveWithMergeSchema.parse(req.body ?? {});
+  const result = await service.approveTreeWithMerge(
+    Number(req.params.ownerId),
+    req.user!.userId,
+    input.anchor_own_id,
+    input.anchor_other_id,
+    {
+      keep_id: input.keep_id,
+      full_name: input.full_name,
+      birth_year: input.birth_year,
+      death_year: input.death_year,
+      note: input.note,
+    },
+  );
+  // Вдруг у древа есть ещё совпадения с другими владельцами — фоново.
+  service
+    .generateMergeSuggestionsForOwner(Number(req.params.ownerId))
+    .catch(() => undefined);
   notifyOwnerModeration(Number(req.params.ownerId), "approved");
   res.json(ok(result));
 }

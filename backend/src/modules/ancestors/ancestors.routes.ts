@@ -30,4 +30,11 @@ ancestorsRouter.get("/:id/down", asyncHandler(controller.descendants));
 ancestorsRouter.get("/:id/full", asyncHandler(controller.fullTree));
 
 // Общее (объединённое) древо по связи tree_merges: /api/ancestors/merged/:id/full
+// Предпросмотр слияния по паре якорей регистрируется ДО «/merged/:id/full»,
+// чтобы «preview» не перехватился как :id.
+ancestorsRouter.get(
+  "/merged/preview",
+  requireAuth,
+  asyncHandler(controller.mergedTreePreview),
+);
 ancestorsRouter.get("/merged/:id/full", asyncHandler(controller.mergedTree));
