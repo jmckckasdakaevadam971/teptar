@@ -8,8 +8,8 @@ import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
 import { KeeperApplicationsCard } from '@/components/KeepersView/AdminKeepers';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
-import { BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
-import type { AdminStats, AdminTree, AdminUser, UserRole } from '@/lib/types';
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
+import type { AdminStats, AdminTree, AdminUser, Teip, UserRole } from '@/lib/types';
 
 /** Человекочитаемые названия ролей. */
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -43,6 +43,8 @@ function AdminPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  /** Пользователь, которому назначаем «Админ тейпа», но тейп не указан — нужен выбор. */
+  const [teipPick, setTeipPick] = useState<{ id: number; name: string } | null>(null);
 
   const isSuperAdmin = user?.role === 'super_admin';
   const canModerate = isSuperAdmin || user?.role === 'teip_admin';
@@ -69,11 +71,11 @@ function AdminPageInner() {
     else if (ready) setLoading(false);
   }, [ready, isSuperAdmin, load]);
 
-  async function changeRole(id: number, role: UserRole) {
+  async function changeRole(id: number, role: UserRole, teipId?: number) {
     setBusyId(id);
     setError(null);
     try {
-      await api.admin.setRole(id, role);
+      await api.admin.setRole(id, role, teipId);
       // Перечитываем список: бэк автоматически закрепляет/снимает тейп хранителя.
       setUsers(await api.admin.users());
     } catch (e) {
@@ -81,6 +83,15 @@ function AdminPageInner() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  /** Смена роли из селекта: для «Админ тейпа» без тейпа — сначала выбор тейпа. */
+  function onRoleSelect(u: AdminUser, role: UserRole) {
+    if (role === 'teip_admin' && !u.teip_name) {
+      setTeipPick({ id: u.id, name: u.display_name });
+      return;
+    }
+    void changeRole(u.id, role);
   }
 
   async function removeUser(id: number, name: string) {
@@ -200,7 +211,7 @@ function AdminPageInner() {
                               className={ROLE_SELECT}
                               value={u.role}
                               disabled={isSelf || busyId === u.id}
-                              onChange={(e) => void changeRole(u.id, e.target.value as UserRole)}
+                              onChange={(e) => onRoleSelect(u, e.target.value as UserRole)}
                               title={isSelf ? 'Нельзя менять собственную роль' : 'Сменить роль'}
                             >
                               {ROLE_OPTIONS.map((r) => (
@@ -269,6 +280,120 @@ function AdminPageInner() {
           </div>
         </>
       )}
+
+      {teipPick && (
+        <TeipPickDialog
+          userName={teipPick.name}
+          onCancel={() => setTeipPick(null)}
+          onPick={(teipId) => {
+            const uid = teipPick.id;
+            setTeipPick(null);
+            void changeRole(uid, 'teip_admin', teipId);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Диалог выбора тейпа: показывается, когда пользователю без тейпа в профиле
+ * назначается роль «Админ тейпа» — хранитель всегда привязан к своему тейпу.
+ */
+function TeipPickDialog({
+  userName,
+  onPick,
+  onCancel,
+}: {
+  userName: string;
+  onPick: (teipId: number) => void;
+  onCancel: () => void;
+}) {
+  const [teips, setTeips] = useState<Teip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.teips
+      .list()
+      .then((list) => {
+        if (alive) setTeips(list);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const filtered = q.trim()
+    ? teips.filter((t) => t.name.toLowerCase().includes(q.trim().toLowerCase()))
+    : teips;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="m-0 font-serif text-lg font-semibold text-foreground">
+          Назначение хранителя
+        </h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          У пользователя «{userName}» не указан тейп. Выберите тейп — хранитель
+          будет модерировать только его, тейп сохранится в профиле пользователя.
+        </p>
+        <input
+          type="text"
+          className="mt-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+          placeholder="Поиск тейпа…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          autoFocus
+        />
+        <div className="mt-3 max-h-60 overflow-y-auto rounded-lg border border-border">
+          {loading ? (
+            <p className="p-3 text-sm text-muted-foreground">Загрузка тейпов…</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-3 text-sm text-muted-foreground">Ничего не найдено.</p>
+          ) : (
+            filtered.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`block w-full border-b border-border px-3 py-2 text-left text-sm last:border-b-0 ${
+                  selected === t.id
+                    ? 'bg-accent text-white'
+                    : 'bg-transparent text-foreground hover:bg-surface'
+                }`}
+                onClick={() => setSelected(t.id)}
+              >
+                {t.name}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={BTN_SECONDARY} onClick={onCancel}>
+            Отмена
+          </button>
+          <button
+            type="button"
+            className={BTN_PRIMARY}
+            disabled={selected == null}
+            onClick={() => selected != null && onPick(selected)}
+          >
+            Назначить
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

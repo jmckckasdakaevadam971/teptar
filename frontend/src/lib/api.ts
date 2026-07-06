@@ -309,10 +309,10 @@ export const api = {
   admin: {
     stats: () => request<AdminStats>("/admin/stats"),
     users: () => request<AdminUser[]>("/admin/users"),
-    setRole: (id: number, role: User["role"]) =>
+    setRole: (id: number, role: User["role"], teipId?: number) =>
       request<{ id: number; role: string }>(`/admin/users/${id}/role`, {
         method: "PATCH",
-        body: JSON.stringify({ role }),
+        body: JSON.stringify(teipId ? { role, teip_id: teipId } : { role }),
       }),
     deleteUser: (id: number) =>
       request<{ deleted: boolean }>(`/admin/users/${id}`, { method: "DELETE" }),
