@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { KeeperApplication, Teip } from "@/lib/types";
-import { BTN_PRIMARY, BTN_SECONDARY, CARD, ERR_TEXT, ROLE_SELECT } from "@/lib/ui";
+import type { KeeperApplication } from "@/lib/types";
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, ERR_TEXT } from "@/lib/ui";
 
 // ============================================================================
-//  Админ-компоненты программы «Хранители»: очередь заявок и редактор тейпов.
+//  Админ-компоненты программы «Хранители»: очередь заявок.
+//  Хранитель отвечает только за свой тейп — закрепление происходит
+//  автоматически при одобрении заявки или назначении роли.
 // ============================================================================
 
 /** Секция «Заявки в хранители» (только super_admin). */
@@ -82,7 +84,8 @@ export function KeeperApplicationsCard({
       </div>
       <p className="mb-4 text-sm text-muted-foreground">
         Люди, которые хотят проверять родословные своего тейпа. При одобрении
-        человек получит роль «Админ тейпа», а тейп закрепится за ним.
+        человек получит роль «Админ тейпа», его тейп закрепится за ним, и
+        модерировать он будет только древа своего тейпа.
       </p>
 
       {error ? <p className={ERR_TEXT}>{error}</p> : null}
@@ -137,9 +140,9 @@ export function KeeperApplicationsCard({
 
               {a.teip_id == null ? (
                 <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  Тейпа нет в справочнике — при одобрении закрепление не
-                  произойдёт автоматически. Добавьте тейп в справочник и
-                  закрепите его вручную в таблице пользователей.
+                  Тейпа нет в справочнике и в профиле заявителя. Одобрить
+                  заявку нельзя, пока тейп не появится в справочнике: хранитель
+                  закрепляется только за своим тейпом.
                 </p>
               ) : null}
 
@@ -165,75 +168,6 @@ export function KeeperApplicationsCard({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Чипы закреплённых тейпов + добавление, для строки пользователя. */
-export function UserTeipsEditor({
-  userId,
-  teips,
-  allTeips,
-  onChange,
-}: {
-  userId: number;
-  teips: { id: number; name: string }[];
-  allTeips: Teip[];
-  onChange: (teips: { id: number; name: string }[]) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  async function save(next: number[]) {
-    setBusy(true);
-    try {
-      const res = await api.keepers.setUserTeips(userId, next);
-      onChange(res.teips);
-    } catch {
-      // Ошибку покажет общий баннер страницы при следующей загрузке.
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const ids = teips.map((t) => t.id);
-  const available = allTeips.filter((t) => !ids.includes(t.id));
-
-  return (
-    <div className="flex max-w-64 flex-wrap items-center gap-1.5">
-      {teips.map((t) => (
-        <span
-          key={t.id}
-          className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary"
-        >
-          {t.name}
-          <button
-            type="button"
-            className="cursor-pointer border-0 bg-transparent p-0 text-primary/70 hover:text-primary"
-            disabled={busy}
-            title={`Открепить тейп ${t.name}`}
-            onClick={() => void save(ids.filter((id) => id !== t.id))}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      <select
-        className={`${ROLE_SELECT} px-2 py-1 text-xs`}
-        value=""
-        disabled={busy}
-        title="Закрепить тейп"
-        onChange={(e) => {
-          const id = Number(e.target.value);
-          if (id) void save([...ids, id]);
-        }}
-      >
-        <option value="">+ тейп</option>
-        {available.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

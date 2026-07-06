@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { KeeperStatus, Teip } from "@/lib/types";
+import type { KeeperStatus, Teip, UserProfile } from "@/lib/types";
 import {
   CARD,
   ACCENT_CARD,
@@ -17,23 +17,22 @@ import {
   ERR_TEXT,
 } from "@/lib/ui";
 
-const OTHER_TEIP = "__other__";
-
 export function KeeperApplyForm() {
   const { user, ready } = useAuth();
   const [status, setStatus] = useState<KeeperStatus | null>(null);
   const [teips, setTeips] = useState<Teip[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Поля формы
   const [teipChoice, setTeipChoice] = useState<string>("");
-  const [customTeip, setCustomTeip] = useState("");
   const [village, setVillage] = useState("");
   const [experience, setExperience] = useState("");
   const [contact, setContact] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [sentTeipName, setSentTeipName] = useState("");
 
   useEffect(() => {
     if (!ready) return;
@@ -41,10 +40,11 @@ export function KeeperApplyForm() {
       setLoading(false);
       return;
     }
-    Promise.all([api.keepers.my(), api.teips.list()])
-      .then(([st, ts]) => {
+    Promise.all([api.keepers.my(), api.teips.list(), api.auth.profile()])
+      .then(([st, ts, pr]) => {
         setStatus(st);
         setTeips(ts);
+        setProfile(pr);
       })
       .catch(() => undefined)
       .finally(() => setLoading(false));
@@ -55,15 +55,16 @@ export function KeeperApplyForm() {
     [teips],
   );
 
+  // Хранитель отвечает только за свой тейп: если тейп указан в профиле,
+  // заявка подаётся по нему. Выбор из списка — только для старых аккаунтов.
+  const ownTeipId = profile?.teip_id ?? null;
+  const ownTeipName = profile?.teip_name ?? "";
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!teipChoice) {
+    if (ownTeipId == null && !teipChoice) {
       setError("Выберите тейп");
-      return;
-    }
-    if (teipChoice === OTHER_TEIP && customTeip.trim().length < 2) {
-      setError("Укажите название тейпа");
       return;
     }
     if (experience.trim().length < 30) {
@@ -75,12 +76,16 @@ export function KeeperApplyForm() {
     setSending(true);
     try {
       await api.keepers.apply({
-        teip_id: teipChoice === OTHER_TEIP ? null : Number(teipChoice),
-        teip_name: teipChoice === OTHER_TEIP ? customTeip.trim() : undefined,
+        teip_id: ownTeipId ?? Number(teipChoice),
         village: village.trim() || undefined,
         experience: experience.trim(),
         contact: contact.trim() || undefined,
       });
+      setSentTeipName(
+        ownTeipId != null
+          ? ownTeipName
+          : (sortedTeips.find((t) => String(t.id) === teipChoice)?.name ?? ""),
+      );
       setSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отправить");
@@ -141,7 +146,9 @@ export function KeeperApplyForm() {
           </>
         ) : (
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Вы модератор общей базы — видите заявки всех тейпов.
+            За вами пока не закреплён тейп — укажите его в профиле или
+            обратитесь к администратору, иначе заявки на модерацию вам не
+            видны.
           </p>
         )}
         <div className="mt-5">
@@ -162,16 +169,13 @@ export function KeeperApplyForm() {
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Мы получили вашу заявку
-          {status?.application?.teip_name || sent
-            ? ` по тейпу «${
-                sent
-                  ? teipChoice === OTHER_TEIP
-                    ? customTeip.trim()
-                    : (sortedTeips.find((t) => String(t.id) === teipChoice)
-                        ?.name ?? "")
-                  : status?.application?.teip_name
-              }»`
-            : ""}
+          {sent
+            ? sentTeipName
+              ? ` по тейпу «${sentTeipName}»`
+              : ""
+            : status?.application?.teip_name
+              ? ` по тейпу «${status.application.teip_name}»`
+              : ""}
           . Когда админ её рассмотрит, вам придёт письмо на почту.
         </p>
         <div className="mt-5">
@@ -197,41 +201,41 @@ export function KeeperApplyForm() {
       ) : null}
 
       <form onSubmit={submit} className={FORM_GRID}>
-        <div className={FIELD}>
-          <label htmlFor="keeper-teip" className={LABEL}>
-            Ваш тейп *
-          </label>
-          <select
-            id="keeper-teip"
-            className={INPUT}
-            value={teipChoice}
-            onChange={(e) => setTeipChoice(e.target.value)}
-          >
-            <option value="">— выберите тейп —</option>
-            {sortedTeips.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-            <option value={OTHER_TEIP}>Моего тейпа нет в списке</option>
-          </select>
-        </div>
-
-        {teipChoice === OTHER_TEIP ? (
+        {ownTeipId != null ? (
           <div className={FIELD}>
-            <label htmlFor="keeper-custom-teip" className={LABEL}>
-              Название тейпа *
-            </label>
-            <input
-              id="keeper-custom-teip"
-              className={INPUT}
-              value={customTeip}
-              onChange={(e) => setCustomTeip(e.target.value)}
-              placeholder="Например: ЦӀечой"
-              maxLength={120}
-            />
+            <span className={LABEL}>Ваш тейп</span>
+            <div className="rounded-xl border border-border bg-surface px-4 py-3">
+              <span className="font-medium text-foreground">{ownTeipName}</span>
+              <p className="m-0 mt-1 text-xs leading-relaxed text-muted-foreground">
+                Заявка подаётся по тейпу из вашего профиля: хранитель
+                проверяет родословные только своего тейпа.
+              </p>
+            </div>
           </div>
-        ) : null}
+        ) : (
+          <div className={FIELD}>
+            <label htmlFor="keeper-teip" className={LABEL}>
+              Ваш тейп *
+            </label>
+            <select
+              id="keeper-teip"
+              className={INPUT}
+              value={teipChoice}
+              onChange={(e) => setTeipChoice(e.target.value)}
+            >
+              <option value="">— выберите тейп —</option>
+              {sortedTeips.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Хранитель проверяет родословные только своего тейпа. Если вашего
+              тейпа нет в списке — напишите нам, мы добавим его в справочник.
+            </p>
+          </div>
+        )}
 
         <div className={FIELD}>
           <label htmlFor="keeper-village" className={LABEL}>

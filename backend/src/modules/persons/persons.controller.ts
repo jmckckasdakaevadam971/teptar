@@ -160,6 +160,8 @@ export async function pendingPersons(
   req: Request,
   res: Response,
 ): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
   const persons = await service.getPendingPersons(Number(req.params.ownerId));
   res.json(ok(persons));
 }
@@ -188,6 +190,8 @@ export async function mergeCandidates(
   req: Request,
   res: Response,
 ): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
   const candidates = await service.listTreeMergeCandidates(
     Number(req.params.ownerId),
   );
@@ -247,18 +251,22 @@ export async function publicTrees(req: Request, res: Response): Promise<void> {
 // ── Дубли и объединение (модератор) ──────────────────────────
 
 export async function duplicates(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
   const pairs = await service.findOwnerDuplicates(Number(req.params.ownerId));
   res.json(ok(pairs));
 }
 
 export async function changes(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertOwnerInTeips(Number(req.params.ownerId), teipIds);
   const list = await service.getTreeChanges(Number(req.params.ownerId));
   res.json(ok(list));
 }
 
 export async function approveEdit(req: Request, res: Response): Promise<void> {
   const teipIds = await service.getModeratorTeipIds(viewerOf(req));
-  await service.assertPersonInTeips(Number(req.params.id), teipIds);
+  await service.assertPersonOwnerInTeips(Number(req.params.id), teipIds);
   const person = await service.approveEdit(
     Number(req.params.id),
     req.user!.userId,
@@ -268,7 +276,7 @@ export async function approveEdit(req: Request, res: Response): Promise<void> {
 
 export async function rejectEdit(req: Request, res: Response): Promise<void> {
   const teipIds = await service.getModeratorTeipIds(viewerOf(req));
-  await service.assertPersonInTeips(Number(req.params.id), teipIds);
+  await service.assertPersonOwnerInTeips(Number(req.params.id), teipIds);
   const result = await service.rejectEdit(
     Number(req.params.id),
     req.user!.userId,
@@ -278,6 +286,8 @@ export async function rejectEdit(req: Request, res: Response): Promise<void> {
 
 export async function merge(req: Request, res: Response): Promise<void> {
   const { keep_id, drop_id } = mergeSchema.parse(req.body);
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertPersonOwnerInTeips(keep_id, teipIds);
   const result = await service.mergePersons(keep_id, drop_id, req.user!.userId);
   res.json(ok(result));
 }
@@ -341,13 +351,17 @@ export async function mergePersonSearch(
   res: Response,
 ): Promise<void> {
   const q = String(req.query.q ?? "");
-  const result = await service.searchMergeCandidates(q);
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  const result = await service.searchMergeCandidates(q, teipIds);
   res.json(ok(result));
 }
 
 /** POST /moderation/tree-merges/manual — объединить выбранную пару. */
 export async function manualMerge(req: Request, res: Response): Promise<void> {
   const input = manualMergeSchema.parse(req.body);
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertPersonOwnerInTeips(input.anchor_a_id, teipIds);
+  await service.assertPersonOwnerInTeips(input.anchor_b_id, teipIds);
   const result = await service.manualMerge(
     input.anchor_a_id,
     input.anchor_b_id,
@@ -365,6 +379,8 @@ export async function manualMerge(req: Request, res: Response): Promise<void> {
 
 /** POST /moderation/tree-merges/:id/unmerge — отменить одобренное объединение. */
 export async function unmerge(req: Request, res: Response): Promise<void> {
+  const teipIds = await service.getModeratorTeipIds(viewerOf(req));
+  await service.assertTreeMergeInTeips(Number(req.params.id), teipIds);
   const result = await service.unmerge(
     Number(req.params.id),
     req.user!.userId,

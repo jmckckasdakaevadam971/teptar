@@ -26,11 +26,13 @@ export function isAdmin(viewer: Viewer): boolean {
 
 // ============================================================================
 //  МОДЕРАЦИЯ ПО ТЕЙПАМ
-//  Хранитель (teip_admin) с закреплёнными тейпами видит и решает только
-//  заявки своих тейпов. Без закреплений — общий модератор (видит всё).
+//  Хранитель (teip_admin) отвечает только за свой тейп: видит и решает
+//  заявки закреплённых тейпов (admin_assignments), а без закреплений —
+//  тейпа из своего профиля. Древа других тейпов к нему не попадают.
+//  Без ограничений видит только супер-админ.
 // ============================================================================
 
-/** Тейпы модератора. null = без ограничений (супер-админ или общий модератор). */
+/** Тейпы модератора. null = без ограничений (только супер-админ). */
 export async function getModeratorTeipIds(
   viewer: Viewer,
 ): Promise<number[] | null> {
@@ -39,8 +41,15 @@ export async function getModeratorTeipIds(
     "SELECT DISTINCT teip_id FROM admin_assignments WHERE user_id = $1",
     [viewer.userId],
   );
-  if (rows.length === 0) return null;
-  return rows.map((r) => r.teip_id);
+  if (rows.length > 0) return rows.map((r) => Number(r.teip_id));
+  // Без закреплений — свой тейп из профиля; нет и его — модератор не видит
+  // ничего (пустой список, а не «всё»).
+  const own = await query<{ teip_id: number | null }>(
+    "SELECT teip_id FROM users WHERE id = $1",
+    [viewer.userId],
+  );
+  const teipId = own[0]?.teip_id;
+  return teipId != null ? [Number(teipId)] : [];
 }
 
 const TEIP_SCOPE_ERROR = "Этот тейп не закреплён за вами";
@@ -66,6 +75,24 @@ export async function assertPersonInTeips(
   if (!teipIds) return;
   const rows = await query(
     "SELECT 1 FROM persons WHERE id = $1 AND teip_id = ANY($2) LIMIT 1",
+    [personId, teipIds],
+  );
+  if (rows.length === 0) throw new ApiError(403, TEIP_SCOPE_ERROR);
+}
+
+/**
+ * Древо, которому принадлежит персона, относится к тейпам модератора?
+ * (хотя бы одна персона того же владельца — сама персона может быть без тейпа)
+ */
+export async function assertPersonOwnerInTeips(
+  personId: number,
+  teipIds: number[] | null,
+): Promise<void> {
+  if (!teipIds) return;
+  const rows = await query(
+    `SELECT 1 FROM persons p
+     JOIN persons o ON o.created_by = p.created_by
+     WHERE p.id = $1 AND o.teip_id = ANY($2) LIMIT 1`,
     [personId, teipIds],
   );
   if (rows.length === 0) throw new ApiError(403, TEIP_SCOPE_ERROR);
@@ -2882,9 +2909,13 @@ export interface MergeSearchHit {
   status: string;
 }
 
-/** Поиск персон по имени для ручного объединения (только публичные с автором). */
+/**
+ * Поиск персон по имени для ручного объединения (только публичные с автором).
+ * teipIds — скоуп модератора: показываются только персоны из древ его тейпов.
+ */
 export async function searchMergeCandidates(
   q: string,
+  teipIds: number[] | null = null,
 ): Promise<MergeSearchHit[]> {
   const term = q.trim();
   if (term.length < 2) return [];
@@ -2904,9 +2935,12 @@ export async function searchMergeCandidates(
      WHERE p.visibility = 'public' AND p.status IN ('approved', 'pending')
        AND p.created_by IS NOT NULL
        AND (p.full_name % $1 OR p.full_name ILIKE '%' || $1 || '%')
+       AND ($2::bigint[] IS NULL OR EXISTS (
+             SELECT 1 FROM persons ps
+             WHERE ps.created_by = p.created_by AND ps.teip_id = ANY($2)))
      ORDER BY sim DESC, COALESCE(p.birth_year, 9999), p.full_name
      LIMIT 20`,
-    [term],
+    [term, teipIds],
   );
   return rows.map((r) => ({
     id: Number(r.id),

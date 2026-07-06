@@ -26,7 +26,9 @@ export interface UserProfile extends User {
   created_at: string;
   persons_count: number;
   root_person_id: number | null;
+  teip_id?: number | null;
   teip_name?: string | null;
+  village_id?: number | null;
   village_name?: string | null;
 }
 

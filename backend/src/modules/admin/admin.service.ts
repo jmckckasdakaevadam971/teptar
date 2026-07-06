@@ -63,7 +63,11 @@ export async function listUsers(): Promise<AdminUserRow[]> {
   );
 }
 
-/** Сменить роль пользователю. Запрещено менять собственную роль. */
+/**
+ * Сменить роль пользователю. Запрещено менять собственную роль.
+ * Хранитель (teip_admin) назначается только на свой тейп: роль требует тейпа
+ * в профиле, закрепления синхронизируются автоматически.
+ */
 export async function updateUserRole(
   id: number,
   role: UserRole,
@@ -75,11 +79,46 @@ export async function updateUserRole(
   if (id === actingUserId) {
     throw new ApiError(400, 'Нельзя менять собственную роль');
   }
-  const rows = await query<{ id: number }>(
-    'UPDATE users SET role = $2 WHERE id = $1 RETURNING id',
-    [id, role],
-  );
-  if (rows.length === 0) throw new ApiError(404, 'Пользователь не найден');
+  await withTransaction(async (client) => {
+    const users = await client.query<{ id: number; teip_id: number | null }>(
+      'SELECT id, teip_id FROM users WHERE id = $1 FOR UPDATE',
+      [id],
+    );
+    const user = users.rows[0];
+    if (!user) throw new ApiError(404, 'Пользователь не найден');
+
+    if (role === 'teip_admin' && user.teip_id == null) {
+      throw new ApiError(
+        400,
+        'У пользователя не указан тейп — хранитель назначается только на свой тейп',
+      );
+    }
+
+    await client.query('UPDATE users SET role = $2 WHERE id = $1', [id, role]);
+
+    if (role === 'teip_admin') {
+      // Закрепляем ровно свой тейп: чужие закрепления убираем, свой добавляем.
+      await client.query(
+        'DELETE FROM admin_assignments WHERE user_id = $1 AND teip_id <> $2',
+        [id, user.teip_id],
+      );
+      const exists = await client.query(
+        `SELECT 1 FROM admin_assignments
+         WHERE user_id = $1 AND teip_id = $2 AND village_id IS NULL`,
+        [id, user.teip_id],
+      );
+      if ((exists.rowCount ?? 0) === 0) {
+        await client.query(
+          `INSERT INTO admin_assignments (user_id, teip_id, village_id)
+           VALUES ($1, $2, NULL)`,
+          [id, user.teip_id],
+        );
+      }
+    } else if (role === 'viewer' || role === 'editor') {
+      // Понижение: закрепления модератора больше не действуют.
+      await client.query('DELETE FROM admin_assignments WHERE user_id = $1', [id]);
+    }
+  });
 }
 
 /** Удалить пользователя. Запрещено удалять собственный аккаунт. */

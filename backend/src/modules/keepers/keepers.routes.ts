@@ -16,7 +16,7 @@ keepersRouter.get("/", asyncHandler(controller.list));
 keepersRouter.get("/my", requireAuth, asyncHandler(controller.my));
 keepersRouter.post("/apply", requireAuth, asyncHandler(controller.apply));
 
-// Рассмотрение заявок и управление тейпами модераторов — супер-админ
+// Рассмотрение заявок — супер-админ
 keepersRouter.get(
   "/applications",
   requireAuth,
@@ -34,10 +34,4 @@ keepersRouter.post(
   requireAuth,
   requireRole("super_admin"),
   asyncHandler(controller.reject),
-);
-keepersRouter.put(
-  "/users/:id/teips",
-  requireAuth,
-  requireRole("super_admin"),
-  asyncHandler(controller.setUserTeips),
 );

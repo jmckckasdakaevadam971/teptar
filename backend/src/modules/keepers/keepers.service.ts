@@ -102,18 +102,38 @@ export async function applyKeeper(
     contact?: string | null;
   },
 ): Promise<KeeperApplication> {
-  // Название тейпа: из справочника или как ввёл заявитель.
-  let teipId: number | null = input.teip_id ?? null;
-  let teipName = (input.teip_name ?? "").trim();
-  if (teipId != null) {
+  // Хранитель отвечает только за свой тейп: заявка подаётся по тейпу из
+  // профиля заявителя. Выбор тейпа вручную остаётся только для старых
+  // аккаунтов, у которых тейп в профиле не указан.
+  const me = await query<{ teip_id: number | null }>(
+    "SELECT teip_id FROM users WHERE id = $1",
+    [userId],
+  );
+  if (me.length === 0) throw new ApiError(404, "Пользователь не найден");
+  const ownTeipId = me[0].teip_id;
+
+  let teipId: number | null;
+  let teipName: string;
+  if (ownTeipId != null) {
+    teipId = Number(ownTeipId);
     const teips = await query<{ name: string }>(
       "SELECT name FROM teips WHERE id = $1",
       [teipId],
     );
-    if (teips.length === 0) {
-      teipId = null; // тейпа нет в справочнике — оставим текстом
-    } else {
-      teipName = teips[0].name;
+    teipName = teips[0]?.name ?? "";
+  } else {
+    teipId = input.teip_id ?? null;
+    teipName = (input.teip_name ?? "").trim();
+    if (teipId != null) {
+      const teips = await query<{ name: string }>(
+        "SELECT name FROM teips WHERE id = $1",
+        [teipId],
+      );
+      if (teips.length === 0) {
+        teipId = null; // тейпа нет в справочнике — оставим текстом
+      } else {
+        teipName = teips[0].name;
+      }
     }
   }
   if (!teipName) throw new ApiError(400, "Укажите тейп");
@@ -165,7 +185,10 @@ interface ResolvedApplication {
 }
 
 /**
- * Одобрить заявку: роль teip_admin + закрепление тейпа.
+ * Одобрить заявку: роль teip_admin + закрепление своего тейпа.
+ * Эффективный тейп — из профиля заявителя (приоритет) или из заявки;
+ * если в профиле тейп не указан — дописывается. Хранитель закрепляется
+ * ровно за одним — своим — тейпом.
  * Возвращает контакт заявителя для письма-уведомления.
  */
 export async function approveApplication(
@@ -173,9 +196,11 @@ export async function approveApplication(
   adminId: number,
 ): Promise<ResolvedApplication> {
   return withTransaction(async (client) => {
-    const apps = await client.query<ResolvedApplication & { status: string }>(
+    const apps = await client.query<
+      ResolvedApplication & { status: string; user_teip_id: number | null }
+    >(
       `SELECT ka.user_id, ka.teip_id, ka.teip_name, ka.status,
-              u.email, u.display_name
+              u.email, u.display_name, u.teip_id AS user_teip_id
        FROM keeper_applications ka JOIN users u ON u.id = ka.user_id
        WHERE ka.id = $1 FOR UPDATE`,
       [appId],
@@ -185,11 +210,25 @@ export async function approveApplication(
     if (app.status !== "pending")
       throw new ApiError(409, "Заявка уже рассмотрена");
 
+    const effectiveTeipId = app.user_teip_id ?? app.teip_id;
+    if (effectiveTeipId == null) {
+      throw new ApiError(
+        400,
+        `Тейп «${app.teip_name}» отсутствует в справочнике, а в профиле заявителя тейп не указан — закрепить хранителя не за что. Добавьте тейп в справочник и попросите подать заявку заново.`,
+      );
+    }
+
     await client.query(
       `UPDATE keeper_applications
        SET status = 'approved', resolved_by = $2, resolved_at = now()
        WHERE id = $1`,
       [appId, adminId],
+    );
+
+    // Дописываем тейп в профиль, если там пусто (старые аккаунты).
+    await client.query(
+      `UPDATE users SET teip_id = $2 WHERE id = $1 AND teip_id IS NULL`,
+      [app.user_id, effectiveTeipId],
     );
 
     // Повышаем роль (админов не трогаем).
@@ -199,24 +238,34 @@ export async function approveApplication(
       [app.user_id],
     );
 
-    // Закрепляем тейп (если он из справочника). NULL-village дубли
-    // не ловятся UNIQUE-ограничением, поэтому проверяем вручную.
-    if (app.teip_id != null) {
-      const exists = await client.query(
-        `SELECT 1 FROM admin_assignments
-         WHERE user_id = $1 AND teip_id = $2 AND village_id IS NULL`,
-        [app.user_id, app.teip_id],
+    // Закрепляем ровно свой тейп: чужие закрепления убираем. NULL-village
+    // дубли не ловятся UNIQUE-ограничением, поэтому проверяем вручную.
+    await client.query(
+      `DELETE FROM admin_assignments WHERE user_id = $1 AND teip_id <> $2`,
+      [app.user_id, effectiveTeipId],
+    );
+    const exists = await client.query(
+      `SELECT 1 FROM admin_assignments
+       WHERE user_id = $1 AND teip_id = $2 AND village_id IS NULL`,
+      [app.user_id, effectiveTeipId],
+    );
+    if ((exists.rowCount ?? 0) === 0) {
+      await client.query(
+        `INSERT INTO admin_assignments (user_id, teip_id, village_id)
+         VALUES ($1,$2,NULL)`,
+        [app.user_id, effectiveTeipId],
       );
-      if (exists.rowCount === 0) {
-        await client.query(
-          `INSERT INTO admin_assignments (user_id, teip_id, village_id)
-           VALUES ($1,$2,NULL)`,
-          [app.user_id, app.teip_id],
-        );
-      }
     }
 
-    return app;
+    const teipNames = await client.query<{ name: string }>(
+      `SELECT name FROM teips WHERE id = $1`,
+      [effectiveTeipId],
+    );
+    return {
+      ...app,
+      teip_id: effectiveTeipId,
+      teip_name: teipNames.rows[0]?.name ?? app.teip_name,
+    };
   });
 }
 
@@ -236,38 +285,4 @@ export async function rejectApplication(
   if (rows.length === 0)
     throw new ApiError(404, "Заявка не найдена или уже рассмотрена");
   return rows[0];
-}
-
-/** Заменить набор тейпов модератора (супер-админ, таблица пользователей). */
-export async function setUserTeips(
-  userId: number,
-  teipIds: number[],
-): Promise<KeeperTeip[]> {
-  return withTransaction(async (client) => {
-    const users = await client.query<{ id: number }>(
-      "SELECT id FROM users WHERE id = $1",
-      [userId],
-    );
-    if (users.rowCount === 0) throw new ApiError(404, "Пользователь не найден");
-
-    await client.query(
-      "DELETE FROM admin_assignments WHERE user_id = $1 AND village_id IS NULL",
-      [userId],
-    );
-    for (const teipId of [...new Set(teipIds)]) {
-      await client.query(
-        `INSERT INTO admin_assignments (user_id, teip_id, village_id)
-         VALUES ($1,$2,NULL)`,
-        [userId, teipId],
-      );
-    }
-
-    const rows = await client.query<KeeperTeip>(
-      `SELECT DISTINCT t.id, t.name
-       FROM admin_assignments aa JOIN teips t ON t.id = aa.teip_id
-       WHERE aa.user_id = $1 ORDER BY t.name`,
-      [userId],
-    );
-    return rows.rows;
-  });
 }

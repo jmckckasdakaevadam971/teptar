@@ -487,12 +487,6 @@ export const api = {
       request<{ rejected: boolean }>(`/keepers/applications/${id}/reject`, {
         method: "POST",
       }),
-    /** Задать список тейпов пользователя (super_admin). */
-    setUserTeips: (userId: number, teipIds: number[]) =>
-      request<{ teips: { id: number; name: string }[] }>(
-        `/keepers/users/${userId}/teips`,
-        { method: "PUT", body: JSON.stringify({ teip_ids: teipIds }) },
-      ),
   },
 
   /** Ссылка для скачивания экспорта (открывается напрямую). */

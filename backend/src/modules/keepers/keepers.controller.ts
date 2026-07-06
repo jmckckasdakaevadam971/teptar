@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { ok } from "../../utils/http.js";
-import { applyKeeperSchema, setUserTeipsSchema } from "./keepers.types.js";
+import { applyKeeperSchema } from "./keepers.types.js";
 import * as service from "./keepers.service.js";
 import {
   sendKeeperApprovedEmail,
@@ -70,14 +70,4 @@ export async function reject(req: Request, res: Response): Promise<void> {
   );
   notifyApplicant("rejected", app);
   res.json(ok({ rejected: true }));
-}
-
-/** Заменить тейпы модератора (супер-админ). */
-export async function setUserTeips(
-  req: Request,
-  res: Response,
-): Promise<void> {
-  const { teip_ids } = setUserTeipsSchema.parse(req.body);
-  const teips = await service.setUserTeips(Number(req.params.id), teip_ids);
-  res.json(ok({ teips }));
 }
