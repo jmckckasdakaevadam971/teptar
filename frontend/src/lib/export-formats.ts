@@ -337,7 +337,7 @@ export function buildVsdx(
         `<Cell N="LocPinY" V="${vNum(h / 2)}" F="Height*0.5"/>` +
         `<Cell N="Angle" V="0"/>` +
         `<Cell N="LineColor" V="${l.color}"/>` +
-        `<Cell N="LineWeight" V="0.02"/>` +
+        `<Cell N="LineWeight" V="0.04"/>` +
         `<Section N="Geometry" IX="0">` +
         `<Cell N="NoFill" V="1"/>` +
         `<Cell N="NoLine" V="0"/>` +
@@ -365,7 +365,7 @@ export function buildVsdx(
         `<Cell N="FillForegnd" V="${b.fill}"/>` +
         `<Cell N="FillPattern" V="1"/>` +
         `<Cell N="LineColor" V="${b.line}"/>` +
-        `<Cell N="LineWeight" V="0.0138889"/>` +
+        `<Cell N="LineWeight" V="0.0277778"/>` +
         `<Cell N="Rounding" V="0.05"/>` +
         `<Cell N="VerticalAlign" V="1"/>` +
         `<Section N="Character"><Row IX="0">` +
@@ -433,7 +433,7 @@ export function buildVsdx(
     `<Cell N="EnableLineProps" V="1"/>` +
     `<Cell N="EnableFillProps" V="1"/>` +
     `<Cell N="EnableTextProps" V="1"/>` +
-    `<Cell N="LineWeight" V="0.01"/>` +
+    `<Cell N="LineWeight" V="0.02"/>` +
     `<Cell N="LineColor" V="#000000"/>` +
     `<Cell N="LinePattern" V="1"/>` +
     `<Cell N="FillForegnd" V="#ffffff"/>` +

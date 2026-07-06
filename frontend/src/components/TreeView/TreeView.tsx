@@ -1570,7 +1570,7 @@ export function TreeView({
       const bc = id ? bColors.get(id) : undefined;
       return bc ? `${bc}b3` : "rgba(201,162,39,0.5)";
     };
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
       // спуск от родителя + шина — цвет ветви родителя
       ctx.strokeStyle = strokeFor(c.pid);
@@ -1600,7 +1600,7 @@ export function TreeView({
 
     // Линии брака: муж — жена (рисуем до карточек, чтобы линия шла под ними)
     ctx.strokeStyle = "#9c6b74";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     for (const person of people) {
       const p = full.pos[person.id];
       if (!p) continue;
@@ -1654,7 +1654,7 @@ export function TreeView({
       ctx.fillStyle = "#201a12";
       ctx.fill();
       ctx.strokeStyle = "#c9a227";
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 3;
       ctx.stroke();
 
       // цветная метка ветви на левом крае карточки
@@ -1690,7 +1690,7 @@ export function TreeView({
         ctx.fillStyle = "#221619";
         ctx.fill();
         ctx.strokeStyle = "#8a5560";
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 3;
         ctx.stroke();
 
         const wtx = wx + 16;
@@ -2107,7 +2107,7 @@ export function TreeView({
                 return (
                   <g
                     key={i}
-                    strokeWidth={2}
+                    strokeWidth={4}
                     strokeLinecap="round"
                     strokeOpacity={0.7}
                   >
@@ -2165,8 +2165,8 @@ export function TreeView({
                   x2={drag.snapX + NODE_W / 2}
                   y2={layout.height}
                   stroke={TREE_LINE}
-                  strokeWidth={1.5}
-                  strokeDasharray="6 6"
+                  strokeWidth={3}
+                  strokeDasharray="12 12"
                 />
               ) : null}
               {drag && drag.snapY != null ? (
@@ -2176,8 +2176,8 @@ export function TreeView({
                   x2={layout.width}
                   y2={drag.snapY + NODE_H / 2}
                   stroke={TREE_LINE}
-                  strokeWidth={1.5}
-                  strokeDasharray="6 6"
+                  strokeWidth={3}
+                  strokeDasharray="12 12"
                 />
               ) : null}
 
@@ -2203,7 +2203,7 @@ export function TreeView({
                     };
                     const hit = {
                       stroke: "transparent",
-                      strokeWidth: 14,
+                      strokeWidth: 28,
                       "data-line-hit": true,
                       style: {
                         pointerEvents: "stroke",
@@ -2280,7 +2280,7 @@ export function TreeView({
                     x2={pp.x + SLOT * wives.length + 8}
                     y2={midY}
                     stroke="#9c6b74"
-                    strokeWidth={2}
+                    strokeWidth={4}
                     strokeLinecap="round"
                   />
                 );
@@ -2333,8 +2333,8 @@ export function TreeView({
                         d={d}
                         fill="none"
                         stroke="rgb(var(--tree-line) / 0.45)"
-                        strokeWidth={1.5}
-                        strokeDasharray="4 4"
+                        strokeWidth={3}
+                        strokeDasharray="8 8"
                       />
                     );
                   })
