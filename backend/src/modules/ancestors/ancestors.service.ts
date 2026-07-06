@@ -5,6 +5,7 @@ import {
   findSimilarApproved,
   FATHER_MIN_SIMILARITY,
   CHECK_NAME_OK,
+  nameSimSql,
 } from "../persons/persons.service.js";
 
 /** Кто запрашивает дерево — для контроля видимости. */
@@ -245,15 +246,16 @@ export async function getMergedTree(
   const byIdA = new Map(nodesA.map((n) => [n.id, n]));
   const byIdB = new Map(nodesB.map((n) => [n.id, n]));
 
-  // Сходство имён всех пар A×B одним запросом (pg_trgm — тот же алгоритм,
-  // что в чек-листе сверки). Порог минимальный (как у отцов), точнее
-  // фильтруем уже при матчинге.
+  // Сходство имён всех пар A×B одним запросом — комбинированная формула
+  // (та же, что в чек-листе): триграммы + нормализация написания +
+  // Левенштейн. Порог минимальный (как у отцов), точнее фильтруем уже
+  // при матчинге.
   const simRows = await query<{ a_id: number; b_id: number; sim: number }>(
     `SELECT a.id AS a_id, b.id AS b_id,
-            similarity(a.full_name, b.full_name) AS sim
+            ${nameSimSql("a.full_name", "b.full_name")} AS sim
      FROM persons a
      JOIN persons b
-       ON similarity(a.full_name, b.full_name) >= ${FATHER_MIN_SIMILARITY}
+       ON ${nameSimSql("a.full_name", "b.full_name")} >= ${FATHER_MIN_SIMILARITY}
      WHERE a.id = ANY($1::bigint[]) AND b.id = ANY($2::bigint[])`,
     [nodesA.map((n) => n.id), nodesB.map((n) => n.id)],
   );
@@ -313,8 +315,10 @@ export async function getMergedTree(
       if (simOf(pa, pb) >= FATHER_MIN_SIMILARITY) pairUp(pa, pb);
     }
 
-    // Дети: совпадает пол, имя заметно похоже, года рождения не расходятся.
-    // Жадно от самых похожих пар, чтобы тёзки не перепутались.
+    // Дети: совпадает пол, имя похоже, года рождения не расходятся.
+    // Если года практически совпадают — порог имени мягче (вариант
+    // написания), иначе требуем заметное сходство. Жадно от самых
+    // похожих пар, чтобы тёзки не перепутались.
     const listA = kidsA.get(aId) ?? [];
     const listB = kidsB.get(bId) ?? [];
     const cand: Array<{ ca: TreeNode; cb: TreeNode; s: number }> = [];
@@ -322,8 +326,13 @@ export async function getMergedTree(
       for (const cb of listB) {
         if (ca.gender !== cb.gender) continue;
         if (!yearsClose(ca, cb)) continue;
+        const sameYear =
+          ca.birth_year != null &&
+          cb.birth_year != null &&
+          Math.abs(ca.birth_year - cb.birth_year) <= 1;
         const s = simOf(ca.id, cb.id);
-        if (s >= CHECK_NAME_OK) cand.push({ ca, cb, s });
+        if (s >= (sameYear ? FATHER_MIN_SIMILARITY : CHECK_NAME_OK))
+          cand.push({ ca, cb, s });
       }
     }
     cand.sort((x, y) => y.s - x.s);

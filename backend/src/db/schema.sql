@@ -5,7 +5,8 @@
 -- ============================================================================
 
 -- Расширения --------------------------------------------------------------
-CREATE EXTENSION IF NOT EXISTS pg_trgm;     -- нечёткий поиск по ФИО
+CREATE EXTENSION IF NOT EXISTS pg_trgm;       -- нечёткий поиск по ФИО
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch; -- левенштейн для вариантов написания
 
 -- Для чистого пересоздания при разработке (ОСТОРОЖНО на проде!) ------------
 DROP TABLE IF EXISTS change_log        CASCADE;

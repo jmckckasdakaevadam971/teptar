@@ -2090,6 +2090,31 @@ export interface MergeCheck {
 export const CHECK_NAME_OK = 0.62;
 
 /**
+ * SQL-выражение комбинированного сходства имён (0..1) для выражений a и b.
+ * pg_trgm несправедливо занижает короткие кавказские имена с вариантами
+ * написания («Ахмад»/«Ахьмад» = 0.44), поэтому берём максимум из:
+ * триграмм по исходным строкам, триграмм по нормализованным (без «ь»/«ъ»,
+ * ё→е) и запасной оценки по Левенштейну (1 правка — почти одно имя).
+ */
+export function nameSimSql(a: string, b: string): string {
+  const norm = (x: string) =>
+    `replace(replace(replace(lower(${x}), 'ь', ''), 'ъ', ''), 'ё', 'е')`;
+  const na = norm(a);
+  const nb = norm(b);
+  return `GREATEST(
+    similarity(${a}, ${b}),
+    similarity(${na}, ${nb}),
+    CASE
+      WHEN length(${a}) > 100 OR length(${b}) > 100 THEN 0
+      WHEN levenshtein(${na}, ${nb}) <= 1 THEN 0.9
+      WHEN levenshtein(${na}, ${nb}) <= 2
+           AND LEAST(length(${a}), length(${b})) >= 7 THEN 0.7
+      ELSE 0
+    END
+  )`;
+}
+
+/**
  * Сверить две персоны как кандидатов в общую точку соединения древ.
  * Возвращает карточки обеих сторон и чек-лист ok/warn/block.
  * Используется и для ручного объединения, и перед применением предложения.
@@ -2181,17 +2206,18 @@ export async function checkMergePair(
   const a = card(rowA);
   const b = card(rowB);
 
-  // Сходство имён (своих, отцов, матерей) считает pg_trgm одним запросом.
+  // Сходство имён (своих, отцов, матерей) — комбинированная формула,
+  // терпимая к вариантам написания («Ахмад»/«Ахьмад», «Хусейн»/«Хусайн»).
   const sims = await query<{
     name_sim: number;
     father_sim: number | null;
     mother_sim: number | null;
   }>(
-    `SELECT similarity($1, $2) AS name_sim,
+    `SELECT ${nameSimSql("$1::text", "$2::text")} AS name_sim,
             CASE WHEN $3::text IS NULL OR $4::text IS NULL THEN NULL
-                 ELSE similarity($3, $4) END AS father_sim,
+                 ELSE ${nameSimSql("$3::text", "$4::text")} END AS father_sim,
             CASE WHEN $5::text IS NULL OR $6::text IS NULL THEN NULL
-                 ELSE similarity($5, $6) END AS mother_sim`,
+                 ELSE ${nameSimSql("$5::text", "$6::text")} END AS mother_sim`,
     [
       a.full_name,
       b.full_name,
@@ -2213,8 +2239,8 @@ export async function checkMergePair(
      FROM persons ka, persons kb
      WHERE (ka.father_id = $1 OR ka.mother_id = $1)
        AND (kb.father_id = $2 OR kb.mother_id = $2)
-       AND similarity(ka.full_name, kb.full_name) >= ${CHECK_NAME_OK}
-     ORDER BY similarity(ka.full_name, kb.full_name) DESC
+       AND ${nameSimSql("ka.full_name", "kb.full_name")} >= ${CHECK_NAME_OK}
+     ORDER BY ${nameSimSql("ka.full_name", "kb.full_name")} DESC
      LIMIT 5`,
     [aId, bId],
   );
