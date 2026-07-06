@@ -193,7 +193,9 @@ function itemTitle(item: FeedItem): string {
     case "merge":
       return item.m.root_name || item.m.merged_name;
     case "edit":
-      return `${item.change.full_name} — правка данных`;
+      return item.change.is_new
+        ? `${item.change.full_name} — добавление в ветвь`
+        : `${item.change.full_name} — правка данных`;
   }
 }
 
@@ -1599,14 +1601,42 @@ function EditBody({
 }) {
   return (
     <div>
-      <p className="m-0 mb-2 text-[13px] leading-relaxed text-sand">
-        Запись уже опубликована — все видят старые данные, пока вы не примете
-        правку. Зачёркнуто — как было, рядом — как станет.
-      </p>
+      {change.is_new ? (
+        <>
+          <p className="m-0 mb-1 text-[13px] font-semibold text-cream">
+            ➕ Добавление нового человека в ветвь
+            {change.author_name ? (
+              <span className="font-normal text-sand">
+                {" "}
+                — автор: {change.author_name}
+              </span>
+            ) : null}
+          </p>
+          <p className="m-0 mb-2 text-[13px] leading-relaxed text-sand">
+            Карточки ещё нет в опубликованной родословной — она появится после
+            одобрения. При отклонении добавление будет удалено.
+          </p>
+        </>
+      ) : (
+        <p className="m-0 mb-2 text-[13px] leading-relaxed text-sand">
+          {change.author_name ? (
+            <>
+              Автор правки: {change.author_name}.{" "}
+            </>
+          ) : null}
+          Запись уже опубликована — все видят старые данные, пока вы не примете
+          правку. Зачёркнуто — как было, рядом — как станет.
+        </p>
+      )}
       <ul className="m-0 mb-3 list-disc pl-5 text-[13px] text-sand">
         {Object.entries(change.diff).map(([field, v]) => (
           <li key={field}>
-            {FIELD_RU[field] ?? field}: <s>{String(v.from ?? "—")}</s> →{" "}
+            {FIELD_RU[field] ?? field}:{" "}
+            {change.is_new ? null : (
+              <>
+                <s>{String(v.from ?? "—")}</s> →{" "}
+              </>
+            )}
             <span className="text-cream">{String(v.to ?? "—")}</span>
           </li>
         ))}

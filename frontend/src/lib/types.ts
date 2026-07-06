@@ -301,6 +301,10 @@ export interface TreeChange {
   full_name: string;
   diff: Record<string, { from: unknown; to: unknown }>;
   created_at: string;
+  /** Добавление нового человека в ветвь (а не правка существующего). */
+  is_new?: boolean;
+  /** Автор изменения (владелец или получатель доступа к ветви). */
+  author_name?: string | null;
 }
 
 export interface TreeNode {
@@ -320,6 +324,8 @@ export interface TreeNode {
   merge_author?: string | null;
   /** Точка соединения — общий человек, через которого слиты древа. */
   merge_anchor?: boolean;
+  /** Карточка ещё не одобрена модератором (добавление в ветвь). */
+  pending?: boolean;
 }
 
 export interface Teip {

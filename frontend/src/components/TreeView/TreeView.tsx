@@ -2360,7 +2360,9 @@ export function TreeView({
                     }`
                   : person.mergeAnchor
                     ? "Точка объединения родословных"
-                    : undefined;
+                    : person.pendingModeration
+                      ? "Добавление ожидает проверки модератором"
+                      : undefined;
                 const p = displayPos[person.id];
                 if (!p) return null;
                 return (
@@ -2410,15 +2412,21 @@ export function TreeView({
                         ? "border-primary shadow-[0_0_0_1px_var(--primary)]"
                         : person.highlighted
                           ? "border-amber-500 shadow-[0_0_0_2px_rgb(245_158_11_/_0.55)]"
-                          : person.mergeAdded
-                            ? "border-success-border shadow-[0_0_0_1px_rgb(var(--success-border))] hover:border-success"
-                            : isAncestor
-                              ? "border-primary/50"
-                              : "border-border hover:border-primary/40",
+                          : person.pendingModeration
+                            ? "border-amber-500/70 border-dashed shadow-[0_0_0_1px_rgb(245_158_11_/_0.35)]"
+                            : person.mergeAdded
+                              ? "border-success-border shadow-[0_0_0_1px_rgb(var(--success-border))] hover:border-success"
+                              : isAncestor
+                                ? "border-primary/50"
+                                : "border-border hover:border-primary/40",
                     )}
                   >
                     {/* Метки объединённого древа: добавленная ветвь и точка соединения */}
-                    {person.mergeAdded ? (
+                    {person.pendingModeration ? (
+                      <span className="pointer-events-none absolute -top-4 left-3 z-10 rounded-full border border-amber-500/60 bg-amber-100 px-3 py-0.5 text-[20px] font-medium text-amber-700">
+                        На модерации
+                      </span>
+                    ) : person.mergeAdded ? (
                       <span className="pointer-events-none absolute -top-4 left-3 z-10 rounded-full border border-success-border bg-success-bg px-3 py-0.5 text-[20px] font-medium text-success">
                         Добавлено
                       </span>

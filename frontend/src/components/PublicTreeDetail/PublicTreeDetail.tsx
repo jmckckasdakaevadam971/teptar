@@ -34,6 +34,7 @@ export function toTreePeople(nodes: TreeNode[]): TreePerson[] {
     mergeAdded: n.merge_added || undefined,
     mergeAuthor: n.merge_author ?? undefined,
     mergeAnchor: n.merge_anchor || undefined,
+    pendingModeration: n.pending || undefined,
     parentId:
       n.father_id != null && ids.has(n.father_id)
         ? String(n.father_id)
@@ -59,6 +60,18 @@ interface EditFormState {
     note: string | null;
   };
   full_name: string;
+  birth: string;
+  death: string;
+  note: string;
+}
+
+/** Форма добавления ребёнка в ветвь (отправляется сразу на модерацию). */
+interface AddFormState {
+  parentId: number;
+  parentName: string;
+  parentGender: "m" | "f";
+  full_name: string;
+  gender: "m" | "f";
   birth: string;
   death: string;
   note: string;
@@ -105,6 +118,10 @@ export function PublicTreeDetail({
   const [drafts, setDrafts] = useState<Record<number, DraftPatch>>({});
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  // Добавление ребёнка в ветвь
+  const [addForm, setAddForm] = useState<AddFormState | null>(null);
+  // Инкремент перезагружает дерево и права (после добавления/удаления).
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +147,7 @@ export function PublicTreeDetail({
     return () => {
       cancelled = true;
     };
-  }, [rootId, mergeId]);
+  }, [rootId, mergeId, reloadKey]);
 
   // Мои права на этом древе (владелец / одобренные ветви).
   useEffect(() => {
@@ -147,7 +164,7 @@ export function PublicTreeDetail({
     return () => {
       cancelled = true;
     };
-  }, [ready, user, rootId, mergeId]);
+  }, [ready, user, rootId, mergeId, reloadKey]);
 
   // Подсветка ветви из query-параметра (?branch=ID) — просмотр владельцем.
   useEffect(() => {
@@ -349,6 +366,89 @@ export function PublicTreeDetail({
     }
   }, [drafts]);
 
+  /** Открыть форму добавления ребёнка к персоне ветви. */
+  const openAddForm = useCallback(
+    (parentId: number) => {
+      const parent = nodes.find((n) => n.id === parentId);
+      if (!parent) return;
+      setEditForm(null);
+      setAddForm({
+        parentId,
+        parentName: parent.full_name,
+        parentGender: parent.gender === "f" ? "f" : "m",
+        full_name: "",
+        gender: "m",
+        birth: "",
+        death: "",
+        note: "",
+      });
+    },
+    [nodes],
+  );
+
+  /** Создать ребёнка в ветви — сразу уходит на модерацию. */
+  const submitAdd = useCallback(async () => {
+    if (!addForm) return;
+    const name = addForm.full_name.trim();
+    if (!name) {
+      setActionError("Укажите ФИО нового человека");
+      return;
+    }
+    setSending(true);
+    setActionError(null);
+    try {
+      const birth =
+        addForm.birth.trim() === "" ? null : Number(addForm.birth.trim());
+      const death =
+        addForm.death.trim() === "" ? null : Number(addForm.death.trim());
+      await api.persons.create({
+        full_name: name,
+        gender: addForm.gender,
+        birth_year: birth != null && Number.isFinite(birth) ? birth : null,
+        death_year: death != null && Number.isFinite(death) ? death : null,
+        note: addForm.note.trim() || null,
+        // Ребёнок цепляется к отцу или матери — по полу родителя.
+        ...(addForm.parentGender === "f"
+          ? { mother_id: addForm.parentId }
+          : { father_id: addForm.parentId }),
+      });
+      setAddForm(null);
+      setNotice(
+        "Человек добавлен и отправлен на модерацию. До одобрения карточка видна только вам и владельцу родословной.",
+      );
+      setReloadKey((k) => k + 1);
+    } catch (e: unknown) {
+      setActionError(
+        e instanceof Error ? e.message : "Не удалось добавить человека",
+      );
+    } finally {
+      setSending(false);
+    }
+  }, [addForm]);
+
+  /** Удалить своё неодобренное добавление (пока модератор не одобрил). */
+  const deletePendingAdd = useCallback(async (personId: number) => {
+    setSending(true);
+    setActionError(null);
+    try {
+      await api.persons.delete(personId);
+      setEditForm(null);
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[personId];
+        return next;
+      });
+      setNotice("Добавление удалено.");
+      setReloadKey((k) => k + 1);
+    } catch (e: unknown) {
+      setActionError(
+        e instanceof Error ? e.message : "Не удалось удалить добавление",
+      );
+    } finally {
+      setSending(false);
+    }
+  }, []);
+
   const canRequest =
     ready &&
     user != null &&
@@ -503,9 +603,10 @@ export function PublicTreeDetail({
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Вам доступны карточки, подсвеченные оранжевым. Нажмите на
-                    карточку, внесите правки — изменения применятся к
-                    опубликованной родословной только после проверки
-                    модератором.
+                    карточку, чтобы поправить данные или добавить ребёнка —
+                    так ветвь прирастает новыми поколениями. Изменения
+                    применятся к опубликованной родословной только после
+                    проверки модератором.
                   </p>
                 </div>
                 <button
@@ -678,7 +779,142 @@ export function PublicTreeDetail({
                 <button
                   type="button"
                   className={BTN_SECONDARY}
+                  onClick={() => openAddForm(editForm.personId)}
+                >
+                  + Добавить ребёнка
+                </button>
+                {nodes.find((n) => n.id === editForm.personId)?.pending ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/50 px-4 py-2 text-sm text-red-500 transition-colors hover:bg-red-500/10"
+                    disabled={sending}
+                    onClick={() => void deletePendingAdd(editForm.personId)}
+                  >
+                    Удалить добавление
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
                   onClick={() => setEditForm(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {addForm ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className={`${CARD} w-full max-w-md`}>
+            <h3 className="font-serif text-lg font-semibold text-foreground">
+              Добавить ребёнка
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {addForm.parentGender === "f" ? "Мать" : "Отец"}:{" "}
+              <strong className="text-foreground">{addForm.parentName}</strong>
+              . Карточка уйдёт на модерацию и станет публичной после одобрения.
+            </p>
+            <div className="mt-4 grid gap-4">
+              <div className={FIELD}>
+                <label className={LABEL} htmlFor="af-name">
+                  ФИО
+                </label>
+                <input
+                  id="af-name"
+                  className={INPUT}
+                  value={addForm.full_name}
+                  onChange={(e) =>
+                    setAddForm({ ...addForm, full_name: e.target.value })
+                  }
+                />
+              </div>
+              <div className={FIELD}>
+                <span className={LABEL}>Пол</span>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="radio"
+                      name="af-gender"
+                      checked={addForm.gender === "m"}
+                      onChange={() => setAddForm({ ...addForm, gender: "m" })}
+                    />
+                    Мужской
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="radio"
+                      name="af-gender"
+                      checked={addForm.gender === "f"}
+                      onChange={() => setAddForm({ ...addForm, gender: "f" })}
+                    />
+                    Женский
+                  </label>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className={FIELD}>
+                  <label className={LABEL} htmlFor="af-birth">
+                    Год рождения
+                  </label>
+                  <input
+                    id="af-birth"
+                    className={INPUT}
+                    inputMode="numeric"
+                    value={addForm.birth}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, birth: e.target.value })
+                    }
+                  />
+                </div>
+                <div className={FIELD}>
+                  <label className={LABEL} htmlFor="af-death">
+                    Год смерти
+                  </label>
+                  <input
+                    id="af-death"
+                    className={INPUT}
+                    inputMode="numeric"
+                    value={addForm.death}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, death: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className={FIELD}>
+                <label className={LABEL} htmlFor="af-note">
+                  Заметка
+                </label>
+                <textarea
+                  id="af-note"
+                  className={`${INPUT} min-h-24 resize-y`}
+                  value={addForm.note}
+                  onChange={(e) =>
+                    setAddForm({ ...addForm, note: e.target.value })
+                  }
+                  maxLength={5000}
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className={BTN_PRIMARY}
+                  disabled={sending || addForm.full_name.trim() === ""}
+                  onClick={() => void submitAdd()}
+                >
+                  {sending ? "Отправка…" : "Добавить и отправить на модерацию"}
+                </button>
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  onClick={() => setAddForm(null)}
                 >
                   Отмена
                 </button>

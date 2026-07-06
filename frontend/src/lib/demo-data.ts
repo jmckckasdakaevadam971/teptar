@@ -40,6 +40,8 @@ export type Person = {
   mergeAnchor?: boolean;
   /** Подсветка ветви (выбор/редактирование ветви по запросу доступа). */
   highlighted?: boolean;
+  /** Карточка ещё не одобрена модератором (добавление в ветвь). */
+  pendingModeration?: boolean;
 };
 
 /** Все жёны человека: новое поле spouseNames + устаревшее spouseName. */

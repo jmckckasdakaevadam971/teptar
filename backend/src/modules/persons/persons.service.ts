@@ -136,7 +136,17 @@ export async function assertTreeMergeInTeips(
 /** Может ли зритель видеть конкретную персону. */
 function canView(p: PersonRow, viewer: Viewer): boolean {
   if (isAdmin(viewer)) return true;
-  if (viewer.userId && p.created_by === viewer.userId) return true;
+  // created_by/pending_by приходят из pg строками (BIGINT) — сравниваем числа.
+  if (
+    viewer.userId &&
+    p.created_by != null &&
+    Number(p.created_by) === viewer.userId
+  )
+    return true;
+  // Автор неодобренного добавления в чужую ветвь видит свою карточку.
+  const pendingBy = (p as unknown as Record<string, unknown>).pending_by;
+  if (viewer.userId && pendingBy != null && Number(pendingBy) === viewer.userId)
+    return true;
   return p.visibility === "public" && p.status === "approved";
 }
 
@@ -298,12 +308,12 @@ async function assertOwnsParents(
   if (isAdmin(viewer)) return;
   const ids = [fatherId, motherId].filter((x): x is number => !!x);
   if (ids.length === 0) return;
-  const rows = await query<{ id: number; created_by: number | null }>(
+  const rows = await query<{ id: number; created_by: number | string | null }>(
     "SELECT id, created_by FROM persons WHERE id = ANY($1)",
     [ids],
   );
   for (const r of rows) {
-    if (r.created_by !== viewer.userId) {
+    if (r.created_by == null || Number(r.created_by) !== viewer.userId) {
       throw new ApiError(403, "Нельзя добавлять людей в чужое древо");
     }
   }
@@ -314,40 +324,107 @@ export async function createPerson(
   viewer: Viewer,
 ): Promise<PersonRow> {
   const userId = viewer.userId;
-  // Нельзя добавлять людей в чужое древо: родитель должен быть своим (или вы админ).
-  await assertOwnsParents(
-    input.father_id ?? null,
-    input.mother_id ?? null,
-    viewer,
+  const parentIds = [input.father_id ?? null, input.mother_id ?? null].filter(
+    (x): x is number => !!x,
   );
 
-  return withTransaction(async (client) => {
-    const result = await client.query<PersonRow>(
-      `
-      INSERT INTO persons
-        (full_name, gender, birth_year, death_year,
-         father_id, mother_id, teip_id, gar_id, village_id,
-         note, visibility, status, created_by, approved_by, is_alive)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private','approved',$11,NULL,$12)
-      RETURNING *
-      `,
-      [
-        input.full_name,
-        input.gender ?? "m",
-        input.birth_year ?? null,
-        input.death_year ?? null,
-        input.father_id ?? null,
-        input.mother_id ?? null,
-        input.teip_id ?? null,
-        input.gar_id ?? null,
-        input.village_id ?? null,
-        input.note ?? null,
-        userId,
-        input.death_year == null,
-      ],
-    );
+  // Владелец древа, в чью ветвь добавляет человек грантополучатель
+  // (одобренный доступ к ветви). null — обычное добавление в своё древо.
+  let branchOwner: number | null = null;
 
-    const created = result.rows[0];
+  if (!isAdmin(viewer) && parentIds.length > 0) {
+    const parents = await query<{
+      id: number;
+      created_by: number | string | null;
+    }>("SELECT id, created_by FROM persons WHERE id = ANY($1)", [parentIds]);
+    const foreign = parents.filter(
+      (r) => r.created_by == null || Number(r.created_by) !== userId,
+    );
+    if (foreign.length > 0 && foreign.length < parents.length) {
+      throw new ApiError(400, "Родители из разных родословных");
+    }
+    if (foreign.length > 0) {
+      // Родитель из чужого древа: допустимо только при одобренном доступе
+      // к ветви — ребёнок человека ветви сам принадлежит этой ветви.
+      const grants = await Promise.all(
+        foreign.map((r) =>
+          userId ? hasBranchGrant(userId, Number(r.id)) : false,
+        ),
+      );
+      if (!grants.every(Boolean)) {
+        throw new ApiError(403, "Нельзя добавлять людей в чужое древо");
+      }
+      const owners = new Set(foreign.map((r) => Number(r.created_by)));
+      if (owners.size > 1) {
+        throw new ApiError(400, "Родители из разных родословных");
+      }
+      branchOwner = [...owners][0]!;
+    }
+  }
+
+  return withTransaction(async (client) => {
+    let created: PersonRow;
+    if (branchOwner != null) {
+      // Добавление в чужую ветвь: карточка public, но со статусом pending —
+      // публика её не увидит до одобрения модератором. created_by = владелец
+      // древа (так расчёт ветви и очередь правок работают по владельцу),
+      // автор — в pending_by; маркер __new_person отличает добавление
+      // от правки существующей карточки.
+      const result = await client.query<PersonRow>(
+        `
+        INSERT INTO persons
+          (full_name, gender, birth_year, death_year,
+           father_id, mother_id, teip_id, gar_id, village_id,
+           note, visibility, status, created_by, approved_by, is_alive,
+           pending_by, pending_at, pending_diff)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'public','pending',$11,NULL,$12,
+                $13, now(), '{"__new_person": true}')
+        RETURNING *
+        `,
+        [
+          input.full_name,
+          input.gender ?? "m",
+          input.birth_year ?? null,
+          input.death_year ?? null,
+          input.father_id ?? null,
+          input.mother_id ?? null,
+          input.teip_id ?? null,
+          input.gar_id ?? null,
+          input.village_id ?? null,
+          input.note ?? null,
+          branchOwner,
+          input.death_year == null,
+          userId,
+        ],
+      );
+      created = result.rows[0];
+    } else {
+      const result = await client.query<PersonRow>(
+        `
+        INSERT INTO persons
+          (full_name, gender, birth_year, death_year,
+           father_id, mother_id, teip_id, gar_id, village_id,
+           note, visibility, status, created_by, approved_by, is_alive)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private','approved',$11,NULL,$12)
+        RETURNING *
+        `,
+        [
+          input.full_name,
+          input.gender ?? "m",
+          input.birth_year ?? null,
+          input.death_year ?? null,
+          input.father_id ?? null,
+          input.mother_id ?? null,
+          input.teip_id ?? null,
+          input.gar_id ?? null,
+          input.village_id ?? null,
+          input.note ?? null,
+          userId,
+          input.death_year == null,
+        ],
+      );
+      created = result.rows[0];
+    }
 
     await client.query(
       `INSERT INTO change_log (person_id, user_id, action, diff)
@@ -368,7 +445,11 @@ export async function updatePerson(
   viewer: Viewer,
 ): Promise<PersonRow> {
   const existing = await getPerson(id); // проверка существования
-  if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
+  if (
+    !isAdmin(viewer) &&
+    (existing.created_by == null ||
+      Number(existing.created_by) !== viewer.userId)
+  ) {
     const granted =
       viewer.userId != null && (await hasBranchGrant(viewer.userId, id));
     if (!granted) {
@@ -439,11 +520,25 @@ export async function updatePerson(
   return rows[0];
 }
 
-/** Удалить персону. Убирать можно только своё древо (или админам). */
+/** Удалить персону. Убирать можно только своё древо (или админам).
+ *  Исключение: автор неодобренного добавления в чужую ветвь может
+ *  удалить своё добавление, пока модератор его не одобрил. */
 export async function deletePerson(id: number, viewer: Viewer): Promise<void> {
   const existing = await getPerson(id);
-  if (!isAdmin(viewer) && existing.created_by !== viewer.userId) {
-    throw new ApiError(403, "Удалять можно только своё древо");
+  if (
+    !isAdmin(viewer) &&
+    (existing.created_by == null ||
+      Number(existing.created_by) !== viewer.userId)
+  ) {
+    const row = existing as unknown as Record<string, unknown>;
+    const ownPendingAdd =
+      viewer.userId != null &&
+      row.pending_by != null &&
+      Number(row.pending_by) === viewer.userId &&
+      !!(row.pending_diff as Record<string, unknown> | null)?.__new_person;
+    if (!ownPendingAdd) {
+      throw new ApiError(403, "Удалять можно только своё древо");
+    }
   }
   const rows = await query("DELETE FROM persons WHERE id = $1 RETURNING id", [
     id,
@@ -776,6 +871,7 @@ export async function listPendingTrees(
      FROM persons p
      JOIN users u ON u.id = p.created_by
      WHERE p.visibility = 'public' AND p.status = 'pending'
+       AND p.pending_diff IS NULL
      GROUP BY u.id, u.display_name
      HAVING $1::bigint[] IS NULL OR bool_or(p.teip_id = ANY($1))
      ORDER BY count DESC`,
@@ -808,6 +904,7 @@ export async function listPendingTrees(
         AND (p.birth_year IS NULL OR o.birth_year IS NULL
              OR abs(o.birth_year - p.birth_year) <= 2)
        WHERE p.visibility = 'public' AND p.status = 'pending'
+         AND p.pending_diff IS NULL
          AND p.teip_id IS NOT NULL
          AND p.created_by = ANY($1)
      ),
@@ -899,6 +996,7 @@ export async function getPendingPersons(ownerId: number): Promise<PersonRow[]> {
   return query<PersonRow>(
     `SELECT * FROM persons
      WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'
+       AND pending_diff IS NULL
      ORDER BY (father_id IS NOT NULL), COALESCE(birth_year, 9999), full_name`,
     [ownerId],
   );
@@ -942,10 +1040,12 @@ async function approveTreeTx(
   adminId: number,
 ): Promise<{ count: number }> {
   {
-    // Есть ли новая версия на модерации?
+    // Есть ли новая версия на модерации? (добавления в ветви — pending_diff —
+    // не считаются: они идут через очередь правок, а не целых древ)
     const pending = await client.query<{ id: number }>(
       `SELECT id FROM persons
-       WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'`,
+       WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'
+         AND pending_diff IS NULL`,
       [ownerId],
     );
     if (pending.rowCount === 0)
@@ -973,10 +1073,12 @@ async function approveTreeTx(
       [ownerId],
     );
 
-    // Новую версию делаем одобренной (публичной).
+    // Новую версию делаем одобренной (публичной). Добавления в ветви
+    // (pending_diff) не трогаем — их одобряет модератор по одному.
     const rows = await client.query(
       `UPDATE persons SET status = 'approved', approved_by = $2, updated_at = now()
-       WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
+       WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'
+         AND pending_diff IS NULL RETURNING id`,
       [ownerId, adminId],
     );
 
@@ -1230,7 +1332,8 @@ export async function rejectTree(
 ): Promise<{ count: number }> {
   const rows = await query(
     `UPDATE persons SET status = 'rejected', visibility = 'private', updated_at = now()
-     WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
+     WHERE created_by = $1 AND visibility = 'public' AND status = 'pending'
+       AND pending_diff IS NULL RETURNING id`,
     [ownerId],
   );
   if (rows.length === 0)
@@ -1256,20 +1359,73 @@ export interface TreeChange {
   full_name: string;
   diff: Record<string, { from: unknown; to: unknown }>;
   created_at: string;
+  /** Добавление нового человека в ветвь (а не правка существующего). */
+  is_new?: boolean;
+  /** Автор изменения (владелец или получатель доступа к ветви). */
+  author_name?: string | null;
 }
 
 /** Список ожидающих правок (pending_diff) — старые данные остаются публичными. */
 export async function getTreeChanges(ownerId: number): Promise<TreeChange[]> {
   const rows = await query<
-    PersonRow & { pending_diff: any; pending_at: string }
+    PersonRow & {
+      pending_diff: any;
+      pending_at: string;
+      author_name: string | null;
+    }
   >(
-    `SELECT * FROM persons
-     WHERE created_by = $1 AND pending_diff IS NOT NULL
-     ORDER BY pending_at DESC LIMIT 100`,
+    `SELECT p.*, u.display_name AS author_name FROM persons p
+     LEFT JOIN users u ON u.id = p.pending_by
+     WHERE p.created_by = $1 AND p.pending_diff IS NOT NULL
+     ORDER BY p.pending_at DESC LIMIT 100`,
     [ownerId],
   );
+
+  // Имена родителей — для читаемого отображения добавлений.
+  const parentIds = new Set<number>();
+  for (const p of rows) {
+    if (p.pending_diff?.__new_person) {
+      if (p.father_id) parentIds.add(Number(p.father_id));
+      if (p.mother_id) parentIds.add(Number(p.mother_id));
+    }
+  }
+  const parents = parentIds.size
+    ? await query<{ id: number; full_name: string }>(
+        `SELECT id, full_name FROM persons WHERE id = ANY($1)`,
+        [[...parentIds]],
+      )
+    : [];
+  const parentName = new Map(parents.map((r) => [Number(r.id), r.full_name]));
+
   return rows.map((p) => {
     const diff: Record<string, { from: unknown; to: unknown }> = {};
+    if (p.pending_diff?.__new_person) {
+      // Новая карточка: показываем её поля как «— → значение».
+      diff.full_name = { from: null, to: p.full_name };
+      if (p.birth_year != null)
+        diff.birth_year = { from: null, to: p.birth_year };
+      if (p.death_year != null)
+        diff.death_year = { from: null, to: p.death_year };
+      if (p.note) diff.note = { from: null, to: p.note };
+      if (p.father_id)
+        diff.father_id = {
+          from: null,
+          to: parentName.get(Number(p.father_id)) ?? p.father_id,
+        };
+      if (p.mother_id)
+        diff.mother_id = {
+          from: null,
+          to: parentName.get(Number(p.mother_id)) ?? p.mother_id,
+        };
+      return {
+        person_id: p.id,
+        full_name: p.full_name,
+        diff,
+        created_at: p.pending_at,
+        is_new: true,
+        author_name: p.author_name,
+      };
+    }
     for (const [k, v] of Object.entries(p.pending_diff ?? {})) {
       const before = (p as unknown as Record<string, unknown>)[k];
       if (before !== v) diff[k] = { from: before ?? null, to: v ?? null };
@@ -1279,6 +1435,7 @@ export async function getTreeChanges(ownerId: number): Promise<TreeChange[]> {
       full_name: p.full_name,
       diff,
       created_at: p.pending_at,
+      author_name: p.author_name,
     };
   });
 }
@@ -1295,6 +1452,24 @@ export async function approveEdit(
   if (rows.length === 0 || !rows[0].pending_diff)
     throw new ApiError(404, "Нет ожидающих правок");
   const input = rows[0].pending_diff as Record<string, unknown>;
+
+  // Добавление нового человека в ветвь: карточка уже содержит все данные,
+  // достаточно перевести её в approved (она станет публичной).
+  if (input.__new_person) {
+    const updated = await query<PersonRow>(
+      `UPDATE persons SET status = 'approved', approved_by = $2,
+         pending_diff = NULL, pending_by = NULL, pending_at = NULL,
+         updated_at = now() WHERE id = $1 RETURNING *`,
+      [personId, adminId],
+    );
+    await query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES ($1, $2, 'approve', '{"new_person": true}')`,
+      [personId, adminId],
+    );
+    return updated[0];
+  }
+
   const fields: string[] = [];
   const args: unknown[] = [];
   for (const [k, v] of Object.entries(input)) {
@@ -1320,6 +1495,49 @@ export async function rejectEdit(
   personId: number,
   adminId: number,
 ): Promise<{ rejected: boolean }> {
+  const existing = await query<{
+    id: number;
+    full_name: string;
+    pending_diff: any;
+  }>(
+    `SELECT id, full_name, pending_diff FROM persons
+     WHERE id = $1 AND pending_diff IS NOT NULL`,
+    [personId],
+  );
+  if (existing.length === 0) throw new ApiError(404, "Нет ожидающих правок");
+
+  // Отклонение добавления: карточки ещё нет в опубликованной версии,
+  // поэтому она удаляется целиком — вместе со своими неодобренными
+  // потомками-добавлениями, чтобы не оставить сирот.
+  if (existing[0].pending_diff?.__new_person) {
+    const deleted = await query<{ id: number }>(
+      `WITH RECURSIVE sub AS (
+         SELECT id FROM persons WHERE id = $1
+         UNION ALL
+         SELECT p.id FROM persons p
+         JOIN sub s ON p.father_id = s.id OR p.mother_id = s.id
+         WHERE p.pending_diff ? '__new_person'
+       )
+       DELETE FROM persons WHERE id IN (SELECT id FROM sub) RETURNING id`,
+      [personId],
+    );
+    // Журнал после удаления и с person_id = NULL: каскад по person_id
+    // снёс бы запись вместе с самой карточкой.
+    await query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES (NULL, $1, 'reject_new_person', $2)`,
+      [
+        adminId,
+        JSON.stringify({
+          person_id: personId,
+          full_name: existing[0].full_name,
+          deleted: deleted.length,
+        }),
+      ],
+    );
+    return { rejected: true };
+  }
+
   const rows = await query(
     `UPDATE persons SET pending_diff = NULL, pending_by = NULL, pending_at = NULL
      WHERE id = $1 AND pending_diff IS NOT NULL RETURNING id`,

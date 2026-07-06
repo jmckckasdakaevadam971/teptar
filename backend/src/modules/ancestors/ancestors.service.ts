@@ -30,7 +30,7 @@ function visClause(
   }
   if (viewer.userId) {
     return {
-      sql: ` AND (${alias}.visibility = 'public' AND ${alias}.status = 'approved' OR ${alias}.created_by = $3)`,
+      sql: ` AND (${alias}.visibility = 'public' AND ${alias}.status = 'approved' OR ${alias}.created_by = $3 OR ${alias}.pending_by = $3)`,
       param: viewer.userId,
     };
   }
@@ -57,6 +57,8 @@ export interface TreeNode {
   merge_author?: string | null;
   /** Точка соединения — общий человек, через которого слиты древа. */
   merge_anchor?: boolean;
+  /** Карточка ещё не одобрена модератором (добавление в ветвь). */
+  pending?: boolean;
 }
 
 export interface CommonAncestorResult {
@@ -83,17 +85,18 @@ export async function getAncestors(
     `
     WITH RECURSIVE ancestors AS (
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, p.spouse_names, 0 AS depth, ARRAY[p.id] AS path
+             p.father_id, p.mother_id, p.spouse_names, p.status, 0 AS depth, ARRAY[p.id] AS path
       FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, p.spouse_names, a.depth + 1, a.path || p.id
+             p.father_id, p.mother_id, p.spouse_names, p.status, a.depth + 1, a.path || p.id
       FROM persons p
       JOIN ancestors a ON p.id = a.father_id OR p.id = a.mother_id
       WHERE a.depth < $2 AND NOT p.id = ANY(a.path)${vis.sql}
     )
     SELECT id, full_name, gender, birth_year, death_year,
-           father_id, mother_id, spouse_names, depth
+           father_id, mother_id, spouse_names, depth,
+           (status <> 'approved') AS pending
     FROM ancestors
     ORDER BY depth
     `,
@@ -114,17 +117,18 @@ export async function getDescendants(
     `
     WITH RECURSIVE descendants AS (
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, p.spouse_names, 0 AS depth, ARRAY[p.id] AS path
+             p.father_id, p.mother_id, p.spouse_names, p.status, 0 AS depth, ARRAY[p.id] AS path
       FROM persons p WHERE p.id = $1${vis.sql}
       UNION ALL
       SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
-             p.father_id, p.mother_id, p.spouse_names, d.depth + 1, d.path || p.id
+             p.father_id, p.mother_id, p.spouse_names, p.status, d.depth + 1, d.path || p.id
       FROM persons p
       JOIN descendants d ON p.father_id = d.id OR p.mother_id = d.id
       WHERE d.depth < $2 AND NOT p.id = ANY(d.path)${vis.sql}
     )
     SELECT id, full_name, gender, birth_year, death_year,
-           father_id, mother_id, spouse_names, depth
+           father_id, mother_id, spouse_names, depth,
+           (status <> 'approved') AS pending
     FROM descendants
     ORDER BY depth
     `,
