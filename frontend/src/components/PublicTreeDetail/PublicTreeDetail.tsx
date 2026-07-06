@@ -64,6 +64,20 @@ interface EditFormState {
   note: string;
 }
 
+/**
+ * BIGINT из PostgreSQL приходит в JSON строкой — приводим идентификаторы
+ * узлов к числам, иначе строгие сравнения (выбор ветви, подсветка) молча
+ * не срабатывают.
+ */
+function normalizeNodes(data: TreeNode[]): TreeNode[] {
+  return data.map((n) => ({
+    ...n,
+    id: Number(n.id),
+    father_id: n.father_id != null ? Number(n.father_id) : null,
+    mother_id: n.mother_id != null ? Number(n.mother_id) : null,
+  }));
+}
+
 export function PublicTreeDetail({
   rootId,
   mergeId,
@@ -102,7 +116,7 @@ export function PublicTreeDetail({
         : api.tree.fullTree(rootId as number);
     load
       .then((data) => {
-        if (!cancelled) setNodes(data);
+        if (!cancelled) setNodes(normalizeNodes(data));
       })
       .catch((e: unknown) => {
         if (!cancelled)
