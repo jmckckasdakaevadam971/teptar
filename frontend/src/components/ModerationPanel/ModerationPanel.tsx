@@ -189,7 +189,7 @@ function itemTitle(item: FeedItem): string {
     case "suggestion":
       return `Общий предок: ${item.s.anchor_a.full_name}`;
     case "merge":
-      return item.m.merged_name;
+      return item.m.root_name || item.m.merged_name;
     case "edit":
       return `${item.change.full_name} — правка данных`;
   }
@@ -203,7 +203,7 @@ function itemMeta(item: FeedItem): string {
     case "suggestion":
       return `${item.s.owner_a.owner_name ?? "—"} ⇄ ${item.s.owner_b.owner_name ?? "—"} · совпадение ~${Math.round(item.s.similarity * 100)}%`;
     case "merge":
-      return `${item.m.total} ${personWord(item.m.total)} · ${item.m.branch_a.owner_name ?? "—"} + ${item.m.branch_b.owner_name ?? "—"}`;
+      return `${item.m.total} ${personWord(item.m.total)} (новых: ${item.m.added_count}) · ${item.m.branch_a.owner_name ?? "—"} + ${item.m.branch_b.owner_name ?? "—"}`;
     case "edit": {
       const n = Object.keys(item.change.diff).length;
       return `${item.ownerName} · изменений: ${n}`;
@@ -1400,16 +1400,28 @@ function MergeBody({
       </p>
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <StatBox
-          label="Общий предок"
+          label="Первопредок (название древа)"
+          value={`${m.root_name || m.merged_name}${m.root_birth_year != null ? ` (${m.root_birth_year}${m.root_death_year != null ? `–${m.root_death_year}` : ""})` : ""}`}
+        />
+        <StatBox
+          label="Точка соединения"
           value={`${m.merged_name}${m.merged_birth_year != null ? ` (${m.merged_birth_year}${m.merged_death_year != null ? `–${m.merged_death_year}` : ""})` : ""}`}
         />
         <StatBox
-          label={`Ветка A — ${m.branch_a.owner_name ?? "—"}`}
+          label="Итого в общем древе"
+          value={`${m.total} ${personWord(m.total)}`}
+        />
+        <StatBox
+          label={`Древо A — ${m.branch_a.owner_name ?? "—"}`}
           value={`${m.branch_a.size} ${personWord(m.branch_a.size)}`}
         />
         <StatBox
-          label={`Ветка B — ${m.branch_b.owner_name ?? "—"}`}
+          label={`Древо B — ${m.branch_b.owner_name ?? "—"}`}
           value={`${m.branch_b.size} ${personWord(m.branch_b.size)}`}
+        />
+        <StatBox
+          label="Добавится новых"
+          value={`${m.added_count} ${personWord(m.added_count)}`}
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -1838,7 +1850,7 @@ export function ModerationPanel() {
   async function unmergeApproved(m: TreeMerge) {
     if (
       !confirm(
-        `Отменить объединение «${m.merged_name}»? Древа «${m.branch_a.owner_name ?? "—"}» и «${m.branch_b.owner_name ?? "—"}» снова станут независимыми.`,
+        `Отменить объединение «${m.root_name || m.merged_name}»? Древа «${m.branch_a.owner_name ?? "—"}» и «${m.branch_b.owner_name ?? "—"}» снова станут независимыми.`,
       )
     )
       return;
@@ -2132,13 +2144,13 @@ export function ModerationPanel() {
                   >
                     <div className="min-w-0">
                       <div className="truncate text-[14px] font-bold text-cream">
-                        {m.merged_name}
-                        {m.merged_birth_year != null && (
+                        {m.root_name || m.merged_name}
+                        {m.root_birth_year != null && (
                           <span className="font-normal text-sand">
                             {" "}
-                            ({m.merged_birth_year}
-                            {m.merged_death_year != null
-                              ? `–${m.merged_death_year}`
+                            ({m.root_birth_year}
+                            {m.root_death_year != null
+                              ? `–${m.root_death_year}`
                               : ""}
                             )
                           </span>
@@ -2147,7 +2159,7 @@ export function ModerationPanel() {
                       <div className="text-[12.5px] text-sand">
                         {m.branch_a.owner_name ?? "—"} +{" "}
                         {m.branch_b.owner_name ?? "—"} · {m.total}{" "}
-                        {personWord(m.total)}
+                        {personWord(m.total)} · соединение: {m.merged_name}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -2156,7 +2168,7 @@ export function ModerationPanel() {
                         className={`${BTN_SECONDARY} !px-2.5 !py-1 !text-[12.5px]`}
                         onClick={() =>
                           void openMergedPreview(m.id, {
-                            title: `Общее древо — ${m.merged_name}`,
+                            title: `Общее древо — ${m.root_name || m.merged_name}`,
                             subtitle: "Опубликованное объединённое древо.",
                             approveId: null,
                           })

@@ -190,6 +190,7 @@ export interface MergeBranch {
   owner_id: number | null;
   owner_name: string | null;
   teip_name: string | null;
+  /** Полный размер древа этой стороны (всё древо владельца). */
   size: number;
 }
 
@@ -203,7 +204,14 @@ export interface TreeMerge {
   created_at: string;
   branch_a: MergeBranch;
   branch_b: MergeBranch;
+  /** Всего людей в целом объединённом древе (общие — один раз). */
   total: number;
+  /** Первопредок (корень) целого древа — его именем называется древо. */
+  root_name: string;
+  root_birth_year: number | null;
+  root_death_year: number | null;
+  /** Сколько новых людей добавила присоединённая ветвь. */
+  added_count: number;
 }
 
 /** Карточка одной стороны при сверке пары персон перед объединением. */

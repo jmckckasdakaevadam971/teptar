@@ -1880,7 +1880,7 @@ export interface MergeBranch {
   owner_id: number | null;
   owner_name: string | null;
   teip_name: string | null;
-  /** Сколько персон в этой ветке (предок + потомки). */
+  /** Сколько персон в полном древе этой стороны (всё древо владельца). */
   size: number;
 }
 
@@ -1894,8 +1894,14 @@ export interface TreeMerge {
   created_at: string;
   branch_a: MergeBranch;
   branch_b: MergeBranch;
-  /** Всего персон в общем древе (без двойного счёта якоря). */
+  /** Всего персон в ЦЕЛОМ объединённом древе (общие люди — один раз). */
   total: number;
+  /** Имя первопредка (корня) всего объединённого древа — название карточки. */
+  root_name: string;
+  root_birth_year: number | null;
+  root_death_year: number | null;
+  /** Сколько новых людей добавила присоединённая ветвь (без общих). */
+  added_count: number;
 }
 
 /** Собрать карточки объединённых древ с указанным статусом. */
@@ -1929,15 +1935,57 @@ async function listTreeMerges(
     [status, teipIds],
   );
 
-  // Размер каждой ветки (предок + потомки) одним обходом на якорь.
+  // Карточка считается по ЦЕЛОМУ объединённому древу, а не по ветке от
+  // точки соединения: размер сторон — полные древа владельцев, итог и
+  // первопредок — тем же алгоритмом, каким собирается само древо.
+  // Динамический импорт: ancestors.service сам импортирует наши формулы,
+  // статическая ссылка замкнула бы модули в кольцо.
+  const { getMergedTreeStats } = await import(
+    "../ancestors/ancestors.service.js"
+  );
+  const sideStatuses =
+    status === "approved" ? ["approved"] : ["approved", "pending"];
+  const statsViewer: Viewer = {
+    userId: null,
+    role: status === "approved" ? null : "super_admin",
+  };
+
   const result: TreeMerge[] = [];
   for (const r of rows) {
     const aId = Number(r.a_id);
     const bId = Number(r.b_id);
     const [sizeA, sizeB] = await Promise.all([
-      branchSize(aId),
-      branchSize(bId),
+      ownerTreeSize(
+        r.a_owner_id == null ? null : Number(r.a_owner_id),
+        aId,
+        sideStatuses,
+      ),
+      ownerTreeSize(
+        r.b_owner_id == null ? null : Number(r.b_owner_id),
+        bId,
+        sideStatuses,
+      ),
     ]);
+
+    // Запасные значения на случай битых данных — карточка не валит каталог.
+    let total = Math.max(sizeA, sizeB);
+    let addedCount = 0;
+    let rootName = String(r.merged_name ?? r.a_name);
+    let rootBirth: number | null = null;
+    let rootDeath: number | null = null;
+    try {
+      const s = await getMergedTreeStats(Number(r.id), statsViewer);
+      total = s.total;
+      addedCount = s.added_count;
+      if (s.root_name != null && s.root_name.trim()) {
+        rootName = s.root_name;
+        rootBirth = s.root_birth_year;
+        rootDeath = s.root_death_year;
+      }
+    } catch {
+      // сводка недоступна — оставляем запасные значения
+    }
+
     result.push({
       id: Number(r.id),
       status: r.status as "pending" | "approved" | "rejected",
@@ -1963,10 +2011,33 @@ async function listTreeMerges(
         teip_name: (r.b_teip as string) ?? null,
         size: sizeB,
       },
-      total: sizeA + sizeB - 1, // общий предок считаем один раз
+      total,
+      root_name: rootName,
+      root_birth_year: rootBirth,
+      root_death_year: rootDeath,
+      added_count: addedCount,
     });
   }
   return result;
+}
+
+/**
+ * Полный размер древа стороны: все публичные персоны владельца (модератору
+ * — включая ожидающих проверки). Для наследия без владельца — ветка потомков
+ * от якоря.
+ */
+async function ownerTreeSize(
+  ownerId: number | null,
+  anchorId: number,
+  statuses: string[],
+): Promise<number> {
+  if (ownerId == null) return branchSize(anchorId);
+  const rows = await query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM persons
+     WHERE created_by = $1 AND visibility = 'public' AND status = ANY($2)`,
+    [ownerId, statuses],
+  );
+  return rows.length ? Number(rows[0].n) : 0;
 }
 
 /** Число персон в ветке (предок + все потомки), с защитой от циклов. */

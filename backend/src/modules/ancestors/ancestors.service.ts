@@ -420,6 +420,53 @@ export async function getMergedTree(
   return nodes.sort((a, b) => a.depth - b.depth);
 }
 
+/** Сводка по объединённому древу — для карточек каталога и модерации. */
+export interface MergedTreeStats {
+  /** Всего людей в целом объединённом древе (общие — один раз). */
+  total: number;
+  /** Сколько новых людей добавила присоединённая ветвь. */
+  added_count: number;
+  root_id: number | null;
+  /** Первопредок (корень) целого древа — его именем называется древо. */
+  root_name: string | null;
+  root_birth_year: number | null;
+  root_death_year: number | null;
+}
+
+/**
+ * Считает сводку тем же алгоритмом, каким собирается само древо, — цифры
+ * на карточке совпадают с тем, что человек увидит, открыв его. Первопредок
+ * определяется подъёмом от точки соединения по отцовской линии до корня:
+ * если присоединённая ветвь добавила предков НАД точкой соединения, корень
+ * (и название древа) смещается на них — пересчёт после объединения.
+ */
+export async function getMergedTreeStats(
+  mergeId: number,
+  viewer: Viewer = ANON,
+): Promise<MergedTreeStats> {
+  const nodes = await getMergedTree(mergeId, viewer);
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const anchor = nodes.find((n) => n.merge_anchor) ?? nodes[0] ?? null;
+
+  let root = anchor;
+  const seen = new Set<number>();
+  while (root && root.father_id != null && !seen.has(root.id)) {
+    seen.add(root.id);
+    const up = byId.get(root.father_id);
+    if (!up) break;
+    root = up;
+  }
+
+  return {
+    total: nodes.length,
+    added_count: nodes.filter((n) => n.merge_added).length,
+    root_id: root ? root.id : null,
+    root_name: root ? root.full_name : null,
+    root_birth_year: root ? root.birth_year : null,
+    root_death_year: root ? root.death_year : null,
+  };
+}
+
 /**
  * Ближайший общий предок двух людей + степень родства.
  * См. docs/DATABASE_DESIGN.md §3.3.

@@ -161,7 +161,7 @@ export function PublicTreesView() {
                   </span>
                   <div className="min-w-0">
                     <h3 className="truncate font-serif text-lg font-bold text-foreground">
-                      {m.merged_name}
+                      {m.root_name || m.merged_name}
                     </h3>
                     <p className="truncate text-sm text-muted-foreground">
                       {m.branch_a.owner_name ?? "—"} +{" "}
@@ -174,11 +174,11 @@ export function PublicTreesView() {
                     <Users className="h-3.5 w-3.5 text-primary" />
                     {m.total} чел.
                   </span>
-                  {m.merged_birth_year != null ? (
+                  {m.root_birth_year != null ? (
                     <span className="rounded-lg border border-border bg-card px-2.5 py-1">
-                      {m.merged_birth_year}
-                      {m.merged_death_year != null
-                        ? `–${m.merged_death_year}`
+                      {m.root_birth_year}
+                      {m.root_death_year != null
+                        ? `–${m.root_death_year}`
                         : ""}
                     </span>
                   ) : null}

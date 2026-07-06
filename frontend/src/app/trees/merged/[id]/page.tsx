@@ -26,13 +26,14 @@ export async function generateMetadata({
     });
     if (!res.ok) return fallback;
     const body = (await res.json()) as {
-      data?: { id: number; merged_name?: string }[];
+      data?: { id: number; merged_name?: string; root_name?: string }[];
     };
     const merge = body.data?.find((m) => m.id === id);
-    if (!merge?.merged_name) return fallback;
+    const name = merge?.root_name || merge?.merged_name;
+    if (!name) return fallback;
     return {
-      title: `Общее родовое древо ${merge.merged_name}`,
-      description: `Объединённое родовое древо от общего предка ${merge.merged_name}: две семейные ветви, сведённые вместе на Vorhda.`,
+      title: `Общее родовое древо ${name}`,
+      description: `Объединённое родовое древо ${name}: семейные ветви нескольких хранителей, сведённые в одно древо от первопредка на Vorhda.`,
       alternates: { canonical: `/trees/merged/${params.id}` },
     };
   } catch {
