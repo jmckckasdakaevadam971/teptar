@@ -61,6 +61,9 @@ const MIN_SCALE = 0.05;
 // свободные поля вокруг древа — чтобы осматриваться за его краями
 const PAN_PAD_X = 640;
 const PAN_PAD_Y = 480;
+// цвет линий связей: токен --tree-line задаётся в globals.css отдельно для
+// светлой (тёмное золото, высокая непрозрачность) и тёмной темы
+const TREE_LINE = "rgb(var(--tree-line) / var(--tree-line-a))";
 
 // Палитра цветов ветвей на выбор пользователя: приглушённые тона,
 // различимые на тёмном фоне и не спорящие с золотой темой.
@@ -2011,7 +2014,7 @@ export function TreeView({
       <div
         ref={scrollRef}
         className={cn(
-          "no-scrollbar overflow-auto pb-4",
+          "no-scrollbar overflow-auto rounded-xl bg-[rgb(var(--tree-canvas))] pb-4",
           fs && "flex-1",
           grabbing ? "cursor-grabbing" : "cursor-grab",
         )}
@@ -2047,7 +2050,7 @@ export function TreeView({
             >
               {connectors.map((c, i) => {
                 const bc = branchColors.get(c.pid);
-                const parentStroke = bc ?? "rgb(var(--primary) / 0.45)";
+                const parentStroke = bc ?? TREE_LINE;
                 return (
                   <g
                     key={i}
@@ -2078,10 +2081,7 @@ export function TreeView({
                         y1={c.busY}
                         x2={ch.x}
                         y2={ch.topY}
-                        stroke={
-                          branchColors.get(ch.id) ??
-                          "rgb(var(--primary) / 0.45)"
-                        }
+                        stroke={branchColors.get(ch.id) ?? TREE_LINE}
                       />
                     ))}
                     {/* хребет стопки листьев (цвет родителя) + отводы (цвет ребёнка) */}
@@ -2095,8 +2095,7 @@ export function TreeView({
                         stroke={
                           (s.cid
                             ? branchColors.get(s.cid)
-                            : branchColors.get(c.pid)) ??
-                          "rgb(var(--primary) / 0.45)"
+                            : branchColors.get(c.pid)) ?? TREE_LINE
                         }
                       />
                     ))}
@@ -2112,7 +2111,7 @@ export function TreeView({
                   y1={0}
                   x2={drag.snapX + NODE_W / 2}
                   y2={layout.height}
-                  stroke="rgb(var(--primary) / 0.4)"
+                  stroke={TREE_LINE}
                   strokeWidth={1.5}
                   strokeDasharray="6 6"
                 />
@@ -2123,7 +2122,7 @@ export function TreeView({
                   y1={drag.snapY + NODE_H / 2}
                   x2={layout.width}
                   y2={drag.snapY + NODE_H / 2}
-                  stroke="rgb(var(--primary) / 0.4)"
+                  stroke={TREE_LINE}
                   strokeWidth={1.5}
                   strokeDasharray="6 6"
                 />
@@ -2280,7 +2279,7 @@ export function TreeView({
                         key={slot.rel}
                         d={d}
                         fill="none"
-                        stroke="rgb(var(--primary) / 0.25)"
+                        stroke="rgb(var(--tree-line) / 0.45)"
                         strokeWidth={1.5}
                         strokeDasharray="4 4"
                       />
@@ -2465,14 +2464,14 @@ export function TreeView({
 
                     <p
                       className={cn(
-                        "line-clamp-2 break-words font-serif text-base font-semibold leading-snug text-foreground",
+                        "line-clamp-2 break-words font-serif text-lg font-semibold leading-snug text-foreground",
                         onShowInfo && "pr-6",
                       )}
                     >
                       {displayName(person)}
                     </p>
                     <div className="mt-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground">
                         {person.birth}
                         {person.death ? `–${person.death}` : ""}
                       </span>
@@ -2616,7 +2615,8 @@ export function TreeView({
                             ? `${i + 1}-я жена`
                             : "жена"}
                       </p>
-                      <p className="mt-1 line-clamp-3 break-words font-serif text-base font-semibold leading-snug text-foreground">
+                      {/* text-lg: 3 строки не влезают в NODE_H, ограничиваем двумя */}
+                      <p className="mt-1 line-clamp-2 break-words font-serif text-lg font-semibold leading-snug text-foreground">
                         {w.name}
                       </p>
                     </div>
