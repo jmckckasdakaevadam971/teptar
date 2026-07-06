@@ -512,10 +512,9 @@ async function buildMergedTree(
     });
   }
 
-  // Точка соединения — поля, выбранные модератором.
+  // Поля, выбранные модератором, — на подтверждённой паре.
   const anchor = byId.get(anchorA);
   if (anchor) {
-    anchor.merge_anchor = true;
     if (header.merged_name != null && header.merged_name.trim())
       anchor.full_name = header.merged_name;
     if (header.merged_birth_year != null)
@@ -523,6 +522,25 @@ async function buildMergedTree(
     if (header.merged_death_year != null)
       anchor.death_year = Number(header.merged_death_year);
   }
+
+  // Метка «точка объединения» — на самом верхнем общем человеке: если
+  // совпала не только подтверждённая пара, но и её предки (отец, дед...),
+  // древа реально соединяются выше по стволу — поднимаем метку туда.
+  // Добавленные ветвью предки (merge_added) общими не считаются.
+  let anchorTop = anchor;
+  const climbed = new Set<number>();
+  while (
+    anchorTop &&
+    anchorTop.father_id != null &&
+    usedA.has(anchorTop.father_id) &&
+    !climbed.has(anchorTop.id)
+  ) {
+    climbed.add(anchorTop.id);
+    const up = byId.get(anchorTop.father_id);
+    if (!up) break;
+    anchorTop = up;
+  }
+  if (anchorTop) anchorTop.merge_anchor = true;
 
   // Ссылки на родителей вне собранного набора обнуляем: такие узлы —
   // корни своих ветвей.
