@@ -16,7 +16,7 @@ export async function listUsers(_req: Request, res: Response): Promise<void> {
 const roleSchema = z.object({
   role: z.enum(['viewer', 'editor', 'teip_admin', 'super_admin']),
   /** Тейп для назначения хранителем, если в профиле пользователя тейп не указан. */
-  teip_id: z.number().int().positive().optional(),
+  teip_id: z.coerce.number().int().positive().optional(),
 });
 
 /** PATCH /api/admin/users/:id/role — смена роли. */
