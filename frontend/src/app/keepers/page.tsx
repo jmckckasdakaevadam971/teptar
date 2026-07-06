@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 export default function KeepersPage() {
   return (
     <PageShell
-      eyebrow="Тептар · Хранители"
       title="Хранители тептара"
       description="Каждый тейп заслуживает своего знатока. Хранители проверяют родословные своего тейпа, сверяют имена и даты — и берегут память рода от ошибок."
     >

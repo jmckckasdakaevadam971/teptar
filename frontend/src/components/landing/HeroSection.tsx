@@ -54,14 +54,8 @@ export function HeroSection() {
           </div>
         </Reveal>
 
-        <Reveal delay={60}>
-          <p className="hero-text-gold mt-6 text-xs font-bold uppercase tracking-[0.32em] md:text-sm">
-            Ворх Да · Семь Отцов
-          </p>
-        </Reveal>
-
         <Reveal delay={120}>
-          <h1 className="hero-text mt-6 font-serif text-4xl font-bold leading-[1.08] text-balance sm:text-5xl md:text-6xl lg:text-7xl">
+          <h1 className="hero-text mt-8 font-serif text-4xl font-bold leading-[1.08] text-balance sm:text-5xl md:text-6xl lg:text-7xl">
             Родовая память
             <br />
             <span className="hero-text-gold">чеченских тейпов</span>

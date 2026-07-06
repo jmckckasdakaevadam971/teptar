@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 export default function ReferencePage() {
   return (
     <PageShell
-      eyebrow="Тайпанаш · Справочник"
       title="Справочник тейпов"
       description="Краткие сведения о чеченских тейпах и тукхумах — история и принадлежность родов."
     >

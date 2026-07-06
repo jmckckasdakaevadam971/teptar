@@ -13,7 +13,6 @@ export const metadata: Metadata = {
 export default function MyTreePage() {
   return (
     <PageShell
-      eyebrow="Дезал · Родовое древо"
       title="Моё древо"
       description="Создайте родовое древо и начните с самого старшего предка, о котором у вас есть сведения."
       wide

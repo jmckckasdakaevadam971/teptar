@@ -49,7 +49,6 @@ export default function TreeDetailPage({ params }: { params: { id: string } }) {
 
   return (
     <PageShell
-      eyebrow="Дешнаш · Древо"
       title="Родовое древо"
       description="Полная схема объединённого древа: от самого старшего предка к потомкам."
     >

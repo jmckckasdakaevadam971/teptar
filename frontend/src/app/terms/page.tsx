@@ -18,7 +18,6 @@ export default function TermsPage() {
     <AppFrame>
       <div className="mx-auto max-w-3xl">
         <PageHeader
-          eyebrow="Документы"
           title="Пользовательское соглашение"
           description="Условия использования сайта vorhda.ru. Редакция от 2 июля 2026 года."
         />

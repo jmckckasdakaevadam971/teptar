@@ -34,12 +34,9 @@ export function FaqSection() {
       aria-labelledby="faq-heading"
     >
       <div className="mx-auto max-w-4xl px-5 py-20 md:px-8 md:py-28">
-        <p className="text-center font-mono text-xs uppercase tracking-[0.25em] text-primary">
-          Хаттарш · Вопросы
-        </p>
         <h2
           id="faq-heading"
-          className="mt-4 text-center font-serif text-3xl font-bold text-foreground md:text-4xl"
+          className="text-center font-serif text-3xl font-bold text-foreground md:text-4xl"
         >
           Частые вопросы о родовом древе
         </h2>

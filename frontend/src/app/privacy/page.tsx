@@ -18,7 +18,6 @@ export default function PrivacyPage() {
     <AppFrame>
       <div className="mx-auto max-w-3xl">
         <PageHeader
-          eyebrow="Документы"
           title="Политика конфиденциальности"
           description="Политика обработки персональных данных сайта vorhda.ru. Редакция от 2 июля 2026 года."
         />

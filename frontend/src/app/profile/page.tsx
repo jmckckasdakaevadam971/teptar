@@ -136,7 +136,6 @@ export default function ProfilePage() {
   if (ready && !user) {
     return (
       <PageShell
-        eyebrow="Профиль"
         title="Личный кабинет"
         description="Войдите, чтобы увидеть свой профиль."
       >
@@ -149,7 +148,7 @@ export default function ProfilePage() {
 
   if (!ready || loading) {
     return (
-      <PageShell eyebrow="Профиль" title="Профиль">
+      <PageShell title="Профиль">
         <p className="py-12 text-center text-muted-foreground">Загрузка…</p>
       </PageShell>
     )
@@ -157,7 +156,7 @@ export default function ProfilePage() {
 
   if (error || !profile) {
     return (
-      <PageShell eyebrow="Профиль" title="Профиль">
+      <PageShell title="Профиль">
         <p className="py-6 text-center text-danger">
           {error ?? 'Профиль недоступен.'}
         </p>
@@ -181,7 +180,6 @@ export default function ProfilePage() {
 
   return (
     <PageShell
-      eyebrow="Профиль"
       title={profile.display_name}
       description="Здесь — сведения о вашей учётной записи и роде."
       actions={

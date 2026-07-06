@@ -12,13 +12,8 @@ export function AboutSection() {
         }}
       />
       <div className="mx-auto max-w-3xl px-5 text-center md:px-8">
-        <Reveal>
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-primary md:text-sm">
-            О проекте
-          </p>
-        </Reveal>
         <Reveal delay={90}>
-          <h2 className="mt-6 font-serif text-3xl font-bold text-balance text-foreground md:text-5xl">
+          <h2 className="font-serif text-3xl font-bold text-balance text-foreground md:text-5xl">
             Семь отцов — одна память
           </h2>
         </Reveal>

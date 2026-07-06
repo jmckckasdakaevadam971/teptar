@@ -5,14 +5,12 @@ import { Reveal } from '@/components/Reveal/Reveal'
 import { cn } from '@/lib/utils'
 
 export function PageShell({
-  eyebrow,
   title,
   description,
   actions,
   wide = false,
   children,
 }: {
-  eyebrow: string
   title: string
   description?: string
   actions?: ReactNode
@@ -39,10 +37,7 @@ export function PageShell({
             wide ? 'max-w-[1800px]' : 'max-w-6xl',
           )}
         >
-          <p className="font-mono text-xs uppercase tracking-[0.25em] text-primary">
-            {eyebrow}
-          </p>
-          <div className="mt-4 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div className="max-w-2xl">
               <h1 className="text-balance font-serif text-4xl font-bold leading-tight text-foreground md:text-5xl">
                 {title}

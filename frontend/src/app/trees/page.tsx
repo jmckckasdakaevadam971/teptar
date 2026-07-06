@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 export default function TreesPage() {
   return (
     <PageShell
-      eyebrow="Дешнаш · Древа"
       title="Родовые древа"
       description="Одобренные модерацией древа. Отфильтруйте их по тейпу и поселению."
     >

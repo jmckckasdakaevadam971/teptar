@@ -364,7 +364,6 @@ function LoginPageInner() {
   return (
     <div className="mx-auto grid w-full max-w-md gap-6">
       <PageHeader
-        eyebrow="Вход · Регистрация"
         title="Личный кабинет"
         description="Войдите или создайте аккаунт, чтобы вести своё родовое древо."
       />

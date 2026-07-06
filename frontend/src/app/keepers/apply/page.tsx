@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 export default function KeeperApplyPage() {
   return (
     <PageShell
-      eyebrow="Тептар · Хранители"
       title="Стать хранителем"
       description="Расскажите, какой тейп вы знаете и откуда ваши знания. Мы свяжемся с вами и дадим права хранителя."
     >

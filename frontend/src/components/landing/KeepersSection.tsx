@@ -22,14 +22,8 @@ export function KeepersSection() {
           </div>
         </Reveal>
 
-        <Reveal delay={90}>
-          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.32em] text-primary md:text-sm">
-            Хранители тептара
-          </p>
-        </Reveal>
-
         <Reveal delay={160}>
-          <h2 className="mt-5 font-serif text-3xl font-bold text-balance text-foreground md:text-4xl lg:text-5xl">
+          <h2 className="mt-8 font-serif text-3xl font-bold text-balance text-foreground md:text-4xl lg:text-5xl">
             Знаете свой тейп?
             <br />
             Станьте его хранителем

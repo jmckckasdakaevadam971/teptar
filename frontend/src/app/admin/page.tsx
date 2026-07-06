@@ -115,7 +115,6 @@ function AdminPageInner() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        eyebrow="Управление"
         title="Админ-панель"
         description={
           isSuperAdmin

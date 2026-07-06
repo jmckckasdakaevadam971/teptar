@@ -46,7 +46,6 @@ export default function MergedTreePage({ params }: { params: { id: string } }) {
 
   return (
     <PageShell
-      eyebrow="Дешнаш · Общее древо"
       title="Общее родовое древо"
       description="Две ветки, сведённые по общему предку. Исходные древа обоих хранителей остаются неизменными."
     >
