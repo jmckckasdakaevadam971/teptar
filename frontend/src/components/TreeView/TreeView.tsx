@@ -40,8 +40,8 @@ import type { VsdxBox, VsdxLine } from "@/lib/export-formats";
 import { cn } from "@/lib/utils";
 
 // размеры узла и отступы для древовидной раскладки (карточки ФИКСИРОВАННОГО размера)
-const NODE_W = 176; // w-44
-const NODE_H = 116; // вмещает имя в 2 строки + годы
+const NODE_W = 320; // вмещает имя в 2 строки при шрифте 36px
+const NODE_H = 200; // имя в 2 строки (36px) + годы (28px)
 const H_GAP = 24;
 const V_GAP = 72;
 const SLOT = NODE_W + H_GAP;
@@ -1638,7 +1638,7 @@ export function TreeView({
       const p = full.pos[person.id];
       if (!p) continue;
 
-      ctx.font = "600 13px Georgia, serif";
+      ctx.font = "600 26px Georgia, serif";
       const maxTextW = NODE_W - 32;
       const nameLines = wrapText(displayName(person), maxTextW, 2);
 
@@ -1648,7 +1648,7 @@ export function TreeView({
       // карточки фиксированного размера
       const cardH = NODE_H;
 
-      const r = 14;
+      const r = 18;
       ctx.beginPath();
       ctx.roundRect(p.x, p.y, NODE_W, cardH, r);
       ctx.fillStyle = "#201a12";
@@ -1661,7 +1661,7 @@ export function TreeView({
       const bc = bColors.get(person.id);
       if (bc) {
         ctx.beginPath();
-        ctx.roundRect(p.x + 1, p.y + 12, 4, cardH - 24, [0, 2, 2, 0]);
+        ctx.roundRect(p.x + 1, p.y + 14, 6, cardH - 28, [0, 3, 3, 0]);
         ctx.fillStyle = bc;
         ctx.fill();
       }
@@ -1670,13 +1670,13 @@ export function TreeView({
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       ctx.fillStyle = "#f2ecdd";
-      ctx.font = "600 13px Georgia, serif";
-      nameLines.forEach((l, i) => ctx.fillText(l, tx, p.y + 14 + i * 16));
+      ctx.font = "600 26px Georgia, serif";
+      nameLines.forEach((l, i) => ctx.fillText(l, tx, p.y + 18 + i * 32));
 
-      const cursorY = p.y + 14 + nameLines.length * 16 + 4;
+      const cursorY = p.y + 18 + nameLines.length * 32 + 8;
       if (years) {
         ctx.fillStyle = "#a99a78";
-        ctx.font = "11px Arial, sans-serif";
+        ctx.font = "22px Arial, sans-serif";
         ctx.fillText(years, tx, cursorY);
       }
 
@@ -1695,18 +1695,18 @@ export function TreeView({
 
         const wtx = wx + 16;
         ctx.fillStyle = "#d8a7b1";
-        ctx.font = "600 9px Arial, sans-serif";
+        ctx.font = "600 18px Arial, sans-serif";
         const label = female
           ? "МУЖ"
           : spouses.length > 1
             ? `${i + 1}-Я ЖЕНА`
             : "ЖЕНА";
-        ctx.fillText(`⚭ ${label}`, wtx, p.y + 14);
+        ctx.fillText(`⚭ ${label}`, wtx, p.y + 18);
 
         ctx.fillStyle = "#f2ecdd";
-        ctx.font = "600 13px Georgia, serif";
+        ctx.font = "600 26px Georgia, serif";
         wrapText(wifeName, maxTextW, 3).forEach((l, j) =>
-          ctx.fillText(l, wtx, p.y + 30 + j * 16),
+          ctx.fillText(l, wtx, p.y + 50 + j * 32),
         );
       });
     }
@@ -2417,11 +2417,11 @@ export function TreeView({
                   >
                     {/* Метки объединённого древа: добавленная ветвь и точка соединения */}
                     {person.mergeAdded ? (
-                      <span className="pointer-events-none absolute -top-2.5 left-3 z-10 rounded-full border border-success-border bg-success-bg px-2 py-0.5 text-[10px] font-medium text-success">
+                      <span className="pointer-events-none absolute -top-4 left-3 z-10 rounded-full border border-success-border bg-success-bg px-3 py-0.5 text-[20px] font-medium text-success">
                         Добавлено
                       </span>
                     ) : person.mergeAnchor ? (
-                      <span className="pointer-events-none absolute -top-2.5 left-3 z-10 rounded-full border border-primary/50 bg-secondary px-2 py-0.5 text-[10px] font-medium text-primary">
+                      <span className="pointer-events-none absolute -top-4 left-3 z-10 rounded-full border border-primary/50 bg-secondary px-3 py-0.5 text-[20px] font-medium text-primary">
                         Точка объединения
                       </span>
                     ) : null}
@@ -2446,9 +2446,9 @@ export function TreeView({
                               v === person.id ? null : person.id,
                             );
                           }}
-                          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                          className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <MoreVertical className="h-6 w-6" />
                         </button>
                         {menuId === person.id ? (
                           <div className="absolute left-full top-0 z-30 ml-2 min-w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
@@ -2517,19 +2517,19 @@ export function TreeView({
 
                     <p
                       className={cn(
-                        "line-clamp-2 break-words font-serif text-lg font-semibold leading-snug text-foreground",
-                        onShowInfo && "pr-6",
+                        "line-clamp-2 break-words font-serif text-4xl font-semibold leading-snug text-foreground",
+                        onShowInfo && "pr-10",
                       )}
                     >
                       {displayName(person)}
                     </p>
                     <div className="mt-1 flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-[28px] leading-tight text-muted-foreground">
                         {person.birth}
                         {person.death ? `–${person.death}` : ""}
                       </span>
                       {isLiving ? (
-                        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <span className="rounded-full bg-primary/15 px-3 py-0.5 text-[20px] font-medium text-primary">
                           жив
                         </span>
                       ) : null}
@@ -2554,7 +2554,7 @@ export function TreeView({
                             : "Свернуть ветвь"
                         }
                         className={cn(
-                          "absolute -bottom-3.5 left-1/2 z-20 flex h-7 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border px-1 text-[11px] font-medium backdrop-blur transition-colors",
+                          "absolute -bottom-5 left-1/2 z-20 flex h-10 min-w-10 -translate-x-1/2 items-center justify-center rounded-full border px-1.5 text-[18px] font-medium backdrop-blur transition-colors",
                           isCollapsed
                             ? "border-primary/60 bg-secondary text-primary hover:bg-primary hover:text-primary-foreground"
                             : "border-border bg-card text-muted-foreground hover:border-primary/60 hover:text-primary",
@@ -2563,7 +2563,7 @@ export function TreeView({
                         {isCollapsed ? (
                           kidsCount
                         ) : (
-                          <ChevronUp className="h-4 w-4" />
+                          <ChevronUp className="h-6 w-6" />
                         )}
                       </button>
                     ) : null}
@@ -2604,9 +2604,9 @@ export function TreeView({
                               e.stopPropagation();
                               setMenuId((v) => (v === wifeKey ? null : wifeKey));
                             }}
-                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                            className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                           >
-                            <MoreVertical className="h-4 w-4" />
+                            <MoreVertical className="h-6 w-6" />
                           </button>
                           {menuId === wifeKey ? (
                             <div className="absolute left-full top-0 z-30 ml-2 min-w-36 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
@@ -2657,8 +2657,8 @@ export function TreeView({
 
                       <p
                         className={cn(
-                          "text-[10px] font-medium uppercase tracking-wider text-blush",
-                          onWifeInfo && "pr-6",
+                          "text-[20px] font-medium uppercase tracking-wider text-blush",
+                          onWifeInfo && "pr-10",
                         )}
                       >
                         ⚭{" "}
@@ -2668,8 +2668,8 @@ export function TreeView({
                             ? `${i + 1}-я жена`
                             : "жена"}
                       </p>
-                      {/* text-lg: 3 строки не влезают в NODE_H, ограничиваем двумя */}
-                      <p className="mt-1 line-clamp-2 break-words font-serif text-lg font-semibold leading-snug text-foreground">
+                      {/* text-4xl: 3 строки не влезают в NODE_H, ограничиваем двумя */}
+                      <p className="mt-1 line-clamp-2 break-words font-serif text-4xl font-semibold leading-snug text-foreground">
                         {w.name}
                       </p>
                     </div>
@@ -2695,10 +2695,10 @@ export function TreeView({
                   className="group flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-border bg-card/50 transition-all duration-200 hover:border-primary/60"
                   aria-label={`Добавить: ${ADD_LABEL[slot.rel]}`}
                 >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-xl font-light text-muted-foreground transition-colors group-hover:text-primary">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-4xl font-light text-muted-foreground transition-colors group-hover:text-primary">
                     +
                   </span>
-                  <span className="text-xs text-muted-foreground transition-colors group-hover:text-primary">
+                  <span className="text-2xl text-muted-foreground transition-colors group-hover:text-primary">
                     {ADD_LABEL[slot.rel]}
                   </span>
                 </button>

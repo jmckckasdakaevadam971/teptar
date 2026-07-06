@@ -370,7 +370,7 @@ export function buildVsdx(
         `<Cell N="VerticalAlign" V="1"/>` +
         `<Section N="Character"><Row IX="0">` +
         `<Cell N="Color" V="${b.textColor ?? "#000000"}"/>` +
-        `<Cell N="Size" V="0.111111"/>` +
+        `<Cell N="Size" V="0.222222"/>` +
         `</Row></Section>` +
         `<Section N="Paragraph"><Row IX="0"><Cell N="HorzAlign" V="1"/></Row></Section>` +
         `<Section N="Geometry" IX="0">` +
@@ -441,7 +441,7 @@ export function buildVsdx(
     `<Cell N="FillPattern" V="1"/>` +
     `<Cell N="VerticalAlign" V="1"/>` +
     `<Section N="Character"><Row IX="0">` +
-    `<Cell N="Font" V="Calibri"/><Cell N="Color" V="#000000"/><Cell N="Size" V="0.125"/>` +
+    `<Cell N="Font" V="Calibri"/><Cell N="Color" V="#000000"/><Cell N="Size" V="0.25"/>` +
     `</Row></Section>` +
     `<Section N="Paragraph"><Row IX="0"><Cell N="HorzAlign" V="1"/></Row></Section>` +
     `</StyleSheet>` +
