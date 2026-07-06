@@ -1664,6 +1664,9 @@ async function computeBestAnchors(
     );
     for (const c of candidates) {
       if (c.created_by == null) continue;
+      // node-pg отдаёт BIGINT строками — приводим к числам сразу, иначе
+      // сравнения id и ключи Map молча разъезжаются по типам.
+      const otherOwner = Number(c.created_by);
 
       // Сверка отцов: оба известны, но не похожи → это разные люди.
       const fatherChecked = c.father_similarity !== null;
@@ -1685,11 +1688,11 @@ async function computeBestAnchors(
       if (c.similarity < minSim) continue;
 
       const score = c.similarity + confirmations * 0.1;
-      const cur = best.get(c.created_by);
+      const cur = best.get(otherOwner);
       if (!cur || score > cur.score) {
-        best.set(c.created_by, {
-          ownerPersonId: p.id,
-          otherPersonId: c.id,
+        best.set(otherOwner, {
+          ownerPersonId: Number(p.id),
+          otherPersonId: Number(c.id),
           similarity: c.similarity,
           score,
         });
