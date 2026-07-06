@@ -1657,6 +1657,9 @@ export interface PublicTree {
   root_person_name: string | null;
   teip_id: number | null;
   teip_name: string | null;
+  /** Населённый пункт владельца древа (из профиля пользователя). */
+  village_id: number | null;
+  village_name: string | null;
 }
 
 /**
@@ -1705,7 +1708,8 @@ export async function listPublicTrees(filters: {
     SELECT owner.owner_id, owner.owner_name, owner.count,
            owner.min_year, owner.max_year,
            root.id AS root_person_id, root.full_name AS root_person_name,
-           t.id AS teip_id, t.name AS teip_name
+           t.id AS teip_id, t.name AS teip_name,
+           v.id AS village_id, v.name AS village_name
     FROM (
       SELECT created_by AS owner_id,
              MAX(owner_name) AS owner_name,
@@ -1717,6 +1721,8 @@ export async function listPublicTrees(filters: {
       GROUP BY created_by
     ) owner
     LEFT JOIN teips t ON t.id = owner.teip_id
+    LEFT JOIN users uo ON uo.id = owner.owner_id
+    LEFT JOIN villages v ON v.id = uo.village_id
     LEFT JOIN LATERAL (
       SELECT id, full_name FROM persons
       WHERE created_by = owner.owner_id

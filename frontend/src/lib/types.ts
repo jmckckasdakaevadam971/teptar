@@ -118,6 +118,9 @@ export interface PublicTree {
   root_person_name: string | null;
   teip_id: number | null;
   teip_name: string | null;
+  /** Населённый пункт владельца древа (из профиля пользователя). */
+  village_id: number | null;
+  village_name: string | null;
 }
 
 /** Похожая персона из чужого древа. */

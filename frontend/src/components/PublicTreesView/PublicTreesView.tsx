@@ -2,20 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { TreePine, Users, MapPin, RotateCcw, GitMerge } from "lucide-react";
+import { TreePine, Users, MapPin, Home, RotateCcw, GitMerge } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicTree, TreeMerge, Teip, Village } from "@/lib/types";
 import { CARD, FIELD, LABEL, ERR_TEXT } from "@/lib/ui";
 
 const SELECT =
   "w-full cursor-pointer rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground outline-none transition-colors hover:border-primary focus:border-primary";
-
-/** Диапазон лет древа в читаемом виде. */
-function yearsLabel(min: number | null, max: number | null): string | null {
-  if (min == null && max == null) return null;
-  if (min != null && max != null && min !== max) return `${min}–${max}`;
-  return String(min ?? max);
-}
 
 export function PublicTreesView() {
   const [teips, setTeips] = useState<Teip[]>([]);
@@ -174,14 +167,6 @@ export function PublicTreesView() {
                     <Users className="h-3.5 w-3.5 text-primary" />
                     {m.total} чел.
                   </span>
-                  {m.root_birth_year != null ? (
-                    <span className="rounded-lg border border-border bg-card px-2.5 py-1">
-                      {m.root_birth_year}
-                      {m.root_death_year != null
-                        ? `–${m.root_death_year}`
-                        : ""}
-                    </span>
-                  ) : null}
                 </div>
               </Link>
             ))}
@@ -213,7 +198,6 @@ export function PublicTreesView() {
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {trees.map((tree) => {
-              const years = yearsLabel(tree.min_year, tree.max_year);
               const inner = (
                 <>
                   <div className="flex items-start gap-3">
@@ -237,15 +221,16 @@ export function PublicTreesView() {
                         {tree.teip_name}
                       </span>
                     ) : null}
+                    {tree.village_name ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1">
+                        <Home className="h-3.5 w-3.5 text-primary" />
+                        {tree.village_name}
+                      </span>
+                    ) : null}
                     <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1">
                       <Users className="h-3.5 w-3.5 text-primary" />
                       {tree.count} чел.
                     </span>
-                    {years ? (
-                      <span className="rounded-lg border border-border bg-card px-2.5 py-1">
-                        {years}
-                      </span>
-                    ) : null}
                   </div>
                 </>
               );
