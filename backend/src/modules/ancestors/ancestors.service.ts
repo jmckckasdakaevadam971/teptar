@@ -1,7 +1,10 @@
 import { query } from "../../db/pool.js";
 import { ApiError } from "../../utils/http.js";
 import type { UserRole } from "../../middleware/auth.js";
-import { findSimilarApproved } from "../persons/persons.service.js";
+import {
+  findSimilarApproved,
+  FATHER_MIN_SIMILARITY,
+} from "../persons/persons.service.js";
 
 /** Кто запрашивает дерево — для контроля видимости. */
 export interface Viewer {
@@ -138,9 +141,11 @@ export async function getFullTree(
 }
 
 /**
- * Объединённое древо (модель «стекло»): собирается на лету из двух веток,
- * связанных общим предком (запись tree_merges). Исходные древа не меняются —
- * якорь B «приравнивается» к якорю A, обе ветки потомков сходятся под ним.
+ * Объединённое древо (модель «стекло»): собирается на лету из ПОЛНЫХ древ
+ * обоих владельцев, связанных общим предком (запись tree_merges). Исходные
+ * древа не меняются — якорь B «приравнивается» к якорю A. Включаются предки
+ * и боковые ветви обеих сторон: получается одно большое общее древо,
+ * а не только потомки точки соединения.
  *
  * Видимость: одобренное (approved) видно всем; на модерации (pending)
  * — только админам (иначе 404, чтобы не раскрывать до проверки).
@@ -156,10 +161,16 @@ export async function getMergedTree(
     merged_birth_year: number | null;
     merged_death_year: number | null;
     status: string;
+    owner_a: number | null;
+    owner_b: number | null;
   }>(
-    `SELECT anchor_a_id, anchor_b_id, merged_name, merged_birth_year,
-            merged_death_year, status
-     FROM tree_merges WHERE id = $1`,
+    `SELECT tm.anchor_a_id, tm.anchor_b_id, tm.merged_name,
+            tm.merged_birth_year, tm.merged_death_year, tm.status,
+            pa.created_by AS owner_a, pb.created_by AS owner_b
+     FROM tree_merges tm
+     JOIN persons pa ON pa.id = tm.anchor_a_id
+     JOIN persons pb ON pb.id = tm.anchor_b_id
+     WHERE tm.id = $1`,
     [mergeId],
   );
   if (rows.length === 0)
@@ -174,10 +185,26 @@ export async function getMergedTree(
   const anchorA = Number(m.anchor_a_id);
   const anchorB = Number(m.anchor_b_id);
 
-  // Обе ветки вниз от своих якорей. Ветку B «переносим» под якорь A.
-  const [downA, downB] = await Promise.all([
-    getDescendants(anchorA, 40, viewer),
-    getDescendants(anchorB, 40, viewer),
+  // Полное древо каждой стороны: все публичные персоны владельца
+  // (модератору — включая ожидающие проверки). Если автора нет (наследие),
+  // берём хотя бы ветку потомков от якоря.
+  const statuses = isAdmin ? ["approved", "pending"] : ["approved"];
+  const sideNodes = async (
+    ownerId: number | null,
+    anchorId: number,
+  ): Promise<TreeNode[]> => {
+    if (ownerId == null) return getDescendants(anchorId, 40, viewer);
+    return query<TreeNode>(
+      `SELECT id, full_name, gender, birth_year, death_year,
+              father_id, mother_id, spouse_names, 0 AS depth
+       FROM persons
+       WHERE created_by = $1 AND visibility = 'public' AND status = ANY($2)`,
+      [ownerId, statuses],
+    );
+  };
+  const [sideA, sideB] = await Promise.all([
+    sideNodes(m.owner_a == null ? null : Number(m.owner_a), anchorA),
+    sideNodes(m.owner_b == null ? null : Number(m.owner_b), anchorB),
   ]);
 
   // node-pg отдаёт BIGINT строками — приводим к числам, иначе сравнение
@@ -188,9 +215,17 @@ export async function getMergedTree(
     Number(personId) === anchorB ? anchorA : num(personId);
 
   const byId = new Map<number, TreeNode>();
-  for (const n of [...downA, ...downB]) {
+  // Родители якоря: отец из древа A, а если там не указан — из древа B
+  // (противоречие «два разных отца» блокируется ещё до объединения).
+  let anchorFatherB: number | null = null;
+  let anchorMotherB: number | null = null;
+  for (const n of [...sideA, ...sideB]) {
     const id = alias(n.id)!;
-    if (byId.has(id)) continue; // якорь встречается в обеих ветках — берём первый
+    if (Number(n.id) === anchorB) {
+      anchorFatherB = num(n.father_id);
+      anchorMotherB = num(n.mother_id);
+    }
+    if (byId.has(id)) continue; // якорь встречается в обеих сторонах — берём A
     byId.set(id, {
       ...n,
       id,
@@ -210,12 +245,20 @@ export async function getMergedTree(
       anchor.birth_year = Number(m.merged_birth_year);
     if (m.merged_death_year != null)
       anchor.death_year = Number(m.merged_death_year);
-    anchor.father_id = null;
-    anchor.mother_id = null;
-    anchor.depth = 0;
+    if (anchor.father_id == null && anchorFatherB != null)
+      anchor.father_id = alias(anchorFatherB);
+    if (anchor.mother_id == null && anchorMotherB != null)
+      anchor.mother_id = alias(anchorMotherB);
   }
 
-  // Пересчёт глубины от общего предка (для аккуратной раскладки схемы).
+  // Ссылки на родителей вне собранного набора обнуляем: такие узлы —
+  // корни своих ветвей (лес прекрасно раскладывается схемой).
+  for (const n of byId.values()) {
+    if (n.father_id != null && !byId.has(n.father_id)) n.father_id = null;
+    if (n.mother_id != null && !byId.has(n.mother_id)) n.mother_id = null;
+  }
+
+  // Пересчёт глубины от корней (для аккуратной раскладки схемы).
   const nodes = [...byId.values()];
   const depthOf = (id: number, seen = new Set<number>()): number => {
     const node = byId.get(id);
@@ -341,24 +384,54 @@ export async function findRelatedTrees(userId: number): Promise<RelatedTree[]> {
     full_name: string;
     birth_year: number | null;
     teip_id: number | null;
+    village_id: number | null;
+    father_id: number | null;
   }>(
-    `SELECT id, full_name, birth_year, teip_id
-     FROM persons WHERE created_by = $1 AND teip_id IS NOT NULL`,
+    `SELECT id, full_name, birth_year, teip_id, village_id, father_id
+     FROM persons WHERE created_by = $1`,
     [userId],
   );
 
+  // Имена своих персон — для сверки отцов кандидатов с моим отцом.
+  const nameById = new Map<number, string>(
+    mine.map((p) => [p.id, p.full_name]),
+  );
+
   const byOwner = new Map<number, RelatedTree>();
+  // Оценка лучшего совпадения владельца: имя + бонусы за отца/год/село.
+  const bestScore = new Map<number, number>();
 
   for (const me of mine) {
+    if (!me.teip_id) continue;
     const matches = await findSimilarApproved({
       id: me.id,
       full_name: me.full_name,
       birth_year: me.birth_year,
       teip_id: me.teip_id,
       created_by: userId,
+      father_name: me.father_id ? (nameById.get(me.father_id) ?? null) : null,
+      village_id: me.village_id,
     });
     for (const m of matches) {
       if (m.created_by === null || m.created_by === userId) continue;
+
+      // Отцы известны у обеих сторон, но не похожи → это разные люди.
+      if (
+        m.father_similarity !== null &&
+        m.father_similarity < FATHER_MIN_SIMILARITY
+      ) {
+        continue;
+      }
+
+      const confirmations =
+        (m.father_similarity !== null &&
+        m.father_similarity >= FATHER_MIN_SIMILARITY
+          ? 1
+          : 0) +
+        (me.birth_year !== null && m.birth_year !== null ? 1 : 0) +
+        (m.village_match === true ? 1 : 0);
+      const score = m.similarity + confirmations * 0.1;
+
       const existing = byOwner.get(m.created_by);
       const match: RelatedTreeMatch = {
         my_person: {
@@ -382,17 +455,20 @@ export async function findRelatedTrees(userId: number): Promise<RelatedTree[]> {
           best: match,
           link_person_id: m.id,
         });
+        bestScore.set(m.created_by, score);
       } else {
         existing.match_count += 1;
-        if (match.similarity > existing.best.similarity) {
+        if (score > (bestScore.get(m.created_by) ?? 0)) {
           existing.best = match;
           existing.link_person_id = m.id;
+          bestScore.set(m.created_by, score);
         }
       }
     }
   }
 
   return [...byOwner.values()].sort(
-    (a, b) => b.best.similarity - a.best.similarity,
+    (a, b) =>
+      (bestScore.get(b.owner_id) ?? 0) - (bestScore.get(a.owner_id) ?? 0),
   );
 }

@@ -8,6 +8,7 @@ import {
   publicTreesSchema,
   mergeSchema,
   resolveMergeSchema,
+  manualMergeSchema,
   bulkTreeSchema,
   rejectTreeSchema,
   treeDraftSchema,
@@ -279,6 +280,53 @@ export async function dismissMergeSuggestion(
 }
 
 // ── Объединённые древа: очередь повторной модерации и каталог ──────────
+
+// ── Ручное объединение древ: сверка, поиск, слияние, отмена ────────
+
+/** GET /moderation/merge-check?a=…&b=… — чек-лист сверки пары персон. */
+export async function mergeCheck(req: Request, res: Response): Promise<void> {
+  const a = Number(req.query.a);
+  const b = Number(req.query.b);
+  const result = await service.checkMergePair(a, b);
+  res.json(ok(result));
+}
+
+/** GET /moderation/person-search?q=… — кандидаты в точку соединения. */
+export async function mergePersonSearch(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const q = String(req.query.q ?? "");
+  const result = await service.searchMergeCandidates(q);
+  res.json(ok(result));
+}
+
+/** POST /moderation/tree-merges/manual — объединить выбранную пару. */
+export async function manualMerge(req: Request, res: Response): Promise<void> {
+  const input = manualMergeSchema.parse(req.body);
+  const result = await service.manualMerge(
+    input.anchor_a_id,
+    input.anchor_b_id,
+    req.user!.userId,
+    input.keep_id,
+    {
+      full_name: input.full_name,
+      birth_year: input.birth_year,
+      death_year: input.death_year,
+      note: input.note,
+    },
+  );
+  res.json(ok(result));
+}
+
+/** POST /moderation/tree-merges/:id/unmerge — отменить одобренное объединение. */
+export async function unmerge(req: Request, res: Response): Promise<void> {
+  const result = await service.unmerge(
+    Number(req.params.id),
+    req.user!.userId,
+  );
+  res.json(ok(result));
+}
 
 export async function pendingMerges(
   req: Request,

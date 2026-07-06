@@ -22,6 +22,8 @@ import type {
   RelatedTree,
   DuplicatePair,
   MergeSuggestion,
+  MergeCheck,
+  MergeSearchHit,
   TreeMerge,
   TreeChange,
   Keeper,
@@ -393,6 +395,35 @@ export const api = {
     rejectMerge: (id: number) =>
       request<{ rejected: boolean }>(
         `/persons/moderation/tree-merges/${id}/reject`,
+        { method: "POST" },
+      ),
+
+    /** Чек-лист сверки пары персон перед объединением. */
+    mergeCheck: (a: number, b: number) =>
+      request<MergeCheck>(`/persons/moderation/merge-check?a=${a}&b=${b}`),
+    /** Поиск персон для ручного выбора точки соединения. */
+    mergePersonSearch: (q: string) =>
+      request<MergeSearchHit[]>(
+        `/persons/moderation/person-search?q=${encodeURIComponent(q)}`,
+      ),
+    /** Ручное объединение: модератор сам выбрал двух персон-якорей. */
+    manualMerge: (input: {
+      anchor_a_id: number;
+      anchor_b_id: number;
+      keep_id?: number;
+      full_name?: string;
+      birth_year?: number | null;
+      death_year?: number | null;
+      note?: string | null;
+    }) =>
+      request<{ merged: boolean; tree_merge_id: number; check: MergeCheck }>(
+        "/persons/moderation/tree-merges/manual",
+        { method: "POST", body: JSON.stringify(input) },
+      ),
+    /** Отменить одобренное объединение — древа снова независимы. */
+    unmerge: (id: number) =>
+      request<{ cancelled: boolean }>(
+        `/persons/moderation/tree-merges/${id}/unmerge`,
         { method: "POST" },
       ),
   },

@@ -158,6 +158,32 @@ personsRouter.post(
   asyncHandler(controller.rejectMerge),
 );
 
+// Ручное объединение древ: сверка пары, поиск персон, слияние, отмена
+personsRouter.get(
+  "/moderation/merge-check",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.mergeCheck),
+);
+personsRouter.get(
+  "/moderation/person-search",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.mergePersonSearch),
+);
+personsRouter.post(
+  "/moderation/tree-merges/manual",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.manualMerge),
+);
+personsRouter.post(
+  "/moderation/tree-merges/:id/unmerge",
+  requireAuth,
+  requireRole("teip_admin", "super_admin"),
+  asyncHandler(controller.unmerge),
+);
+
 // Одна персона
 personsRouter.get("/:id", asyncHandler(controller.getById));
 personsRouter.get("/:id/family", asyncHandler(controller.family));

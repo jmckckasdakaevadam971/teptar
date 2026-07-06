@@ -20,6 +20,9 @@ import type {
   MergeSuggestion,
   MergeAnchor,
   MergeParty,
+  MergeCheck,
+  MergeCheckItem,
+  MergeSearchHit,
   TreeMerge,
   TreeChange,
   TreeNode,
@@ -427,14 +430,35 @@ function DecisionsHelp() {
 function AnchorTree({
   owner,
   anchor,
+  role,
 }: {
   owner: MergeParty;
   anchor: MergeAnchor;
+  /** larger — большее древо (основа), smaller — его ветвь присоединится. */
+  role: "larger" | "smaller" | "equal";
 }) {
   return (
     <div className="flex-1 rounded-lg border border-line bg-background/40 p-3">
-      <div className="mb-1.5 text-[12px] font-semibold text-sand">
-        Древо: {owner.owner_name ?? "—"}
+      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] font-semibold text-sand">
+        <span>
+          Древо: {owner.owner_name ?? "—"}
+          {owner.tree_size > 0 && (
+            <span className="font-normal text-sand/80">
+              {" "}
+              · {owner.tree_size} чел.
+            </span>
+          )}
+        </span>
+        {role === "larger" && (
+          <span className="rounded bg-gold/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gold-light">
+            большее древо
+          </span>
+        )}
+        {role === "smaller" && (
+          <span className="rounded border border-line bg-background/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sand">
+            ветвь присоединится
+          </span>
+        )}
       </div>
 
       {anchor.father_name && (
@@ -595,6 +619,21 @@ function TreeBody({
         Автор отправил древо в общую базу. Откройте схему, проверьте имена и
         годы по чек-листу и примите решение.
       </p>
+      {tree.merge_participation && (
+        <div className="mb-3 rounded-xl border border-warning-border bg-warning/[0.07] px-3 py-2.5">
+          <p className="m-0 text-[13px] font-semibold text-warning">
+            ⚠ Опубликованная версия участвует в объединении
+            {tree.merge_participation.other_owner_name
+              ? ` с древом «${tree.merge_participation.other_owner_name}»`
+              : ""}
+          </p>
+          <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-sand">
+            При одобрении новой версии объединение перепривяжется к ней и уйдёт
+            на повторную проверку. Если общий предок исчез из новой версии —
+            объединение будет потеряно (это зафиксируется в журнале).
+          </p>
+        </div>
+      )}
       {tree.duplicate && (
         <div className="mb-3 rounded-xl border border-warning-border bg-warning/[0.07] px-3 py-2.5">
           <p className="m-0 text-[13px] font-semibold text-warning">
@@ -659,6 +698,67 @@ function TreeBody({
 }
 
 /** Раскрытая карточка «Объединение древ»: схемы якорей + форма объединения. */
+
+const CHECK_ICON: Record<MergeCheckItem["level"], { icon: string; cls: string }> = {
+  ok: { icon: "✓", cls: "text-success" },
+  warn: { icon: "⚠", cls: "text-warning" },
+  block: { icon: "✖", cls: "text-danger-strong" },
+};
+
+/** Чек-лист сверки пары персон: подтверждения, предупреждения, блокировки. */
+function MergeCheckList({
+  check,
+  loading,
+}: {
+  check: MergeCheck | null;
+  loading: boolean;
+}) {
+  if (loading)
+    return (
+      <p className="m-0 mt-3 text-[13px] text-sand">Сверяем данные записей…</p>
+    );
+  if (!check) return null;
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-background/40 p-3">
+      <div className="mb-1.5 text-[13px] font-semibold text-cream">
+        Проверка перед объединением
+      </div>
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {check.items.map((it, i) => (
+          <li
+            key={`${it.code}-${i}`}
+            className="flex items-start gap-2 text-[13px] leading-snug"
+          >
+            <span
+              className={`w-4 shrink-0 text-center font-bold ${CHECK_ICON[it.level].cls}`}
+            >
+              {CHECK_ICON[it.level].icon}
+            </span>
+            <span
+              className={
+                it.level === "block"
+                  ? "font-medium text-danger-strong"
+                  : it.level === "warn"
+                    ? "text-warning"
+                    : "text-sand"
+              }
+            >
+              {it.message}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {!check.can_merge && (
+        <p className="m-0 mt-2 rounded-md border border-danger-border bg-danger/[0.07] px-2.5 py-1.5 text-[12.5px] leading-relaxed text-danger-strong">
+          Объединение заблокировано: в данных есть противоречия. Попросите
+          авторов проверить и исправить записи — после правок сверка пройдёт
+          заново.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function SuggestionBody({
   s,
   busy,
@@ -687,8 +787,42 @@ function SuggestionBody({
   const [confirmDismiss, setConfirmDismiss] = useState(false);
   const [keepId, setKeepId] = useState(defaultBase);
 
+  // Автоматическая сверка данных двух записей (чек-лист ok/warn/block).
+  const [check, setCheck] = useState<MergeCheck | null>(null);
+  const [checkLoading, setCheckLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    setCheckLoading(true);
+    api.moderation
+      .mergeCheck(s.anchor_a.id, s.anchor_b.id)
+      .then((c) => {
+        if (alive) setCheck(c);
+      })
+      .catch(() => {
+        if (alive) setCheck(null);
+      })
+      .finally(() => {
+        if (alive) setCheckLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [s.anchor_a.id, s.anchor_b.id]);
+  const blocked = check != null && !check.can_merge;
+
   const base = keepId === s.anchor_a.id ? s.anchor_a : s.anchor_b;
   const other = keepId === s.anchor_a.id ? s.anchor_b : s.anchor_a;
+
+  // Какое древо больше: ветвь меньшего присоединится к нему.
+  const sizeA = s.owner_a.tree_size;
+  const sizeB = s.owner_b.tree_size;
+  const roleA: "larger" | "smaller" | "equal" =
+    sizeA === sizeB ? "equal" : sizeA > sizeB ? "larger" : "smaller";
+  const roleB: "larger" | "smaller" | "equal" =
+    sizeA === sizeB ? "equal" : sizeB > sizeA ? "larger" : "smaller";
+  const larger = roleA === "larger" ? s.owner_a : s.owner_b;
+  const smaller = roleA === "larger" ? s.owner_b : s.owner_a;
+  const largerAnchor = roleA === "larger" ? s.anchor_a : s.anchor_b;
 
   // Итоговые поля предка: берём из основы, недостающее — из второй записи.
   const [name, setName] = useState(base.full_name);
@@ -731,13 +865,38 @@ function SuggestionBody({
         совпадают».
       </p>
 
+      {sizeA > 0 && sizeB > 0 && (
+        <p className="m-0 mb-2 rounded-md border border-gold-soft/40 bg-gold/[0.06] px-2.5 py-1.5 text-[13px] leading-relaxed text-sand">
+          {roleA === "equal" ? (
+            <>
+              Древа одного размера (по {sizeA} чел.) — через общего предка «
+              {s.anchor_a.full_name}» они срастутся в одно.
+            </>
+          ) : (
+            <>
+              Ветвь древа{" "}
+              <b className="text-cream">
+                {smaller.owner_name ?? "—"} ({smaller.tree_size} чел.)
+              </b>{" "}
+              присоединится к большему древу{" "}
+              <b className="text-cream">
+                {larger.owner_name ?? "—"} ({larger.tree_size} чел.)
+              </b>{" "}
+              через общего предка «{largerAnchor.full_name}».
+            </>
+          )}
+        </p>
+      )}
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-        <AnchorTree owner={s.owner_a} anchor={s.anchor_a} />
+        <AnchorTree owner={s.owner_a} anchor={s.anchor_a} role={roleA} />
         <div className="flex items-center justify-center text-lg text-sand">
           ⇄
         </div>
-        <AnchorTree owner={s.owner_b} anchor={s.anchor_b} />
+        <AnchorTree owner={s.owner_b} anchor={s.anchor_b} role={roleB} />
       </div>
+
+      <MergeCheckList check={check} loading={checkLoading} />
 
       {open && (
         <div className="mt-3 rounded-lg border border-line bg-background/40 p-3">
@@ -813,7 +972,7 @@ function SuggestionBody({
             <button
               type="button"
               className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-              disabled={busy}
+              disabled={busy || checkLoading || blocked}
               onClick={submit}
             >
               Подтвердить объединение
@@ -835,7 +994,12 @@ function SuggestionBody({
           <button
             type="button"
             className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-            disabled={busy}
+            disabled={busy || checkLoading || blocked}
+            title={
+              blocked
+                ? "Объединение заблокировано: см. проверку выше"
+                : undefined
+            }
             onClick={() => setOpen(true)}
           >
             Объединить древа
@@ -872,6 +1036,339 @@ function SuggestionBody({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Строка результата поиска персоны: имя, годы, отец, тейп, автор. */
+function hitLabel(h: MergeSearchHit): string {
+  const parts: string[] = [];
+  if (h.birth_year || h.death_year)
+    parts.push(`${h.birth_year ?? "?"}–${h.death_year ?? "?"}`);
+  if (h.father_name) parts.push(`отец: ${h.father_name}`);
+  if (h.teip_name) parts.push(h.teip_name);
+  if (h.village_name) parts.push(h.village_name);
+  parts.push(`древо: ${h.owner_name ?? "—"}`);
+  return parts.join(" · ");
+}
+
+/** Поиск персоны с выбором — для ручного объединения. */
+function PersonSearchBox({
+  label,
+  selected,
+  onSelect,
+  excludeOwnerId,
+}: {
+  label: string;
+  selected: MergeSearchHit | null;
+  onSelect: (h: MergeSearchHit | null) => void;
+  excludeOwnerId?: number | null;
+}) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<MergeSearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) {
+      setHits([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      setSearching(true);
+      api.moderation
+        .mergePersonSearch(query)
+        .then(setHits)
+        .catch(() => setHits([]))
+        .finally(() => setSearching(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  if (selected) {
+    return (
+      <div className="flex-1 rounded-lg border border-gold-soft/50 bg-gold/[0.05] p-2.5">
+        <div className="text-[11px] uppercase tracking-wider text-sand">
+          {label}
+        </div>
+        <div className="mt-0.5 text-[14px] font-bold text-cream">
+          {selected.full_name}
+        </div>
+        <div className="text-[12px] text-sand">{hitLabel(selected)}</div>
+        <button
+          type="button"
+          className={`${BTN_SECONDARY} mt-1.5 !px-2 !py-0.5 !text-[12px]`}
+          onClick={() => onSelect(null)}
+        >
+          Сменить
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 rounded-lg border border-line bg-background/40 p-2.5">
+      <label className="text-[11px] uppercase tracking-wider text-sand">
+        {label}
+        <input
+          className="mt-1 w-full rounded-md border border-line bg-background/60 px-2 py-1.5 text-[13px] normal-case tracking-normal text-cream outline-none focus:border-gold-soft"
+          placeholder="Имя человека (мин. 2 буквы)…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </label>
+      {searching && <p className="m-0 mt-1.5 text-[12px] text-sand">Ищем…</p>}
+      {!searching && q.trim().length >= 2 && hits.length === 0 && (
+        <p className="m-0 mt-1.5 text-[12px] text-sand">Никого не нашли.</p>
+      )}
+      {hits.length > 0 && (
+        <ul className="m-0 mt-1.5 flex max-h-52 list-none flex-col gap-1 overflow-auto p-0">
+          {hits.map((h) => {
+            const sameOwner =
+              excludeOwnerId != null && h.owner_id === excludeOwnerId;
+            return (
+              <li key={h.id}>
+                <button
+                  type="button"
+                  disabled={sameOwner}
+                  className={`w-full rounded-md border px-2 py-1.5 text-left text-[13px] transition-colors ${
+                    sameOwner
+                      ? "cursor-not-allowed border-line text-sand opacity-50"
+                      : "border-line text-cream hover:border-gold-soft/60"
+                  }`}
+                  title={sameOwner ? "Это то же древо, что и первая персона" : undefined}
+                  onClick={() => onSelect(h)}
+                >
+                  <span className="font-semibold">{h.full_name}</span>
+                  <span className="block text-[12px] text-sand">
+                    {hitLabel(h)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Панель ручного объединения: модератор сам выбирает точку соединения. */
+function ManualMergePanel({
+  onDone,
+  onCancel,
+}: {
+  onDone: (treeMergeId: number) => void;
+  onCancel: () => void;
+}) {
+  const [selA, setSelA] = useState<MergeSearchHit | null>(null);
+  const [selB, setSelB] = useState<MergeSearchHit | null>(null);
+  const [check, setCheck] = useState<MergeCheck | null>(null);
+  const [checkLoading, setCheckLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Поля общего предка.
+  const [keepId, setKeepId] = useState<number | null>(null);
+  const [name, setName] = useState("");
+  const [birth, setBirth] = useState("");
+  const [death, setDeath] = useState("");
+  const [note, setNote] = useState("");
+
+  // Сверка при выборе обеих персон.
+  useEffect(() => {
+    if (!selA || !selB) {
+      setCheck(null);
+      return;
+    }
+    let alive = true;
+    setCheckLoading(true);
+    setErr(null);
+    api.moderation
+      .mergeCheck(selA.id, selB.id)
+      .then((c) => {
+        if (!alive) return;
+        setCheck(c);
+        // По умолчанию за основу — более заполненная запись.
+        const base = c.a.tree_size >= c.b.tree_size ? c.a : c.b;
+        const other = base.id === c.a.id ? c.b : c.a;
+        setKeepId(base.id);
+        setName(base.full_name);
+        setBirth((base.birth_year ?? other.birth_year ?? "").toString());
+        setDeath((base.death_year ?? other.death_year ?? "").toString());
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setCheck(null);
+        setErr(e instanceof Error ? e.message : "Не удалось сверить записи");
+      })
+      .finally(() => {
+        if (alive) setCheckLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selA, selB]);
+
+  function chooseBase(id: number) {
+    if (!check) return;
+    const base = id === check.a.id ? check.a : check.b;
+    const other = id === check.a.id ? check.b : check.a;
+    setKeepId(id);
+    setName(base.full_name);
+    setBirth((base.birth_year ?? other.birth_year ?? "").toString());
+    setDeath((base.death_year ?? other.death_year ?? "").toString());
+  }
+
+  async function submit() {
+    if (!selA || !selB) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.moderation.manualMerge({
+        anchor_a_id: selA.id,
+        anchor_b_id: selB.id,
+        keep_id: keepId ?? undefined,
+        full_name: name.trim() || undefined,
+        birth_year: birth.trim() ? Number(birth) : null,
+        death_year: death.trim() ? Number(death) : null,
+        note: note.trim() ? note.trim() : null,
+      });
+      onDone(res.tree_merge_id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Не удалось объединить");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const blocked = check != null && !check.can_merge;
+  const inputCls =
+    "w-full rounded-md border border-line bg-background/60 px-2 py-1 text-[13px] text-cream outline-none focus:border-gold-soft";
+
+  return (
+    <div className="mb-3 rounded-xl border border-gold-soft/50 bg-gold/[0.04] p-3.5">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="font-serif text-[15px] font-bold text-cream">
+          Объединить древа вручную
+        </span>
+        <button type="button" className={BTN_SECONDARY} onClick={onCancel}>
+          Закрыть
+        </button>
+      </div>
+      <p className="m-0 mb-3 text-[12.5px] leading-relaxed text-sand">
+        Найдите одного и того же человека в двух разных древах — он станет
+        точкой соединения. Система сверит данные и соберёт общее древо, оно
+        попадёт в очередь «Общее древо» на проверку.
+      </p>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <PersonSearchBox
+          label="Человек в древе A"
+          selected={selA}
+          onSelect={setSelA}
+        />
+        <div className="flex items-center justify-center text-lg text-sand">
+          ⇄
+        </div>
+        <PersonSearchBox
+          label="Тот же человек в древе B"
+          selected={selB}
+          onSelect={setSelB}
+          excludeOwnerId={selA?.owner_id}
+        />
+      </div>
+
+      {(check || checkLoading) && (
+        <MergeCheckList check={check} loading={checkLoading} />
+      )}
+
+      {check && !blocked && (
+        <div className="mt-3 rounded-lg border border-line bg-background/40 p-3">
+          <div className="mb-2 text-[13px] font-semibold text-cream">
+            Данные общего предка после объединения
+          </div>
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-sand">
+            За основу:
+            <button
+              type="button"
+              className={
+                keepId === check.a.id
+                  ? `${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`
+                  : `${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`
+              }
+              onClick={() => chooseBase(check.a.id)}
+            >
+              {check.a.owner_name ?? "Древо A"}
+            </button>
+            <button
+              type="button"
+              className={
+                keepId === check.b.id
+                  ? `${BTN_PRIMARY} !px-2.5 !py-1 !text-[12px]`
+                  : `${BTN_SECONDARY} !px-2.5 !py-1 !text-[12px]`
+              }
+              onClick={() => chooseBase(check.b.id)}
+            >
+              {check.b.owner_name ?? "Древо B"}
+            </button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-[12px] text-sand">
+              Имя
+              <input
+                className={inputCls}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-[12px] text-sand">
+                Год рождения
+                <input
+                  className={inputCls}
+                  inputMode="numeric"
+                  value={birth}
+                  onChange={(e) => setBirth(e.target.value)}
+                />
+              </label>
+              <label className="text-[12px] text-sand">
+                Год смерти
+                <input
+                  className={inputCls}
+                  inputMode="numeric"
+                  value={death}
+                  onChange={(e) => setDeath(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className="text-[12px] text-sand sm:col-span-2">
+              Примечание
+              <textarea
+                className={`${inputCls} min-h-[52px]`}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {err && <p className="m-0 mt-2 text-[13px] text-danger-strong">{err}</p>}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy || checkLoading || !selA || !selB || blocked}
+          title={
+            blocked ? "Объединение заблокировано: см. проверку выше" : undefined
+          }
+          onClick={() => void submit()}
+        >
+          {busy ? "Объединяем…" : "Объединить и отправить на проверку"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1021,8 +1518,10 @@ export function ModerationPanel() {
   const [trees, setTrees] = useState<PendingTree[]>([]);
   const [suggestions, setSuggestions] = useState<MergeSuggestion[]>([]);
   const [merges, setMerges] = useState<TreeMerge[]>([]);
+  const [approvedMerges, setApprovedMerges] = useState<TreeMerge[]>([]);
   const [edits, setEdits] = useState<{ owner: PendingTree; change: TreeChange }[]>([]);
   const [myTeips, setMyTeips] = useState<{ id: number; name: string }[]>([]);
+  const [manualOpen, setManualOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1078,15 +1577,17 @@ export function ModerationPanel() {
     setLoading(true);
     setError(null);
     try {
-      const [ts, ss, ms, editOwners] = await Promise.all([
+      const [ts, ss, ms, editOwners, pubMerges] = await Promise.all([
         api.moderation.pending(),
         api.moderation.mergeSuggestions().catch(() => [] as MergeSuggestion[]),
         api.moderation.pendingMerges().catch(() => [] as TreeMerge[]),
         api.moderation.editOwners().catch(() => [] as PendingTree[]),
+        api.persons.publicMerges().catch(() => [] as TreeMerge[]),
       ]);
       setTrees(ts);
       setSuggestions(ss);
       setMerges(ms);
+      setApprovedMerges(pubMerges);
       const pairs: { owner: PendingTree; change: TreeChange }[] = [];
       await Promise.all(
         editOwners.map((o) =>
@@ -1330,6 +1831,38 @@ export function ModerationPanel() {
     }
   }
 
+  /** Отменить одобренное объединение — древа снова станут независимыми. */
+  async function unmergeApproved(m: TreeMerge) {
+    if (
+      !confirm(
+        `Отменить объединение «${m.merged_name}»? Древа «${m.branch_a.owner_name ?? "—"}» и «${m.branch_b.owner_name ?? "—"}» снова станут независимыми.`,
+      )
+    )
+      return;
+    setBusyKey(`unmerge-${m.id}`);
+    setError(null);
+    try {
+      await api.moderation.unmerge(m.id);
+      setApprovedMerges((prev) => prev.filter((x) => x.id !== m.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось отменить объединение");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  /** Ручное объединение завершено: обновить очередь и показать общее древо. */
+  function manualMergeDone(treeMergeId: number) {
+    setManualOpen(false);
+    void loadAll();
+    void openMergedPreview(treeMergeId, {
+      title: "Общее древо отправлено на проверку",
+      subtitle:
+        "Так оно будет выглядеть. Найдите его в очереди «Общее древо» и одобрите после проверки.",
+      approveId: null,
+    });
+  }
+
   async function decideEdit(
     item: Extract<FeedItem, { kind: "edit" }>,
     action: "approveEdit" | "rejectEdit",
@@ -1513,15 +2046,31 @@ export function ModerationPanel() {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className={BTN_SECONDARY}
-              onClick={() => void loadAll()}
-              disabled={loading}
-            >
-              Обновить
-            </button>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className={manualOpen ? BTN_PRIMARY : BTN_SECONDARY}
+                onClick={() => setManualOpen((v) => !v)}
+              >
+                + Объединить вручную
+              </button>
+              <button
+                type="button"
+                className={BTN_SECONDARY}
+                onClick={() => void loadAll()}
+                disabled={loading}
+              >
+                Обновить
+              </button>
+            </div>
           </div>
+
+          {manualOpen && (
+            <ManualMergePanel
+              onDone={manualMergeDone}
+              onCancel={() => setManualOpen(false)}
+            />
+          )}
 
           {error && <p className="mb-2 text-sm text-danger-strong">{error}</p>}
 
@@ -1559,6 +2108,71 @@ export function ModerationPanel() {
                   Заявок пока нет.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* -------- Опубликованные объединения (можно отменить) -------- */}
+          {!loading && approvedMerges.length > 0 && (
+            <div className="mt-6">
+              <h3 className="m-0 mb-1 font-serif text-[15px] font-bold text-cream">
+                Опубликованные объединения
+              </h3>
+              <p className="m-0 mb-2.5 text-[12.5px] leading-relaxed text-sand">
+                Эти общие древа уже видны всем. Если объединение оказалось
+                ошибочным — отмените его, и древа снова станут независимыми.
+              </p>
+              <div className="flex flex-col gap-2">
+                {approvedMerges.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-gold/[0.02] px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-[14px] font-bold text-cream">
+                        {m.merged_name}
+                        {m.merged_birth_year != null && (
+                          <span className="font-normal text-sand">
+                            {" "}
+                            ({m.merged_birth_year}
+                            {m.merged_death_year != null
+                              ? `–${m.merged_death_year}`
+                              : ""}
+                            )
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[12.5px] text-sand">
+                        {m.branch_a.owner_name ?? "—"} +{" "}
+                        {m.branch_b.owner_name ?? "—"} · {m.total}{" "}
+                        {personWord(m.total)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className={`${BTN_SECONDARY} !px-2.5 !py-1 !text-[12.5px]`}
+                        onClick={() =>
+                          void openMergedPreview(m.id, {
+                            title: `Общее древо — ${m.merged_name}`,
+                            subtitle: "Опубликованное объединённое древо.",
+                            approveId: null,
+                          })
+                        }
+                      >
+                        Показать
+                      </button>
+                      <button
+                        type="button"
+                        className={LINK_DANGER}
+                        disabled={busyKey === `unmerge-${m.id}`}
+                        onClick={() => void unmergeApproved(m)}
+                      >
+                        Отменить объединение
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

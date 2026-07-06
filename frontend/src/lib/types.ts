@@ -92,6 +92,12 @@ export interface PendingTree {
     matched: number;
     published: boolean;
   } | null;
+  /** Опубликованная версия участвует в объединении: одобрение новой версии
+   *  перепривяжет его и отправит на повторную проверку. */
+  merge_participation?: {
+    other_owner_name: string | null;
+    status: "pending" | "approved";
+  } | null;
 }
 
 /** Опубликованное древо в общем каталоге. */
@@ -163,6 +169,8 @@ export interface MergeAnchor {
 export interface MergeParty {
   owner_id: number | null;
   owner_name: string | null;
+  /** Публичных персон в древе владельца. */
+  tree_size: number;
 }
 
 /** Предложение срастить два древа по общему предку. */
@@ -196,6 +204,53 @@ export interface TreeMerge {
   branch_a: MergeBranch;
   branch_b: MergeBranch;
   total: number;
+}
+
+/** Карточка одной стороны при сверке пары персон перед объединением. */
+export interface MergeCheckPerson {
+  id: number;
+  full_name: string;
+  gender: "m" | "f" | null;
+  birth_year: number | null;
+  death_year: number | null;
+  teip_name: string | null;
+  village_name: string | null;
+  father_name: string | null;
+  mother_name: string | null;
+  owner_id: number | null;
+  owner_name: string | null;
+  tree_size: number;
+  children: { id: number; full_name: string; birth_year: number | null }[];
+}
+
+/** Пункт чек-листа сверки: подтверждение, предупреждение или блокировка. */
+export interface MergeCheckItem {
+  level: "ok" | "warn" | "block";
+  code: string;
+  message: string;
+}
+
+/** Результат сверки пары персон перед объединением. */
+export interface MergeCheck {
+  a: MergeCheckPerson;
+  b: MergeCheckPerson;
+  items: MergeCheckItem[];
+  can_merge: boolean;
+}
+
+/** Найденная персона для ручного выбора точки соединения. */
+export interface MergeSearchHit {
+  id: number;
+  full_name: string;
+  gender: "m" | "f" | null;
+  birth_year: number | null;
+  death_year: number | null;
+  teip_name: string | null;
+  village_name: string | null;
+  father_name: string | null;
+  owner_id: number | null;
+  owner_name: string | null;
+  status: string;
 }
 
 /** Правка персоны на повторной модерации (что изменилось). */

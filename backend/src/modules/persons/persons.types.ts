@@ -99,6 +99,19 @@ export const resolveMergeSchema = z.object({
 });
 export type ResolveMergeInput = z.infer<typeof resolveMergeSchema>;
 
+/** Ручное объединение древ: модератор сам выбрал двух персон-якорей. */
+export const manualMergeSchema = z.object({
+  anchor_a_id: z.coerce.number().int().positive(),
+  anchor_b_id: z.coerce.number().int().positive(),
+  /** Чьи поля станут «шапкой» общего предка (по умолчанию — первая). */
+  keep_id: z.coerce.number().int().positive().optional(),
+  full_name: z.string().min(2).max(200).optional(),
+  birth_year: z.number().int().min(0).max(2100).nullable().optional(),
+  death_year: z.number().int().min(0).max(2100).nullable().optional(),
+  note: z.string().max(5000).nullable().optional(),
+});
+export type ManualMergeInput = z.infer<typeof manualMergeSchema>;
+
 /**
  * Пакетная замена всего своего древа одним запросом (из редактора `/my`).
  * Родитель указывается по временному temp_id из этого же пакета, чтобы не

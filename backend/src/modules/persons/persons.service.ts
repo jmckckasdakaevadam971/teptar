@@ -699,6 +699,15 @@ export interface PendingTree {
   max_year: number | null;
   /** Если древо во многом повторяет чужое — кого именно. */
   duplicate?: PendingTreeDuplicate | null;
+  /**
+   * Опубликованная версия этого древа участвует в объединении. Одобрение
+   * новой версии перепривяжет объединение и отправит его на повторную
+   * проверку — модератор должен об этом знать заранее.
+   */
+  merge_participation?: {
+    other_owner_name: string | null;
+    status: "pending" | "approved";
+  } | null;
 }
 
 /** Владельцы, у кого есть ожидающие правки опубликованных записей. */
@@ -801,6 +810,47 @@ export async function listPendingTrees(
       tree.duplicate = null;
     }
   }
+
+  // Участие опубликованной версии в объединениях: одобрение новой версии
+  // отправит объединение на повторную проверку — предупреждаем модератора.
+  const mergeRows = await query<{
+    a_owner: number | null;
+    b_owner: number | null;
+    a_owner_name: string | null;
+    b_owner_name: string | null;
+    status: "pending" | "approved";
+  }>(
+    `SELECT tm.status,
+            pa.created_by AS a_owner, pb.created_by AS b_owner,
+            ua.display_name AS a_owner_name, ub.display_name AS b_owner_name
+     FROM tree_merges tm
+     JOIN persons pa ON pa.id = tm.anchor_a_id
+     JOIN persons pb ON pb.id = tm.anchor_b_id
+     LEFT JOIN users ua ON ua.id = pa.created_by
+     LEFT JOIN users ub ON ub.id = pb.created_by
+     WHERE tm.status IN ('pending', 'approved')
+       AND (pa.created_by = ANY($1) OR pb.created_by = ANY($1))`,
+    [trees.map((t) => t.owner_id)],
+  );
+  for (const tree of trees) {
+    tree.merge_participation = null;
+    for (const m of mergeRows) {
+      const isA = m.a_owner != null && Number(m.a_owner) === tree.owner_id;
+      const isB = m.b_owner != null && Number(m.b_owner) === tree.owner_id;
+      if (!isA && !isB) continue;
+      // approved важнее pending — показываем самое сильное участие.
+      if (
+        !tree.merge_participation ||
+        (m.status === "approved" &&
+          tree.merge_participation.status === "pending")
+      ) {
+        tree.merge_participation = {
+          other_owner_name: isA ? m.b_owner_name : m.a_owner_name,
+          status: m.status,
+        };
+      }
+    }
+  }
   return trees;
 }
 
@@ -832,6 +882,12 @@ export async function getOwnerContact(
 /**
  * Одобрить древо пользователя целиком. Если у него уже была одобренная
  * версия — она заменяется новой (старая удаляется в той же транзакции).
+ *
+ * Объединения (tree_merges), чьи якоря жили в старой версии, при удалении
+ * снесло бы каскадом. Поэтому запоминаем их заранее, а после одобрения
+ * перепривязываем к тому же человеку в новой версии (точное имя + год,
+ * иначе pg_trgm ≥ 0.9) и отправляем на ПОВТОРНУЮ модерацию (pending).
+ * Если человека в новой версии нет — фиксируем merge_lost в журнале.
  */
 export async function approveTree(
   ownerId: number,
@@ -847,6 +903,22 @@ export async function approveTree(
     if (pending.rowCount === 0)
       throw new ApiError(404, "Нет древа на модерации у этого пользователя");
 
+    // Объединения, держащиеся на персонах этого владельца, — до удаления.
+    const merges = await client.query<Record<string, unknown>>(
+      `SELECT tm.id, tm.anchor_a_id, tm.anchor_b_id, tm.status,
+              tm.merged_name, tm.merged_birth_year, tm.merged_death_year,
+              tm.merged_note,
+              pa.created_by AS a_owner, pb.created_by AS b_owner,
+              pa.full_name AS a_name, pa.birth_year AS a_birth,
+              pb.full_name AS b_name, pb.birth_year AS b_birth
+       FROM tree_merges tm
+       JOIN persons pa ON pa.id = tm.anchor_a_id
+       JOIN persons pb ON pb.id = tm.anchor_b_id
+       WHERE tm.status IN ('pending', 'approved')
+         AND (pa.created_by = $1 OR pb.created_by = $1)`,
+      [ownerId],
+    );
+
     // Убираем прежнюю одобренную версию — её заменяет новая.
     await client.query(
       `DELETE FROM persons WHERE created_by = $1 AND status = 'approved'`,
@@ -859,6 +931,115 @@ export async function approveTree(
        WHERE created_by = $1 AND visibility = 'public' AND status = 'pending' RETURNING id`,
       [ownerId, adminId],
     );
+
+    // Перепривязка объединений к новой версии древа.
+    for (const m of merges.rows) {
+      // Уцелела ли связь? (якорь владельца мог быть pending — тогда не удалялся)
+      const alive = await client.query(
+        `SELECT 1 FROM tree_merges WHERE id = $1`,
+        [Number(m.id)],
+      );
+      if (alive.rowCount) continue;
+
+      const aIsOwn = Number(m.a_owner) === ownerId;
+      const bIsOwn = Number(m.b_owner) === ownerId;
+      const ownName = String(aIsOwn ? m.a_name : m.b_name);
+      const ownBirth =
+        (aIsOwn ? m.a_birth : m.b_birth) == null
+          ? null
+          : Number(aIsOwn ? m.a_birth : m.b_birth);
+      const otherAnchor = aIsOwn
+        ? Number(m.anchor_b_id)
+        : Number(m.anchor_a_id);
+
+      // Обе стороны в одном древе (наследие) — восстанавливать нечего.
+      const lost = async (reason: string) => {
+        await client.query(
+          `INSERT INTO change_log (person_id, user_id, action, diff)
+           VALUES (NULL, $1, 'merge_lost', $2)`,
+          [
+            adminId,
+            JSON.stringify({
+              owner: ownerId,
+              merge_id: Number(m.id),
+              anchor_name: ownName,
+              was_status: String(m.status),
+              reason,
+            }),
+          ],
+        );
+      };
+      if (aIsOwn && bIsOwn) {
+        await lost("обе стороны объединения были в этом древе");
+        continue;
+      }
+
+      // Тот же человек в новой версии: точное имя (+год), иначе trgm ≥ 0.9.
+      const found = await client.query<{ id: number }>(
+        `SELECT id FROM persons
+         WHERE created_by = $1 AND status = 'approved' AND visibility = 'public'
+           AND (
+             (lower(full_name) = lower($2)
+              AND ($3::int IS NULL OR birth_year IS NULL OR birth_year = $3))
+             OR (similarity(full_name, $2) >= 0.9
+                 AND ($3::int IS NULL OR birth_year IS NULL
+                      OR abs(birth_year - $3) <= 2))
+           )
+         ORDER BY (lower(full_name) = lower($2)) DESC,
+                  similarity(full_name, $2) DESC
+         LIMIT 1`,
+        [ownerId, ownName, ownBirth],
+      );
+      if (!found.rowCount) {
+        await lost("в новой версии древа не нашёлся общий предок");
+        continue;
+      }
+
+      const newAnchor = Number(found.rows[0].id);
+      if (newAnchor === otherAnchor) continue;
+      const lo = Math.min(newAnchor, otherAnchor);
+      const hi = Math.max(newAnchor, otherAnchor);
+      await client.query(
+        `INSERT INTO tree_merges
+           (anchor_a_id, anchor_b_id, merged_name, merged_birth_year,
+            merged_death_year, merged_note, status, proposed_by)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+         ON CONFLICT (anchor_a_id, anchor_b_id) DO UPDATE
+           SET merged_name = EXCLUDED.merged_name,
+               merged_birth_year = EXCLUDED.merged_birth_year,
+               merged_death_year = EXCLUDED.merged_death_year,
+               merged_note = EXCLUDED.merged_note,
+               status = 'pending',
+               proposed_by = EXCLUDED.proposed_by,
+               approved_by = NULL,
+               resolved_at = NULL,
+               created_at = now()`,
+        [
+          lo,
+          hi,
+          m.merged_name ?? null,
+          m.merged_birth_year == null ? null : Number(m.merged_birth_year),
+          m.merged_death_year == null ? null : Number(m.merged_death_year),
+          m.merged_note ?? null,
+          adminId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO change_log (person_id, user_id, action, diff)
+         VALUES ($1, $2, 'merge_rebound', $3)`,
+        [
+          newAnchor,
+          adminId,
+          JSON.stringify({
+            owner: ownerId,
+            old_merge_id: Number(m.id),
+            was_status: String(m.status),
+            anchor_a: lo,
+            anchor_b: hi,
+          }),
+        ],
+      );
+    }
 
     await client.query(
       `INSERT INTO change_log (person_id, user_id, action, diff)
@@ -999,6 +1180,8 @@ export interface SimilarPerson {
   father_name: string | null;
   /** Сходство имён отцов, если отцы известны у ОБЕИХ сторон; иначе null. */
   father_similarity: number | null;
+  /** Совпало ли село: true/false — оба села указаны; null — сравнить нельзя. */
+  village_match: boolean | null;
 }
 
 /** Ключевые поля персоны для сопоставления. */
@@ -1010,6 +1193,8 @@ export interface MatchSeed {
   created_by: number | null;
   /** Имя отца искомой персоны — для сверки отцов (опционально). */
   father_name?: string | null;
+  /** Село искомой персоны — для сверки сёл (опционально). */
+  village_id?: number | null;
 }
 
 /**
@@ -1031,7 +1216,12 @@ export async function findSimilar(
              WHEN f.full_name IS NOT NULL AND $7::text IS NOT NULL
              THEN similarity(f.full_name, $7::text)
              ELSE NULL
-           END AS father_similarity
+           END AS father_similarity,
+           CASE
+             WHEN p.village_id IS NOT NULL AND $8::bigint IS NOT NULL
+             THEN p.village_id = $8::bigint
+             ELSE NULL
+           END AS village_match
     FROM persons p
     LEFT JOIN users u ON u.id = p.created_by
     LEFT JOIN teips t ON t.id = p.teip_id
@@ -1054,6 +1244,7 @@ export async function findSimilar(
       seed.created_by,
       statuses,
       seed.father_name ?? null,
+      seed.village_id ?? null,
     ],
   );
 }
@@ -1266,17 +1457,19 @@ export async function mergePersons(
 
 /**
  * Пороги строгого подбора якоря (общего предка двух древ).
- * Логика: сходство имени — базовый сигнал, отец и год рождения — подтверждения.
- *  • есть хотя бы одно подтверждение (отец совпал ИЛИ оба года указаны и близки)
- *    → достаточно ANCHOR_MIN_SIMILARITY;
- *  • подтверждений нет (нет отцов для сверки и хотя бы один год не указан)
- *    → имя должно совпадать почти точно: ANCHOR_STRICT_SIMILARITY;
+ * Логика: сходство имени — базовый сигнал; отец, год рождения и село —
+ * подтверждения.
+ *  • есть хотя бы одно подтверждение (отец совпал, ИЛИ оба года указаны
+ *    и близки, ИЛИ оба села указаны и совпали) → достаточно ANCHOR_MIN_SIMILARITY;
+ *  • подтверждений нет → имя должно совпадать почти точно: ANCHOR_STRICT_SIMILARITY;
  *  • отцы известны у обеих сторон, но их имена НЕ похожи
  *    → кандидат отбрасывается, какое бы похожее имя ни было (это разные люди).
+ *  • НЕсовпадение сёл кандидата не отбрасывает (семьи переезжали) —
+ *    село работает только как положительный сигнал.
  */
 const ANCHOR_MIN_SIMILARITY = 0.62;
 const ANCHOR_STRICT_SIMILARITY = 0.82;
-const FATHER_MIN_SIMILARITY = 0.45;
+export const FATHER_MIN_SIMILARITY = 0.45;
 
 /**
  * Найти точки пересечения древа владельца с ЧУЖИМИ древами и поставить в
@@ -1328,6 +1521,7 @@ export async function generateMergeSuggestionsForOwner(
         teip_id: p.teip_id,
         created_by: ownerId,
         father_name: fatherName,
+        village_id: p.village_id,
       },
       ["approved", "pending"],
     );
@@ -1344,7 +1538,11 @@ export async function generateMergeSuggestionsForOwner(
       // подтверждением считаем только случай «оба года указаны».
       const yearOk = p.birth_year !== null && c.birth_year !== null;
 
-      const confirmations = (fatherOk ? 1 : 0) + (yearOk ? 1 : 0);
+      // Село: подтверждение только при совпадении; несовпадение не отсекает.
+      const villageOk = c.village_match === true;
+
+      const confirmations =
+        (fatherOk ? 1 : 0) + (yearOk ? 1 : 0) + (villageOk ? 1 : 0);
       const minSim =
         confirmations > 0 ? ANCHOR_MIN_SIMILARITY : ANCHOR_STRICT_SIMILARITY;
       if (c.similarity < minSim) continue;
@@ -1409,6 +1607,9 @@ export interface MergeAnchor {
 export interface MergeParty {
   owner_id: number | null;
   owner_name: string | null;
+  /** Публичных персон в древе владельца — модератору видно, какая ветвь
+   *  присоединяется к большему древу. */
+  tree_size: number;
 }
 
 export interface MergeSuggestion {
@@ -1483,6 +1684,27 @@ export async function listMergeSuggestions(
     }
   }
 
+  // Размеры древ обеих сторон: ветвь меньшего присоединится к большему.
+  const ownerIds = Array.from(
+    new Set(
+      rows
+        .flatMap((r) => [r.a_owner_id, r.b_owner_id])
+        .filter((id) => id != null)
+        .map(Number),
+    ),
+  );
+  const sizeByOwner = new Map<number, number>();
+  if (ownerIds.length) {
+    const sizes = await query<{ created_by: number; n: number }>(
+      `SELECT created_by, COUNT(*)::int AS n FROM persons
+       WHERE created_by = ANY($1) AND visibility = 'public'
+         AND status IN ('approved', 'pending')
+       GROUP BY created_by`,
+      [ownerIds],
+    );
+    for (const s of sizes) sizeByOwner.set(Number(s.created_by), Number(s.n));
+  }
+
   const anchor = (
     id: number,
     name: unknown,
@@ -1508,10 +1730,18 @@ export async function listMergeSuggestions(
     owner_a: {
       owner_id: r.a_owner_id == null ? null : Number(r.a_owner_id),
       owner_name: (r.a_owner_name as string) ?? null,
+      tree_size:
+        r.a_owner_id == null
+          ? 0
+          : (sizeByOwner.get(Number(r.a_owner_id)) ?? 0),
     },
     owner_b: {
       owner_id: r.b_owner_id == null ? null : Number(r.b_owner_id),
       owner_name: (r.b_owner_name as string) ?? null,
+      tree_size:
+        r.b_owner_id == null
+          ? 0
+          : (sizeByOwner.get(Number(r.b_owner_id)) ?? 0),
     },
     anchor_a: anchor(
       Number(r.a_id),
@@ -1569,6 +1799,17 @@ export async function resolveMergeSuggestion(
   const b = Number(rows[0].person_b_id);
   if (keepId !== a && keepId !== b)
     throw new ApiError(400, "keep_id не относится к этому предложению");
+
+  // Жёсткая сверка перед объединением: противоречия (два отца, разный пол,
+  // разные тейпы и т. п.) блокируют слияние — сначала исправьте данные.
+  const check = await checkMergePair(a, b);
+  if (!check.can_merge) {
+    const reasons = check.items
+      .filter((i) => i.level === "block")
+      .map((i) => i.message)
+      .join("; ");
+    throw new ApiError(400, `Объединение заблокировано: ${reasons}`);
+  }
 
   // Поля «шапки» общего предка: берём из overrides, иначе из выбранной записи.
   const keep = await query<PersonRow>(`SELECT * FROM persons WHERE id = $1`, [
@@ -1803,4 +2044,535 @@ export async function dismissMergeSuggestion(
   );
   if (rows.length === 0) throw new ApiError(404, "Предложение не найдено");
   return { dismissed: true };
+}
+
+// ============================================================================
+//  ПРОВЕРКА ПЕРЕД ОБЪЕДИНЕНИЕМ, РУЧНОЕ ОБЪЕДИНЕНИЕ И ОТМЕНА
+//  Модератор сам выбирает точку соединения; система сверяет данные и жёстко
+//  блокирует логические ошибки (два разных отца, разный пол и т. п.).
+// ============================================================================
+
+/** Карточка одной стороны для сверки перед объединением. */
+export interface MergeCheckPerson {
+  id: number;
+  full_name: string;
+  gender: "m" | "f" | null;
+  birth_year: number | null;
+  death_year: number | null;
+  teip_name: string | null;
+  village_name: string | null;
+  father_name: string | null;
+  mother_name: string | null;
+  owner_id: number | null;
+  owner_name: string | null;
+  /** Размер древа владельца (public, approved+pending). */
+  tree_size: number;
+  children: { id: number; full_name: string; birth_year: number | null }[];
+}
+
+/** Один пункт чек-листа сверки. */
+export interface MergeCheckItem {
+  level: "ok" | "warn" | "block";
+  code: string;
+  message: string;
+}
+
+/** Результат сверки пары персон перед объединением. */
+export interface MergeCheck {
+  a: MergeCheckPerson;
+  b: MergeCheckPerson;
+  items: MergeCheckItem[];
+  /** false — есть блокирующие противоречия, объединять нельзя. */
+  can_merge: boolean;
+}
+
+/** Порог «имена заметно похожи» для пунктов чек-листа. */
+const CHECK_NAME_OK = 0.62;
+
+/**
+ * Сверить две персоны как кандидатов в общую точку соединения древ.
+ * Возвращает карточки обеих сторон и чек-лист ok/warn/block.
+ * Используется и для ручного объединения, и перед применением предложения.
+ */
+export async function checkMergePair(
+  aId: number,
+  bId: number,
+): Promise<MergeCheck> {
+  if (!Number.isFinite(aId) || !Number.isFinite(bId))
+    throw new ApiError(400, "Нужны две персоны для сверки");
+
+  const rows = await query<Record<string, unknown>>(
+    `SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year,
+            p.teip_id, t.name AS teip_name,
+            p.village_id, v.name AS village_name,
+            p.father_id, f.full_name AS father_name,
+            p.mother_id, m.full_name AS mother_name,
+            p.created_by AS owner_id, u.display_name AS owner_name,
+            p.status, p.visibility
+     FROM persons p
+     LEFT JOIN teips t    ON t.id = p.teip_id
+     LEFT JOIN villages v ON v.id = p.village_id
+     LEFT JOIN persons f  ON f.id = p.father_id
+     LEFT JOIN persons m  ON m.id = p.mother_id
+     LEFT JOIN users u    ON u.id = p.created_by
+     WHERE p.id = ANY($1)`,
+    [[aId, bId]],
+  );
+  const rowA = rows.find((r) => Number(r.id) === aId);
+  const rowB = rows.find((r) => Number(r.id) === bId);
+  if (!rowA || !rowB) throw new ApiError(404, "Одна из записей не найдена");
+
+  // Дети обеих сторон одним запросом.
+  const kids = await query<{
+    father_id: number | null;
+    mother_id: number | null;
+    id: number;
+    full_name: string;
+    birth_year: number | null;
+  }>(
+    `SELECT father_id, mother_id, id, full_name, birth_year FROM persons
+     WHERE father_id = ANY($1) OR mother_id = ANY($1)
+     ORDER BY COALESCE(birth_year, 9999), full_name`,
+    [[aId, bId]],
+  );
+  const childrenOf = (pid: number) =>
+    kids
+      .filter(
+        (k) => Number(k.father_id) === pid || Number(k.mother_id) === pid,
+      )
+      .map((k) => ({
+        id: Number(k.id),
+        full_name: k.full_name,
+        birth_year: k.birth_year == null ? null : Number(k.birth_year),
+      }));
+
+  // Размеры древ владельцев.
+  const ownerA = rowA.owner_id == null ? null : Number(rowA.owner_id);
+  const ownerB = rowB.owner_id == null ? null : Number(rowB.owner_id);
+  const sizeByOwner = new Map<number, number>();
+  const ownerIds = [ownerA, ownerB].filter((x): x is number => x != null);
+  if (ownerIds.length) {
+    const sizes = await query<{ created_by: number; n: number }>(
+      `SELECT created_by, COUNT(*)::int AS n FROM persons
+       WHERE created_by = ANY($1) AND visibility = 'public'
+         AND status IN ('approved', 'pending')
+       GROUP BY created_by`,
+      [ownerIds],
+    );
+    for (const s of sizes) sizeByOwner.set(Number(s.created_by), Number(s.n));
+  }
+
+  const card = (r: Record<string, unknown>): MergeCheckPerson => ({
+    id: Number(r.id),
+    full_name: String(r.full_name),
+    gender: (r.gender as "m" | "f") ?? null,
+    birth_year: r.birth_year == null ? null : Number(r.birth_year),
+    death_year: r.death_year == null ? null : Number(r.death_year),
+    teip_name: (r.teip_name as string) ?? null,
+    village_name: (r.village_name as string) ?? null,
+    father_name: (r.father_name as string) ?? null,
+    mother_name: (r.mother_name as string) ?? null,
+    owner_id: r.owner_id == null ? null : Number(r.owner_id),
+    owner_name: (r.owner_name as string) ?? null,
+    tree_size:
+      r.owner_id == null ? 0 : (sizeByOwner.get(Number(r.owner_id)) ?? 0),
+    children: childrenOf(Number(r.id)),
+  });
+  const a = card(rowA);
+  const b = card(rowB);
+
+  // Сходство имён (своих, отцов, матерей) считает pg_trgm одним запросом.
+  const sims = await query<{
+    name_sim: number;
+    father_sim: number | null;
+    mother_sim: number | null;
+  }>(
+    `SELECT similarity($1, $2) AS name_sim,
+            CASE WHEN $3::text IS NULL OR $4::text IS NULL THEN NULL
+                 ELSE similarity($3, $4) END AS father_sim,
+            CASE WHEN $5::text IS NULL OR $6::text IS NULL THEN NULL
+                 ELSE similarity($5, $6) END AS mother_sim`,
+    [
+      a.full_name,
+      b.full_name,
+      a.father_name,
+      b.father_name,
+      a.mother_name,
+      b.mother_name,
+    ],
+  );
+  const nameSim = Number(sims[0].name_sim ?? 0);
+  const fatherSim =
+    sims[0].father_sim == null ? null : Number(sims[0].father_sim);
+  const motherSim =
+    sims[0].mother_sim == null ? null : Number(sims[0].mother_sim);
+
+  // Похожие дети с обеих сторон — сильное подтверждение «это один человек».
+  const commonKids = await query<{ a_name: string; b_name: string }>(
+    `SELECT ka.full_name AS a_name, kb.full_name AS b_name
+     FROM persons ka, persons kb
+     WHERE (ka.father_id = $1 OR ka.mother_id = $1)
+       AND (kb.father_id = $2 OR kb.mother_id = $2)
+       AND similarity(ka.full_name, kb.full_name) >= ${CHECK_NAME_OK}
+     ORDER BY similarity(ka.full_name, kb.full_name) DESC
+     LIMIT 5`,
+    [aId, bId],
+  );
+
+  // Уже существующая связь пары.
+  const lo = Math.min(aId, bId);
+  const hi = Math.max(aId, bId);
+  const existing = await query<{ id: number; status: string }>(
+    `SELECT id, status FROM tree_merges
+     WHERE anchor_a_id = $1 AND anchor_b_id = $2`,
+    [lo, hi],
+  );
+
+  const items: MergeCheckItem[] = [];
+  const push = (level: MergeCheckItem["level"], code: string, message: string) =>
+    items.push({ level, code, message });
+
+  // ── Блокирующие противоречия ─────────────────────────────────────────
+  if (aId === bId) push("block", "same_person", "Это одна и та же запись");
+  if (
+    String(rowA.visibility) !== "public" ||
+    String(rowB.visibility) !== "public" ||
+    !["approved", "pending"].includes(String(rowA.status)) ||
+    !["approved", "pending"].includes(String(rowB.status))
+  )
+    push(
+      "block",
+      "not_public",
+      "Обе записи должны быть публичными (опубликованы или на модерации)",
+    );
+  if (ownerA == null || ownerB == null)
+    push(
+      "block",
+      "no_owner",
+      "У одной из записей нет автора — объединяются древа разных авторов",
+    );
+  else if (ownerA === ownerB)
+    push(
+      "block",
+      "same_owner",
+      "Обе записи принадлежат одному автору — это одно древо, объединять нечего",
+    );
+  if (a.gender && b.gender && a.gender !== b.gender)
+    push("block", "gender", "Разный пол — это не может быть один человек");
+  if (fatherSim != null && fatherSim < FATHER_MIN_SIMILARITY)
+    push(
+      "block",
+      "two_fathers",
+      `Указаны разные отцы: «${a.father_name}» и «${b.father_name}» — у человека получилось бы два отца`,
+    );
+  if (motherSim != null && motherSim < FATHER_MIN_SIMILARITY)
+    push(
+      "block",
+      "two_mothers",
+      `Указаны разные матери: «${a.mother_name}» и «${b.mother_name}» — у человека получилось бы две матери`,
+    );
+  if (a.teip_name && b.teip_name && a.teip_name !== b.teip_name)
+    push(
+      "block",
+      "teip",
+      `Разные тейпы: ${a.teip_name} и ${b.teip_name} — один человек не может состоять в двух тейпах`,
+    );
+  if (
+    a.birth_year != null &&
+    b.birth_year != null &&
+    Math.abs(a.birth_year - b.birth_year) > 10
+  )
+    push(
+      "block",
+      "birth_year_far",
+      `Годы рождения расходятся на ${Math.abs(a.birth_year - b.birth_year)} лет (${a.birth_year} и ${b.birth_year})`,
+    );
+  if (existing.length && existing[0].status === "approved")
+    push(
+      "block",
+      "already_merged",
+      "Эти древа уже объединены через эту пару — отмените объединение, чтобы изменить",
+    );
+  else if (existing.length && existing[0].status === "pending")
+    push(
+      "block",
+      "merge_pending",
+      "Объединение этой пары уже ждёт проверки в очереди",
+    );
+
+  // ── Сверка совпадений (подтверждения и предупреждения) ───────────────
+  if (nameSim >= CHECK_NAME_OK)
+    push(
+      "ok",
+      "name",
+      `Имена совпадают: «${a.full_name}» ↔ «${b.full_name}» (${Math.round(nameSim * 100)}%)`,
+    );
+  else if (nameSim >= FATHER_MIN_SIMILARITY)
+    push(
+      "warn",
+      "name",
+      `Имена похожи лишь отчасти (${Math.round(nameSim * 100)}%) — убедитесь, что это один человек`,
+    );
+  else
+    push(
+      "warn",
+      "name",
+      `Имена заметно различаются: «${a.full_name}» и «${b.full_name}» — нужны веские основания`,
+    );
+
+  if (fatherSim != null && fatherSim >= FATHER_MIN_SIMILARITY)
+    push(
+      "ok",
+      "father",
+      `Отцы совпадают: «${a.father_name}» ↔ «${b.father_name}»`,
+    );
+  else if (fatherSim == null && (a.father_name || b.father_name))
+    push(
+      "warn",
+      "father",
+      "Отец указан только в одном древе — сверить некому, проверьте по документам",
+    );
+
+  if (motherSim != null && motherSim >= FATHER_MIN_SIMILARITY)
+    push(
+      "ok",
+      "mother",
+      `Матери совпадают: «${a.mother_name}» ↔ «${b.mother_name}»`,
+    );
+
+  if (a.teip_name && b.teip_name && a.teip_name === b.teip_name)
+    push("ok", "teip", `Тейп совпадает: ${a.teip_name}`);
+  else if (!a.teip_name || !b.teip_name)
+    push("warn", "teip", "Тейп указан не у обеих записей");
+
+  if (a.village_name && b.village_name) {
+    if (a.village_name === b.village_name)
+      push("ok", "village", `Село совпадает: ${a.village_name}`);
+    else
+      push(
+        "warn",
+        "village",
+        `Сёла различаются: ${a.village_name} и ${b.village_name} (возможен переезд)`,
+      );
+  }
+
+  if (a.birth_year != null && b.birth_year != null) {
+    const diff = Math.abs(a.birth_year - b.birth_year);
+    if (diff <= 2)
+      push(
+        "ok",
+        "birth_year",
+        diff === 0
+          ? `Год рождения совпадает: ${a.birth_year}`
+          : `Годы рождения близки: ${a.birth_year} и ${b.birth_year}`,
+      );
+    else if (diff <= 10)
+      push(
+        "warn",
+        "birth_year",
+        `Годы рождения расходятся на ${diff} лет (${a.birth_year} и ${b.birth_year})`,
+      );
+  } else {
+    push("warn", "birth_year", "Год рождения указан не у обеих записей");
+  }
+
+  if (commonKids.length) {
+    const pairs = commonKids
+      .map((k) =>
+        k.a_name === k.b_name ? `«${k.a_name}»` : `«${k.a_name}» ↔ «${k.b_name}»`,
+      )
+      .join(", ");
+    push(
+      "ok",
+      "children",
+      `Совпадают дети: ${pairs} — сильное подтверждение`,
+    );
+  } else if (a.children.length && b.children.length) {
+    push(
+      "warn",
+      "children",
+      "Общих детей не найдено: в двух древах у этого человека разные дети (ветви дополняют друг друга — проверьте, что это не однофамилец)",
+    );
+  }
+
+  // block выше warn выше ok — чтобы модератор сразу видел препятствия.
+  const rank = { block: 0, warn: 1, ok: 2 } as const;
+  items.sort((x, y) => rank[x.level] - rank[y.level]);
+
+  return { a, b, items, can_merge: !items.some((i) => i.level === "block") };
+}
+
+/**
+ * Ручное объединение: модератор сам выбрал точку соединения (двух персон из
+ * разных древ). Проверки жёсткие: любые block-противоречия — отказ 400.
+ * Пара попадает в tree_merges со статусом pending (повторная модерация),
+ * как и при объединении из предложения.
+ */
+export async function manualMerge(
+  aId: number,
+  bId: number,
+  adminId: number,
+  keepId?: number,
+  overrides?: MergeOverrides,
+): Promise<{ merged: boolean; tree_merge_id: number; check: MergeCheck }> {
+  const check = await checkMergePair(aId, bId);
+  if (!check.can_merge) {
+    const reasons = check.items
+      .filter((i) => i.level === "block")
+      .map((i) => i.message)
+      .join("; ");
+    throw new ApiError(400, `Объединение заблокировано: ${reasons}`);
+  }
+
+  const keep = keepId === bId ? check.b : check.a;
+  const name =
+    overrides?.full_name != null && overrides.full_name.trim()
+      ? overrides.full_name.trim()
+      : keep.full_name;
+  const birth =
+    overrides?.birth_year !== undefined
+      ? overrides.birth_year
+      : keep.birth_year;
+  const death =
+    overrides?.death_year !== undefined
+      ? overrides.death_year
+      : keep.death_year;
+  const note = overrides?.note !== undefined ? overrides.note : null;
+
+  const lo = Math.min(aId, bId);
+  const hi = Math.max(aId, bId);
+
+  return withTransaction(async (client) => {
+    const ins = await client.query<{ id: number }>(
+      `INSERT INTO tree_merges
+         (anchor_a_id, anchor_b_id, merged_name, merged_birth_year,
+          merged_death_year, merged_note, status, proposed_by)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+       ON CONFLICT (anchor_a_id, anchor_b_id) DO UPDATE
+         SET merged_name = EXCLUDED.merged_name,
+             merged_birth_year = EXCLUDED.merged_birth_year,
+             merged_death_year = EXCLUDED.merged_death_year,
+             merged_note = EXCLUDED.merged_note,
+             status = 'pending',
+             proposed_by = EXCLUDED.proposed_by,
+             approved_by = NULL,
+             resolved_at = NULL,
+             created_at = now()
+       RETURNING id`,
+      [lo, hi, name, birth, death, note, adminId],
+    );
+
+    // Если на эту пару было автоматическое предложение — закрываем его.
+    await client.query(
+      `UPDATE merge_suggestions
+       SET status = 'merged', resolved_by = $3, resolved_at = now()
+       WHERE person_a_id = $1 AND person_b_id = $2 AND status = 'pending'`,
+      [lo, hi, adminId],
+    );
+
+    await client.query(
+      `INSERT INTO change_log (person_id, user_id, action, diff)
+       VALUES ($1, $2, 'merge', $3)`,
+      [
+        keep.id,
+        adminId,
+        JSON.stringify({ anchor_a: lo, anchor_b: hi, manual: true }),
+      ],
+    );
+
+    return {
+      merged: true,
+      tree_merge_id: Number(ins.rows[0].id),
+      check,
+    };
+  });
+}
+
+/**
+ * Отменить ОДОБРЕННОЕ объединение: древа снова становятся независимыми.
+ * Исходные данные не менялись при объединении, поэтому отмена — это просто
+ * снятие связи (статус rejected). Пару можно объединить заново позже.
+ */
+export async function unmerge(
+  mergeId: number,
+  adminId: number,
+): Promise<{ cancelled: boolean }> {
+  const rows = await query<{ anchor_a_id: number; anchor_b_id: number }>(
+    `UPDATE tree_merges
+     SET status = 'rejected', approved_by = $2, resolved_at = now()
+     WHERE id = $1 AND status = 'approved'
+     RETURNING anchor_a_id, anchor_b_id`,
+    [mergeId, adminId],
+  );
+  if (rows.length === 0)
+    throw new ApiError(404, "Одобренное объединение не найдено");
+  await query(
+    `INSERT INTO change_log (person_id, user_id, action, diff)
+     VALUES (NULL, $1, 'unmerge', $2)`,
+    [
+      adminId,
+      JSON.stringify({
+        merge_id: mergeId,
+        anchor_a: Number(rows[0].anchor_a_id),
+        anchor_b: Number(rows[0].anchor_b_id),
+      }),
+    ],
+  );
+  return { cancelled: true };
+}
+
+/** Найденная персона для ручного выбора точки соединения. */
+export interface MergeSearchHit {
+  id: number;
+  full_name: string;
+  gender: "m" | "f" | null;
+  birth_year: number | null;
+  death_year: number | null;
+  teip_name: string | null;
+  village_name: string | null;
+  father_name: string | null;
+  owner_id: number | null;
+  owner_name: string | null;
+  status: string;
+}
+
+/** Поиск персон по имени для ручного объединения (только публичные с автором). */
+export async function searchMergeCandidates(
+  q: string,
+): Promise<MergeSearchHit[]> {
+  const term = q.trim();
+  if (term.length < 2) return [];
+  const rows = await query<Record<string, unknown>>(
+    `SELECT p.id, p.full_name, p.gender, p.birth_year, p.death_year, p.status,
+            t.name AS teip_name, v.name AS village_name,
+            f.full_name AS father_name,
+            p.created_by AS owner_id, u.display_name AS owner_name,
+            GREATEST(similarity(p.full_name, $1),
+                     CASE WHEN p.full_name ILIKE '%' || $1 || '%'
+                          THEN 0.99 ELSE 0 END) AS sim
+     FROM persons p
+     LEFT JOIN teips t    ON t.id = p.teip_id
+     LEFT JOIN villages v ON v.id = p.village_id
+     LEFT JOIN persons f  ON f.id = p.father_id
+     LEFT JOIN users u    ON u.id = p.created_by
+     WHERE p.visibility = 'public' AND p.status IN ('approved', 'pending')
+       AND p.created_by IS NOT NULL
+       AND (p.full_name % $1 OR p.full_name ILIKE '%' || $1 || '%')
+     ORDER BY sim DESC, COALESCE(p.birth_year, 9999), p.full_name
+     LIMIT 20`,
+    [term],
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    full_name: String(r.full_name),
+    gender: (r.gender as "m" | "f") ?? null,
+    birth_year: r.birth_year == null ? null : Number(r.birth_year),
+    death_year: r.death_year == null ? null : Number(r.death_year),
+    teip_name: (r.teip_name as string) ?? null,
+    village_name: (r.village_name as string) ?? null,
+    father_name: (r.father_name as string) ?? null,
+    owner_id: r.owner_id == null ? null : Number(r.owner_id),
+    owner_name: (r.owner_name as string) ?? null,
+    status: String(r.status),
+  }));
 }

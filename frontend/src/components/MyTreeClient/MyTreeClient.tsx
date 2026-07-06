@@ -19,6 +19,7 @@ import {
   Pencil,
 } from "lucide-react";
 import type { Person } from "@/lib/demo-data";
+import type { RelatedTree } from "@/lib/types";
 import { getSpouses, isFemale, displayName, isAlive } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 import { useAuth, getToken, OPEN_ACCESS } from "@/lib/auth";
@@ -127,6 +128,8 @@ export function MyTreeClient() {
   const [publishing, setPublishing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // Похожие опубликованные древа других хранителей — возможные родственники.
+  const [relatedTrees, setRelatedTrees] = useState<RelatedTree[]>([]);
   // Последняя причина отклонения древа модератором (показываем автору).
   const [rejectInfo, setRejectInfo] = useState<{
     reason: string | null;
@@ -360,6 +363,12 @@ export function MyTreeClient() {
       });
 
       await api.persons.bulkReplace(payload);
+
+      // Ищем похожие древа других хранителей — возможно, это родственники.
+      const related = await api.tree
+        .relatedTrees()
+        .catch(() => [] as RelatedTree[]);
+      setRelatedTrees(related);
 
       setSubmitted(true);
       setPublishedOpen(true);
@@ -1599,7 +1608,7 @@ export function MyTreeClient() {
                 className="absolute inset-0 bg-background/80 backdrop-blur-sm"
                 onClick={() => setPublishedOpen(false)}
               />
-              <div className="relative flex w-full max-w-md flex-col items-center overflow-hidden rounded-3xl border border-border bg-card p-8 text-center shadow-2xl">
+              <div className="relative flex max-h-[85vh] w-full max-w-md flex-col items-center overflow-y-auto rounded-3xl border border-border bg-card p-8 text-center shadow-2xl">
                 <span className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary text-primary">
                   <Check className="h-8 w-8" />
                 </span>
@@ -1610,6 +1619,48 @@ export function MyTreeClient() {
                   Древо проверят модераторы и супер-админ. После одобрения оно
                   появится в общем доступе.
                 </p>
+                {relatedTrees.length > 0 ? (
+                  <div className="mt-5 w-full rounded-2xl border border-primary/40 bg-secondary/60 p-4 text-left">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Users className="h-4 w-4 shrink-0 text-primary" />
+                      Похожие древа — возможно, ваши родственники
+                    </p>
+                    <ul className="mt-3 space-y-2">
+                      {relatedTrees.slice(0, 3).map((t) => (
+                        <li key={t.owner_id}>
+                          <Link
+                            href={`/trees/${t.link_person_id}`}
+                            className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2 transition-colors hover:border-primary"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-foreground transition-colors group-hover:text-primary">
+                                Древо: {t.owner_name ?? "хранитель"}
+                                {t.teip_name ? ` · ${t.teip_name}` : ""}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {t.best.their_person.full_name}
+                                {t.best.their_person.birth_year
+                                  ? ` (${t.best.their_person.birth_year})`
+                                  : ""}
+                                {" · похож на "}
+                                {t.best.my_person.full_name}
+                                {t.match_count > 1
+                                  ? ` · совпадений: ${t.match_count}`
+                                  : ""}
+                              </span>
+                            </span>
+                            <TreePine className="h-4 w-4 shrink-0 text-primary" />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                      Если узнаёте свою родню — откройте древо и свяжитесь с его
+                      хранителем. Модераторы тоже увидят совпадения и могут
+                      предложить объединение.
+                    </p>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setPublishedOpen(false)}
