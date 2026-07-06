@@ -84,8 +84,10 @@ async function syncRoleWithServer(): Promise<void> {
       return;
     }
     if (user.role !== current.role) patchStoredUser({ role: user.role });
-  } catch {
-    // Сеть недоступна — оставляем сохранённую роль, бэкенд всё равно проверит.
+  } catch (e) {
+    // 401 = токен недействителен или пользователь удалён — чистим сессию.
+    if ((e as Error & { status?: number }).status === 401) clearAuth();
+    // Иначе (сеть недоступна) оставляем сохранённую роль — бэкенд всё равно проверит.
   }
 }
 
