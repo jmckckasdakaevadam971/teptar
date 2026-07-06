@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { api } from './api';
 import type { AuthResult, User } from './types';
 
 const TOKEN_KEY = 'teptar_token';
@@ -66,6 +67,29 @@ export function canModerate(role: User['role'] | undefined): boolean {
 }
 
 /**
+ * Сверить роль в localStorage с сервером: роль могли сменить после входа
+ * (например, супер-админа понизили до хранителя). Вызывается один раз
+ * на загрузку вкладки; при расхождении обновляет хранилище и шлёт событие.
+ */
+let roleSynced = false;
+async function syncRoleWithServer(): Promise<void> {
+  if (roleSynced) return;
+  roleSynced = true;
+  const current = getStoredUser();
+  if (!current || !getToken()) return;
+  try {
+    const { user } = await api.auth.me();
+    if (!user) {
+      clearAuth(); // пользователь удалён — разлогиниваем
+      return;
+    }
+    if (user.role !== current.role) patchStoredUser({ role: user.role });
+  } catch {
+    // Сеть недоступна — оставляем сохранённую роль, бэкенд всё равно проверит.
+  }
+}
+
+/**
  * Реактивный хук текущей сессии.
  * Подписывается на изменения localStorage и кастомное событие,
  * чтобы шапка и кнопки обновлялись сразу после входа/выхода.
@@ -80,6 +104,7 @@ export function useAuth(): { user: User | null; ready: boolean } {
       setReady(true);
     };
     sync();
+    void syncRoleWithServer();
     window.addEventListener(AUTH_EVENT, sync);
     window.addEventListener('storage', sync);
     return () => {

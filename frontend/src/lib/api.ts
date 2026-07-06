@@ -284,7 +284,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify(input),
       }),
-    me: () => request<{ user: User | null }>("/auth/me"),
+    me: () =>
+      request<{ user: { userId: number; role: User["role"] } | null }>(
+        "/auth/me",
+      ),
     /** Полный профиль текущего пользователя. */
     profile: () => request<UserProfile>("/auth/profile"),
     /** Обновить имя / телефон / e-mail. */

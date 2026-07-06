@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
+import { query } from '../db/pool.js';
 import { ApiError } from '../utils/http.js';
 
 export type UserRole = 'viewer' | 'editor' | 'teip_admin' | 'super_admin';
@@ -24,13 +25,24 @@ declare global {
  * Извлекает и проверяет JWT из заголовка Authorization.
  * Если токена нет — пропускает дальше с req.user = undefined
  * (для публичных GET-маршрутов).
+ *
+ * Роль НЕ берётся из токена: после выдачи токена её могли сменить
+ * (например, супер-админа понизили до хранителя). Поэтому роль всегда
+ * сверяется с базой; удалённый пользователь считается неавторизованным.
  */
-export function authOptional(req: Request, _res: Response, next: NextFunction): void {
+export async function authOptional(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
     try {
       const token = header.slice(7);
-      req.user = jwt.verify(token, env.jwtSecret) as AuthPayload;
+      const payload = jwt.verify(token, env.jwtSecret) as AuthPayload;
+      const rows = await query<{ role: UserRole }>(
+        'SELECT role FROM users WHERE id = $1',
+        [payload.userId],
+      );
+      if (rows[0]) {
+        req.user = { userId: payload.userId, role: rows[0].role };
+      }
     } catch {
       // Игнорируем битый токен в optional-режиме.
     }
