@@ -6,7 +6,7 @@ import { ArrowLeft, GitBranch, Pencil, TreePine, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { BranchGrantInfo, TreeNode } from "@/lib/types";
 import type { Person as TreePerson } from "@/lib/demo-data";
-import { TreeView } from "@/components/TreeView/TreeView";
+import { TreeView, type AddRelation } from "@/components/TreeView/TreeView";
 import { useAuth } from "@/lib/auth";
 import {
   BTN_PRIMARY,
@@ -25,6 +25,7 @@ export function toTreePeople(nodes: TreeNode[]): TreePerson[] {
   return nodes.map((n) => ({
     id: String(n.id),
     name: n.full_name,
+    gender: n.gender,
     birth: n.birth_year != null ? String(n.birth_year) : undefined,
     death: n.death_year != null ? String(n.death_year) : undefined,
     role: "",
@@ -48,6 +49,8 @@ interface DraftPatch {
   birth_year?: number | null;
   death_year?: number | null;
   note?: string | null;
+  /** Список жён целиком (добавление/правка/удаление жены). */
+  spouse_names?: string[];
 }
 
 /** Форма редактирования персоны ветви. */
@@ -65,7 +68,7 @@ interface EditFormState {
   note: string;
 }
 
-/** Форма добавления ребёнка в ветвь (отправляется сразу на модерацию). */
+/** Форма добавления сына/дочери в ветвь (пол определяется слотом). */
 interface AddFormState {
   parentId: number;
   parentName: string;
@@ -75,6 +78,15 @@ interface AddFormState {
   birth: string;
   death: string;
   note: string;
+}
+
+/** Форма добавления/правки жены (список жён хранится при муже). */
+interface WifeFormState {
+  personId: number;
+  personName: string;
+  /** null — добавление новой жены, число — правка по индексу. */
+  index: number | null;
+  name: string;
 }
 
 /**
@@ -120,6 +132,13 @@ export function PublicTreeDetail({
   const [editLoading, setEditLoading] = useState(false);
   // Добавление ребёнка в ветвь
   const [addForm, setAddForm] = useState<AddFormState | null>(null);
+  // Добавление/правка жены (черновик списка жён мужа)
+  const [wifeForm, setWifeForm] = useState<WifeFormState | null>(null);
+  // Просмотр карточки жены («Информация» в меню жены)
+  const [wifeInfo, setWifeInfo] = useState<{
+    name: string;
+    husband: string;
+  } | null>(null);
   // Инкремент перезагружает дерево и права (после добавления/удаления).
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -223,12 +242,33 @@ export function PublicTreeDetail({
   }, [mode, branchRootSel, branchOf, editableSet, viewBranch, nodes]);
 
   const people = useMemo(() => {
-    const base = toTreePeople(nodes);
+    const base = toTreePeople(nodes).map((p) => {
+      // Черновики видны сразу: имя/годы/жёны — до отправки на модерацию.
+      const d = drafts[Number(p.id)];
+      if (!d) return p;
+      return {
+        ...p,
+        name: d.full_name ?? p.name,
+        birth:
+          d.birth_year !== undefined
+            ? d.birth_year != null
+              ? String(d.birth_year)
+              : undefined
+            : p.birth,
+        death:
+          d.death_year !== undefined
+            ? d.death_year != null
+              ? String(d.death_year)
+              : undefined
+            : p.death,
+        spouseNames: d.spouse_names ?? p.spouseNames,
+      };
+    });
     if (!highlightSet) return base;
     return base.map((p) =>
       highlightSet.has(Number(p.id)) ? { ...p, highlighted: true } : p,
     );
-  }, [nodes, highlightSet]);
+  }, [nodes, highlightSet, drafts]);
 
   const selected = nodes.find((n) => String(n.id) === selectedId) ?? null;
   const branchRootNode =
@@ -273,18 +313,15 @@ export function PublicTreeDetail({
   /** Клик по карточке в дереве — поведение зависит от режима. */
   const handleSelect = useCallback(
     (id: string) => {
-      const numId = Number(id);
       if (mode === "select") {
-        setBranchRootSel(numId);
+        setBranchRootSel(Number(id));
         return;
       }
-      if (mode === "edit" && editableSet.has(numId)) {
-        void openEditForm(numId);
-        return;
-      }
+      // В режиме редактирования выделение показывает слоты «+ Сын/Дочь/Жена»
+      // вокруг карточек ветви (как в редакторе древа).
       setSelectedId(id);
     },
-    [mode, editableSet, openEditForm],
+    [mode],
   );
 
   /** Сохранить форму в черновик (отправка — отдельной кнопкой). */
@@ -366,9 +403,9 @@ export function PublicTreeDetail({
     }
   }, [drafts]);
 
-  /** Открыть форму добавления ребёнка к персоне ветви. */
+  /** Открыть форму добавления сына/дочери к персоне ветви. */
   const openAddForm = useCallback(
-    (parentId: number) => {
+    (parentId: number, rel: "son" | "daughter") => {
       const parent = nodes.find((n) => n.id === parentId);
       if (!parent) return;
       setEditForm(null);
@@ -377,7 +414,7 @@ export function PublicTreeDetail({
         parentName: parent.full_name,
         parentGender: parent.gender === "f" ? "f" : "m",
         full_name: "",
-        gender: "m",
+        gender: rel === "daughter" ? "f" : "m",
         birth: "",
         death: "",
         note: "",
@@ -385,6 +422,125 @@ export function PublicTreeDetail({
     },
     [nodes],
   );
+
+  /** Текущий список жён с учётом черновика. */
+  const effectiveSpouses = useCallback(
+    (personId: number): string[] => {
+      const d = drafts[personId];
+      if (d?.spouse_names !== undefined) return d.spouse_names;
+      return nodes.find((n) => n.id === personId)?.spouse_names ?? [];
+    },
+    [drafts, nodes],
+  );
+
+  /** Положить новый список жён в черновик (пустая разница — убрать ключ). */
+  const setWifeDraft = useCallback(
+    (personId: number, list: string[]) => {
+      const orig = nodes.find((n) => n.id === personId)?.spouse_names ?? [];
+      setDrafts((prev) => {
+        const patch = { ...(prev[personId] ?? {}) };
+        if (JSON.stringify(list) === JSON.stringify(orig)) {
+          delete patch.spouse_names;
+        } else {
+          patch.spouse_names = list;
+        }
+        const next = { ...prev };
+        if (Object.keys(patch).length === 0) delete next[personId];
+        else next[personId] = patch;
+        return next;
+      });
+    },
+    [nodes],
+  );
+
+  /** Клик по слоту «+ Сын/Дочь/Жена» рядом с выбранной карточкой. */
+  const handleAddRelative = useCallback(
+    (rel: AddRelation) => {
+      if (selectedId == null) return;
+      const pid = Number(selectedId);
+      if (!editableSet.has(pid)) return;
+      setActionError(null);
+      if (rel === "wife") {
+        const person = nodes.find((n) => n.id === pid);
+        if (!person) return;
+        setWifeForm({
+          personId: pid,
+          personName: person.full_name,
+          index: null,
+          name: "",
+        });
+        return;
+      }
+      if (rel === "son" || rel === "daughter") openAddForm(pid, rel);
+    },
+    [selectedId, editableSet, nodes, openAddForm],
+  );
+
+  /** «Информация» в меню карточки жены. */
+  const handleWifeInfo = useCallback(
+    (personId: string, wifeIndex: number) => {
+      const pid = Number(personId);
+      const husband = nodes.find((n) => n.id === pid);
+      const name = effectiveSpouses(pid)[wifeIndex];
+      if (husband && name != null)
+        setWifeInfo({ name, husband: husband.full_name });
+    },
+    [nodes, effectiveSpouses],
+  );
+
+  /** «Редактировать» в меню карточки жены. */
+  const handleWifeEdit = useCallback(
+    (personId: string, wifeIndex: number) => {
+      const pid = Number(personId);
+      const husband = nodes.find((n) => n.id === pid);
+      const name = effectiveSpouses(pid)[wifeIndex];
+      if (husband && name != null)
+        setWifeForm({
+          personId: pid,
+          personName: husband.full_name,
+          index: wifeIndex,
+          name,
+        });
+    },
+    [nodes, effectiveSpouses],
+  );
+
+  /** «Удалить» в меню карточки жены — убирает из черновика списка жён. */
+  const handleWifeDelete = useCallback(
+    (personId: string, wifeIndex: number) => {
+      const pid = Number(personId);
+      const list = effectiveSpouses(pid);
+      const name = list[wifeIndex];
+      if (name == null) return;
+      if (
+        !window.confirm(
+          `Удалить жену «${name}»? Изменение попадёт в черновик и уйдёт на модерацию.`,
+        )
+      )
+        return;
+      setWifeDraft(
+        pid,
+        list.filter((_, i) => i !== wifeIndex),
+      );
+    },
+    [effectiveSpouses, setWifeDraft],
+  );
+
+  /** Сохранить форму жены в черновик списка жён мужа. */
+  const submitWife = useCallback(() => {
+    if (!wifeForm) return;
+    const name = wifeForm.name.trim();
+    if (!name) {
+      setActionError("Укажите имя жены");
+      return;
+    }
+    setActionError(null);
+    const list = [...effectiveSpouses(wifeForm.personId)];
+    if (wifeForm.index == null) list.push(name);
+    else list[wifeForm.index] = name;
+    setWifeDraft(wifeForm.personId, list);
+    setWifeForm(null);
+  }, [wifeForm, effectiveSpouses, setWifeDraft]);
 
   /** Создать ребёнка в ветви — сразу уходит на модерацию. */
   const submitAdd = useCallback(async () => {
@@ -508,6 +664,7 @@ export function PublicTreeDetail({
                 onClick={() => {
                   setNotice(null);
                   setActionError(null);
+                  setSelectedId(null);
                   setMode("edit");
                 }}
               >
@@ -603,8 +760,9 @@ export function PublicTreeDetail({
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Вам доступны карточки, подсвеченные оранжевым. Нажмите на
-                    карточку, чтобы поправить данные или добавить ребёнка —
-                    так ветвь прирастает новыми поколениями. Изменения
+                    карточку — рядом появятся кнопки «+ Сын», «+ Дочь» и
+                    «+ Жена», как в редакторе древа. Поправить данные можно
+                    через меню ⋮ карточки → «Редактировать». Изменения
                     применятся к опубликованной родословной только после
                     проверки модератором.
                   </p>
@@ -616,6 +774,9 @@ export function PublicTreeDetail({
                   onClick={() => {
                     setMode("view");
                     setEditForm(null);
+                    setAddForm(null);
+                    setWifeForm(null);
+                    setSelectedId(null);
                   }}
                 >
                   <X className="h-4 w-4" />
@@ -662,8 +823,31 @@ export function PublicTreeDetail({
             people={people}
             selectedId={selectedId}
             onSelect={handleSelect}
+            {...(mode === "edit"
+              ? {
+                  onAddRelative: handleAddRelative,
+                  onShowInfo: (id: string) => setSelectedId(id),
+                  onEdit: (id: string) => void openEditForm(Number(id)),
+                  onDelete: (id: string) => {
+                    if (
+                      window.confirm(
+                        "Удалить это добавление? Карточка ещё не прошла модерацию и будет удалена безвозвратно.",
+                      )
+                    )
+                      void deletePendingAdd(Number(id));
+                  },
+                  canModify: (id: string) => editableSet.has(Number(id)),
+                  canDelete: (id: string) =>
+                    Boolean(nodes.find((n) => n.id === Number(id))?.pending),
+                  // Отца в режиме ветви не добавляют: ветвь растёт вниз.
+                  slotFilter: (rel: AddRelation) => rel !== "father",
+                  onWifeInfo: handleWifeInfo,
+                  onWifeEdit: handleWifeEdit,
+                  onWifeDelete: handleWifeDelete,
+                }
+              : {})}
           />
-          {selected && mode === "view" ? (
+          {selected && mode !== "select" ? (
             <div className={CARD}>
               <h3 className="font-serif text-lg font-semibold text-foreground">
                 {selected.full_name}
@@ -776,13 +960,6 @@ export function PublicTreeDetail({
                 >
                   Сохранить в черновик
                 </button>
-                <button
-                  type="button"
-                  className={BTN_SECONDARY}
-                  onClick={() => openAddForm(editForm.personId)}
-                >
-                  + Добавить ребёнка
-                </button>
                 {nodes.find((n) => n.id === editForm.personId)?.pending ? (
                   <button
                     type="button"
@@ -814,7 +991,7 @@ export function PublicTreeDetail({
         >
           <div className={`${CARD} w-full max-w-md`}>
             <h3 className="font-serif text-lg font-semibold text-foreground">
-              Добавить ребёнка
+              {addForm.gender === "f" ? "Добавить дочь" : "Добавить сына"}
             </h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {addForm.parentGender === "f" ? "Мать" : "Отец"}:{" "}
@@ -834,29 +1011,6 @@ export function PublicTreeDetail({
                     setAddForm({ ...addForm, full_name: e.target.value })
                   }
                 />
-              </div>
-              <div className={FIELD}>
-                <span className={LABEL}>Пол</span>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm text-foreground">
-                    <input
-                      type="radio"
-                      name="af-gender"
-                      checked={addForm.gender === "m"}
-                      onChange={() => setAddForm({ ...addForm, gender: "m" })}
-                    />
-                    Мужской
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-foreground">
-                    <input
-                      type="radio"
-                      name="af-gender"
-                      checked={addForm.gender === "f"}
-                      onChange={() => setAddForm({ ...addForm, gender: "f" })}
-                    />
-                    Женский
-                  </label>
-                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className={FIELD}>
@@ -919,6 +1073,89 @@ export function PublicTreeDetail({
                   Отмена
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {wifeForm ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className={`${CARD} w-full max-w-md`}>
+            <h3 className="font-serif text-lg font-semibold text-foreground">
+              {wifeForm.index == null ? "Добавить жену" : "Правка жены"}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Муж:{" "}
+              <strong className="text-foreground">
+                {wifeForm.personName}
+              </strong>
+              . Изменение попадёт в черновик и уйдёт на модерацию.
+            </p>
+            <div className="mt-4 grid gap-4">
+              <div className={FIELD}>
+                <label className={LABEL} htmlFor="wf-name">
+                  ФИО жены
+                </label>
+                <input
+                  id="wf-name"
+                  className={INPUT}
+                  value={wifeForm.name}
+                  onChange={(e) =>
+                    setWifeForm({ ...wifeForm, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className={BTN_PRIMARY}
+                  disabled={wifeForm.name.trim() === ""}
+                  onClick={submitWife}
+                >
+                  Сохранить в черновик
+                </button>
+                <button
+                  type="button"
+                  className={BTN_SECONDARY}
+                  onClick={() => setWifeForm(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {wifeInfo ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setWifeInfo(null)}
+        >
+          <div
+            className={`${CARD} w-full max-w-md`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-serif text-lg font-semibold text-foreground">
+              {wifeInfo.name}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Жена: муж — {wifeInfo.husband}
+            </p>
+            <div className="mt-4">
+              <button
+                type="button"
+                className={BTN_SECONDARY}
+                onClick={() => setWifeInfo(null)}
+              >
+                Закрыть
+              </button>
             </div>
           </div>
         </div>

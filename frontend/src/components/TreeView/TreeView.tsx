@@ -104,7 +104,7 @@ function computeBranchColors(people: Person[]): Map<string, string> {
 }
 
 /** Плейсхолдер «добавить родственника» рядом с выбранным узлом. */
-type AddRelation = "father" | "wife" | "son" | "daughter";
+export type AddRelation = "father" | "wife" | "son" | "daughter";
 const ADD_LABEL: Record<AddRelation, string> = {
   father: "Отец",
   wife: "Жена",
@@ -721,6 +721,9 @@ export function TreeView({
   onWifeInfo,
   onWifeEdit,
   onWifeDelete,
+  canModify,
+  canDelete,
+  slotFilter,
 }: {
   people: Person[];
   selectedId: string | null;
@@ -749,6 +752,14 @@ export function TreeView({
   onWifeEdit?: (personId: string, wifeIndex: number) => void;
   /** Пункт «Удалить» в бургер-меню карточки жены. */
   onWifeDelete?: (personId: string, wifeIndex: number) => void;
+  /** Режим ветви: можно ли менять карточку (слоты «+», пункт «Редактировать»,
+   *  меню жён). Не задан — можно все. */
+  canModify?: (id: string) => boolean;
+  /** Режим ветви: можно ли удалять карточку (пункт «Удалить»).
+   *  Не задан — правило onDelete действует для всех. */
+  canDelete?: (id: string) => boolean;
+  /** Фильтр слотов добавления: вернуть false — слот не показывается. */
+  slotFilter?: (rel: AddRelation) => boolean;
 }) {
   const editable = Boolean(onAddRelative);
   const movable = Boolean(onMove);
@@ -921,6 +932,8 @@ export function TreeView({
   // Слоты «добавить родственника» вокруг выбранного узла (Familio-стиль).
   const addSlots = useMemo(() => {
     if (!editable || !selected) return [];
+    // Режим ветви: слоты только у карточек, доступных для изменения.
+    if (canModify && !canModify(selected.id)) return [];
     const p = layout.pos[selected.id];
     if (!p) return [];
 
@@ -953,6 +966,7 @@ export function TreeView({
       rel: AddRelation,
       candidates: { x: number; y: number; ax?: number; ay?: number }[],
     ) => {
+      if (slotFilter && !slotFilter(rel)) return;
       // отрицательные координаты — за холстом, такие кандидаты пропускаем
       const spot = candidates.find(
         (c) => c.x >= 0 && c.y >= 0 && !occupied(c.x, c.y),
@@ -1079,7 +1093,16 @@ export function TreeView({
       );
     }
     return slots;
-  }, [editable, selected, people, visiblePeople, layout, collapsed]);
+  }, [
+    editable,
+    selected,
+    people,
+    visiblePeople,
+    layout,
+    collapsed,
+    canModify,
+    slotFilter,
+  ]);
 
   // вычисляем уголковые связи родитель → дети.
   // Координаты X/Y берём из layout (надёжно), высоту карточки — из DOM.
@@ -2474,7 +2497,7 @@ export function TreeView({
                               <Info className="h-4 w-4 text-primary" />
                               Информация
                             </button>
-                            {onEdit ? (
+                            {onEdit && (!canModify || canModify(person.id)) ? (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2506,7 +2529,8 @@ export function TreeView({
                                 Вернуть на место
                               </button>
                             ) : null}
-                            {onDelete ? (
+                            {onDelete &&
+                            (!canDelete || canDelete(person.id)) ? (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2632,7 +2656,8 @@ export function TreeView({
                                 <Info className="h-4 w-4 text-primary" />
                                 Информация
                               </button>
-                              {onWifeEdit ? (
+                              {onWifeEdit &&
+                              (!canModify || canModify(person.id)) ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -2646,7 +2671,8 @@ export function TreeView({
                                   Редактировать
                                 </button>
                               ) : null}
-                              {onWifeDelete ? (
+                              {onWifeDelete &&
+                              (!canModify || canModify(person.id)) ? (
                                 <button
                                   type="button"
                                   onClick={(e) => {

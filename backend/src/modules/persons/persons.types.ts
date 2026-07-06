@@ -38,8 +38,14 @@ export const createPersonSchema = z.object({
   note: z.string().max(5000).nullable().optional(),
 });
 
-/** Схема обновления — все поля опциональны. */
-export const updatePersonSchema = createPersonSchema.partial();
+/** Схема обновления — все поля опциональны (+ список жён). */
+export const updatePersonSchema = createPersonSchema.partial().extend({
+  spouse_names: z
+    .array(z.string().trim().min(1).max(120))
+    .max(20)
+    .nullable()
+    .optional(),
+});
 
 /** Параметры поиска/листинга. */
 export const listPersonsSchema = z.object({

@@ -129,7 +129,15 @@ const FIELD_RU: Record<string, string> = {
   note: "Примечание",
   father_id: "Отец",
   mother_id: "Мать",
+  spouse_names: "Жёны",
 };
+
+/** Значение diff в читаемом виде (массивы — через запятую). */
+function fmtDiffVal(v: unknown): string {
+  if (v == null) return "—";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
+  return String(v);
+}
 
 /** Предложение уже неактуально (слито/пересоздано/персона удалена). */
 function isStale(e: unknown): boolean {
@@ -1634,10 +1642,10 @@ function EditBody({
             {FIELD_RU[field] ?? field}:{" "}
             {change.is_new ? null : (
               <>
-                <s>{String(v.from ?? "—")}</s> →{" "}
+                <s>{fmtDiffVal(v.from)}</s> →{" "}
               </>
             )}
-            <span className="text-cream">{String(v.to ?? "—")}</span>
+            <span className="text-cream">{fmtDiffVal(v.to)}</span>
           </li>
         ))}
       </ul>
