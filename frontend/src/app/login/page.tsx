@@ -51,17 +51,29 @@ function LoginPageInner() {
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
 
-  // Доп. поля регистрации
-  const [displayName, setDisplayName] = useState("");
+  // Доп. поля регистрации: ФИО — тремя отдельными полями.
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
   const [agreed, setAgreed] = useState(false);
 
   // Тейп и населённый пункт — обязательны при регистрации: пользователь
-  // сразу прикрепляется к модераторам своего тейпа.
+  // сразу прикрепляется к модераторам своего тейпа. Вводятся текстом
+  // с автоподсказками из справочников.
   const [teipId, setTeipId] = useState("");
+  const [teipQuery, setTeipQuery] = useState("");
   const [villageId, setVillageId] = useState("");
+  const [villageQuery, setVillageQuery] = useState("");
   const [teips, setTeips] = useState<Teip[] | null>(null);
   const [villages, setVillages] = useState<Village[] | null>(null);
   const [dictsError, setDictsError] = useState(false);
+
+  /** Полное ФИО из трёх полей (отчество может отсутствовать). */
+  const fullName = () =>
+    [lastName, firstName, middleName]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ");
 
   // Справочники грузим один раз при первом открытии вкладки «Регистрация».
   useEffect(() => {
@@ -208,17 +220,35 @@ function LoginPageInner() {
         setError("Введите корректный e-mail — например, mail@example.com.");
         return;
       }
-      if (displayName.trim().split(/\s+/).length < 2) {
-        setError("Укажите полное ФИО — минимум фамилию и имя.");
+      if (!lastName.trim()) {
+        setError("Введите фамилию.");
         return;
       }
-      if (!teipId) {
-        setError("Выберите тейп.");
+      if (!firstName.trim()) {
+        setError("Введите имя.");
         return;
+      }
+      // Если пользователь ввёл название, но не кликнул подсказку —
+      // принимаем точное совпадение по справочнику.
+      if (!teipId) {
+        const exact = (teips ?? []).find(
+          (t) => normalize(t.name) === normalize(teipQuery),
+        );
+        if (exact) setTeipId(String(exact.id));
+        else {
+          setError("Выберите тейп из списка подсказок.");
+          return;
+        }
       }
       if (!villageId) {
-        setError("Выберите населённый пункт.");
-        return;
+        const exact = (villages ?? []).find(
+          (v) => normalize(v.name) === normalize(villageQuery),
+        );
+        if (exact) setVillageId(String(exact.id));
+        else {
+          setError("Выберите населённый пункт из списка подсказок.");
+          return;
+        }
       }
       if (password.length < 8) {
         setError("Пароль должен быть не короче 8 символов.");
@@ -234,6 +264,21 @@ function LoginPageInner() {
       setError("Введите пароль.");
       return;
     }
+
+    // Итоговые id (state мог обновиться только что — берём с фолбэком).
+    const teipIdFinal =
+      teipId ||
+      String(
+        (teips ?? []).find((t) => normalize(t.name) === normalize(teipQuery))
+          ?.id ?? "",
+      );
+    const villageIdFinal =
+      villageId ||
+      String(
+        (villages ?? []).find(
+          (v) => normalize(v.name) === normalize(villageQuery),
+        )?.id ?? "",
+      );
 
     if (siteKey && !token) {
       setError("Подтвердите, что вы не робот.");
@@ -251,11 +296,11 @@ function LoginPageInner() {
       } else {
         // Регистрация — только по e-mail.
         const result = await api.auth.register({
-          display_name: displayName.trim(),
+          display_name: fullName(),
           password,
           email: login.trim(),
-          teip_id: Number(teipId),
-          village_id: Number(villageId),
+          teip_id: Number(teipIdFinal),
+          village_id: Number(villageIdFinal),
           turnstile_token: token ?? undefined,
         });
         // Если включено подтверждение почты — сервер вернёт pending,
@@ -304,7 +349,7 @@ function LoginPageInner() {
     setError(null);
     try {
       await api.auth.resendCode({
-        display_name: displayName.trim(),
+        display_name: fullName(),
         email: pendingEmail,
         password,
         teip_id: Number(teipId),
@@ -396,55 +441,79 @@ function LoginPageInner() {
               {tab === "register" && (
                 <>
                   <div className={FIELD}>
-                    <label className={LABEL}>Фамилия Имя Отчество</label>
+                    <label className={LABEL}>Фамилия</label>
                     <input
                       className={INPUT}
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Например: Магомадов Ахмед Салманович"
-                      autoComplete="name"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      autoComplete="family-name"
+                    />
+                  </div>
+
+                  <div className={FIELD}>
+                    <label className={LABEL}>Имя</label>
+                    <input
+                      className={INPUT}
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      autoComplete="given-name"
+                    />
+                  </div>
+
+                  <div className={FIELD}>
+                    <label className={LABEL}>Отчество</label>
+                    <input
+                      className={INPUT}
+                      value={middleName}
+                      onChange={(e) => setMiddleName(e.target.value)}
+                      autoComplete="additional-name"
                     />
                   </div>
 
                   <div className={FIELD}>
                     <label className={LABEL}>Тейп</label>
-                    <select
-                      className={INPUT}
-                      value={teipId}
-                      onChange={(e) => setTeipId(e.target.value)}
-                    >
-                      <option value="">
-                        {teips ? "Выберите тейп…" : "Загрузка…"}
-                      </option>
-                      {(teips ?? []).map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                          {t.tukhum_name ? ` — ${t.tukhum_name}` : ""}
-                        </option>
-                      ))}
-                    </select>
+                    <SuggestInput
+                      value={teipQuery}
+                      loading={!teips && !dictsError}
+                      options={(teips ?? []).map((t) => ({
+                        id: t.id,
+                        name: t.name,
+                        note: t.tukhum_name ?? null,
+                      }))}
+                      onText={(v) => {
+                        setTeipQuery(v);
+                        setTeipId("");
+                      }}
+                      onPick={(o) => {
+                        setTeipQuery(o.name);
+                        setTeipId(String(o.id));
+                      }}
+                    />
                     <p className="m-0 text-xs text-muted-foreground">
-                      Вы будете прикреплены к модераторам своего тейпа.
+                      Начните вводить название и выберите из подсказок. Вы
+                      будете прикреплены к модераторам своего тейпа.
                     </p>
                   </div>
 
                   <div className={FIELD}>
                     <label className={LABEL}>Населённый пункт</label>
-                    <select
-                      className={INPUT}
-                      value={villageId}
-                      onChange={(e) => setVillageId(e.target.value)}
-                    >
-                      <option value="">
-                        {villages ? "Выберите населённый пункт…" : "Загрузка…"}
-                      </option>
-                      {(villages ?? []).map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.name}
-                          {v.district ? ` (${v.district})` : ""}
-                        </option>
-                      ))}
-                    </select>
+                    <SuggestInput
+                      value={villageQuery}
+                      loading={!villages && !dictsError}
+                      options={(villages ?? []).map((v) => ({
+                        id: v.id,
+                        name: v.name,
+                        note: v.district,
+                      }))}
+                      onText={(v) => {
+                        setVillageQuery(v);
+                        setVillageId("");
+                      }}
+                      onPick={(o) => {
+                        setVillageQuery(o.name);
+                        setVillageId(String(o.id));
+                      }}
+                    />
                   </div>
 
                   {dictsError && (
@@ -543,6 +612,103 @@ function LoginPageInner() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Нормализация текста для поиска по справочникам: нижний регистр,
+ * чеченская «палочка» и похожие символы (Ӏ, латинские I/l, «!», «|»)
+ * приводятся к цифре 1 — как в базе («Г1ой», «Х1инда» и т.п.).
+ */
+function normalize(s: string): string {
+  return s.trim().toLowerCase().replace(/[ӏіil|!]/g, "1");
+}
+
+interface SuggestOption {
+  id: number;
+  name: string;
+  note: string | null;
+}
+
+/**
+ * Текстовое поле с выпадающими подсказками из справочника.
+ * Фильтрует по вхождению (название и примечание), показывает до 8 вариантов.
+ */
+function SuggestInput({
+  value,
+  options,
+  loading,
+  onText,
+  onPick,
+}: {
+  value: string;
+  options: SuggestOption[];
+  loading: boolean;
+  onText: (v: string) => void;
+  onPick: (o: SuggestOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const q = normalize(value);
+  const matches = (
+    q
+      ? options.filter(
+          (o) =>
+            normalize(o.name).includes(q) ||
+            (o.note ? normalize(o.note).includes(q) : false),
+        )
+      : options
+  ).slice(0, 8);
+
+  return (
+    <div className="relative">
+      <input
+        className={INPUT}
+        value={value}
+        autoComplete="off"
+        onChange={(e) => {
+          onText(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+      />
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+          {loading ? (
+            <p className="m-0 px-4 py-2.5 text-sm text-muted-foreground">
+              Загрузка справочника…
+            </p>
+          ) : matches.length === 0 ? (
+            <p className="m-0 px-4 py-2.5 text-sm text-muted-foreground">
+              Ничего не найдено. Проверьте написание.
+            </p>
+          ) : (
+            <ul className="m-0 max-h-56 list-none overflow-y-auto p-0">
+              {matches.map((o) => (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    className="block w-full px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-secondary/60"
+                    /* onMouseDown, чтобы клик сработал раньше blur поля */
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      onPick(o);
+                      setOpen(false);
+                    }}
+                  >
+                    {o.name}
+                    {o.note && (
+                      <span className="text-muted-foreground"> — {o.note}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
