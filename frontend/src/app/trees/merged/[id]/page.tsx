@@ -48,6 +48,7 @@ export default function MergedTreePage({ params }: { params: { id: string } }) {
     <PageShell
       title="Общее родовое древо"
       description="Две ветки, сведённые по общему предку. Исходные древа обоих хранителей остаются неизменными."
+      wide
     >
       {Number.isFinite(mergeId) ? (
         <PublicTreeDetail mergeId={mergeId} />

@@ -51,6 +51,7 @@ export default function TreeDetailPage({ params }: { params: { id: string } }) {
     <PageShell
       title="Родовое древо"
       description="Полная схема объединённого древа: от самого старшего предка к потомкам."
+      wide
     >
       {Number.isFinite(rootId) ? (
         <PublicTreeDetail rootId={rootId} />
