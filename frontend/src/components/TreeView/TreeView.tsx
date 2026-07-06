@@ -2037,9 +2037,10 @@ export function TreeView({
               transformOrigin: "top left",
             }}
           >
-            {/* SVG связи */}
+            {/* SVG связи; overflow-visible — хребет стопки детей самого
+                левого столбца лежит на x = −14, иначе он обрезается */}
             <svg
-              className="pointer-events-none absolute inset-0 z-0"
+              className="pointer-events-none absolute inset-0 z-0 overflow-visible"
               width={layout.width}
               height={layout.height}
               aria-hidden="true"
