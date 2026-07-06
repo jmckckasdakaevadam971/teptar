@@ -651,13 +651,25 @@ function SuggestInput({
   const [open, setOpen] = useState(false);
 
   const q = normalize(value);
+  // Приоритет: название начинается с запроса → название содержит →
+  // примечание (тухум/район) содержит. Внутри группы порядок справочника.
   const matches = (
     q
-      ? options.filter(
-          (o) =>
-            normalize(o.name).includes(q) ||
-            (o.note ? normalize(o.note).includes(q) : false),
-        )
+      ? options
+          .map((o) => {
+            const n = normalize(o.name);
+            const score = n.startsWith(q)
+              ? 0
+              : n.includes(q)
+                ? 1
+                : o.note && normalize(o.note).includes(q)
+                  ? 2
+                  : -1;
+            return { o, score };
+          })
+          .filter((x) => x.score >= 0)
+          .sort((a, b) => a.score - b.score)
+          .map((x) => x.o)
       : options
   ).slice(0, 8);
 
