@@ -75,6 +75,21 @@ function LoginPageInner() {
       .filter(Boolean)
       .join(" ");
 
+  /** Точное совпадение введённого тейпа со справочником (имя или алиас). */
+  const findTeipByQuery = () =>
+    (teips ?? []).find(
+      (t) =>
+        normalize(t.name) === normalize(teipQuery) ||
+        (t.aliases ?? []).some((a) => normalize(a) === normalize(teipQuery)),
+    );
+
+  /** Тейп введён, но в справочнике его нет — уйдёт заявкой на проверку. */
+  const teipUnknown =
+    !teipId &&
+    teipQuery.trim().length >= 2 &&
+    teips != null &&
+    !findTeipByQuery();
+
   // Справочники грузим один раз при первом открытии вкладки «Регистрация».
   useEffect(() => {
     if (tab !== "register" || (teips && villages)) return;
@@ -229,14 +244,14 @@ function LoginPageInner() {
         return;
       }
       // Если пользователь ввёл название, но не кликнул подсказку —
-      // принимаем точное совпадение по справочнику.
+      // принимаем точное совпадение по справочнику (имя или алиас).
+      // Неизвестный тейп регистрацию НЕ блокирует: название уйдёт
+      // заявкой супер-админу, тейп проставится после одобрения.
       if (!teipId) {
-        const exact = (teips ?? []).find(
-          (t) => normalize(t.name) === normalize(teipQuery),
-        );
+        const exact = findTeipByQuery();
         if (exact) setTeipId(String(exact.id));
-        else {
-          setError("Выберите тейп из списка подсказок.");
+        else if (teipQuery.trim().length < 2) {
+          setError("Укажите тейп.");
           return;
         }
       }
@@ -266,12 +281,8 @@ function LoginPageInner() {
     }
 
     // Итоговые id (state мог обновиться только что — берём с фолбэком).
-    const teipIdFinal =
-      teipId ||
-      String(
-        (teips ?? []).find((t) => normalize(t.name) === normalize(teipQuery))
-          ?.id ?? "",
-      );
+    // Пустой teipIdFinal = тейпа нет в справочнике → отправляем название текстом.
+    const teipIdFinal = teipId || String(findTeipByQuery()?.id ?? "");
     const villageIdFinal =
       villageId ||
       String(
@@ -299,7 +310,9 @@ function LoginPageInner() {
           display_name: fullName(),
           password,
           email: login.trim(),
-          teip_id: Number(teipIdFinal),
+          ...(teipIdFinal
+            ? { teip_id: Number(teipIdFinal) }
+            : { teip_name: teipQuery.trim() }),
           village_id: Number(villageIdFinal),
           turnstile_token: token ?? undefined,
         });
@@ -352,7 +365,9 @@ function LoginPageInner() {
         display_name: fullName(),
         email: pendingEmail,
         password,
-        teip_id: Number(teipId),
+        ...(teipId
+          ? { teip_id: Number(teipId) }
+          : { teip_name: teipQuery.trim() }),
         village_id: Number(villageId),
       });
       setResendIn(60);
@@ -478,7 +493,9 @@ function LoginPageInner() {
                         id: t.id,
                         name: t.name,
                         note: t.tukhum_name ?? null,
+                        alt: t.aliases,
                       }))}
+                      emptyText="Такого тейпа нет в справочнике — можно продолжить, он уйдёт на проверку."
                       onText={(v) => {
                         setTeipQuery(v);
                         setTeipId("");
@@ -488,10 +505,18 @@ function LoginPageInner() {
                         setTeipId(String(o.id));
                       }}
                     />
-                    <p className="m-0 text-xs text-muted-foreground">
-                      Начните вводить название и выберите из подсказок. Вы
-                      будете прикреплены к модераторам своего тейпа.
-                    </p>
+                    {teipUnknown ? (
+                      <p className="m-0 text-xs text-accent">
+                        Тейпа «{teipQuery.trim()}» нет в справочнике. Вы можете
+                        продолжить регистрацию — название уйдёт на проверку, и
+                        после добавления тейпа вы будете к нему прикреплены.
+                      </p>
+                    ) : (
+                      <p className="m-0 text-xs text-muted-foreground">
+                        Начните вводить название и выберите из подсказок. Вы
+                        будете прикреплены к модераторам своего тейпа.
+                      </p>
+                    )}
                   </div>
 
                   <div className={FIELD}>
@@ -628,6 +653,8 @@ interface SuggestOption {
   id: number;
   name: string;
   note: string | null;
+  /** Дополнительные варианты написания (алиасы) — участвуют в поиске. */
+  alt?: string[];
 }
 
 /**
@@ -640,30 +667,35 @@ function SuggestInput({
   loading,
   onText,
   onPick,
+  emptyText,
 }: {
   value: string;
   options: SuggestOption[];
   loading: boolean;
   onText: (v: string) => void;
   onPick: (o: SuggestOption) => void;
+  emptyText?: string;
 }) {
   const [open, setOpen] = useState(false);
 
   const q = normalize(value);
   // Приоритет: название начинается с запроса → название содержит →
-  // примечание (тухум/район) содержит. Внутри группы порядок справочника.
+  // алиас (вариант написания) содержит → примечание (тухум/район) содержит.
   const matches = (
     q
       ? options
           .map((o) => {
             const n = normalize(o.name);
+            const altHit = (o.alt ?? []).some((a) => normalize(a).includes(q));
             const score = n.startsWith(q)
               ? 0
               : n.includes(q)
                 ? 1
-                : o.note && normalize(o.note).includes(q)
+                : altHit
                   ? 2
-                  : -1;
+                  : o.note && normalize(o.note).includes(q)
+                    ? 3
+                    : -1;
             return { o, score };
           })
           .filter((x) => x.score >= 0)
@@ -693,7 +725,7 @@ function SuggestInput({
             </p>
           ) : matches.length === 0 ? (
             <p className="m-0 px-4 py-2.5 text-sm text-muted-foreground">
-              Ничего не найдено. Проверьте написание.
+              {emptyText ?? "Ничего не найдено. Проверьте написание."}
             </p>
           ) : (
             <ul className="m-0 max-h-56 list-none overflow-y-auto p-0">

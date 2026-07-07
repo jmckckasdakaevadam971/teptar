@@ -51,3 +51,53 @@ export async function updateOrigin(req: Request, res: Response): Promise<void> {
   if (!teip) throw new ApiError(404, "Тейп не найден");
   res.json(ok(teip));
 }
+
+// ---------------------------------------------------------------------------
+//  Алиасы (варианты написания) и заявки на добавление тейпа
+// ---------------------------------------------------------------------------
+
+const aliasSchema = z.object({
+  name: z.string().trim().min(2, "Название слишком короткое").max(120),
+});
+
+export async function addAlias(req: Request, res: Response): Promise<void> {
+  const input = aliasSchema.parse(req.body);
+  const alias = await service.createTeipAlias(Number(req.params.id), input.name);
+  res.status(201).json(ok(alias));
+}
+
+export async function removeAlias(req: Request, res: Response): Promise<void> {
+  await service.deleteTeipAlias(Number(req.params.aliasId));
+  res.json(ok({ deleted: true }));
+}
+
+export async function requests(_req: Request, res: Response): Promise<void> {
+  res.json(ok(await service.listTeipRequests()));
+}
+
+export async function approveRequest(req: Request, res: Response): Promise<void> {
+  const teip = await service.approveTeipRequest(
+    Number(req.params.id),
+    req.user!.userId,
+  );
+  res.json(ok(teip));
+}
+
+const mapSchema = z.object({
+  teip_id: z.coerce.number().int().positive("Выберите тейп"),
+});
+
+export async function mapRequest(req: Request, res: Response): Promise<void> {
+  const input = mapSchema.parse(req.body);
+  const teip = await service.mapTeipRequest(
+    Number(req.params.id),
+    req.user!.userId,
+    input.teip_id,
+  );
+  res.json(ok(teip));
+}
+
+export async function rejectRequest(req: Request, res: Response): Promise<void> {
+  await service.rejectTeipRequest(Number(req.params.id), req.user!.userId);
+  res.json(ok({ rejected: true }));
+}

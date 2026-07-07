@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ModerationPanel } from '@/components/ModerationPanel/ModerationPanel';
 import { KeeperApplicationsCard } from '@/components/KeepersView/AdminKeepers';
+import { TeipRequestsCard } from '@/components/TeipRequests/TeipRequestsCard';
 import { PageHeader } from '@/components/PageHeader/PageHeader';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, LINK_DANGER, ROLE_SELECT, TABLE, TABLE_WRAP } from '@/lib/ui';
@@ -158,6 +159,9 @@ function AdminPageInner() {
 
           {/* Заявки в хранители */}
           <KeeperApplicationsCard onApproved={() => void load()} />
+
+          {/* Заявки на добавление тейпов в справочник */}
+          <TeipRequestsCard />
 
           {/* Опубликованные древа */}
           <PublishedTreesCard onChanged={() => void load()} />

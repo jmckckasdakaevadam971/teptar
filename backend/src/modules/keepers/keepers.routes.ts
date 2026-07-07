@@ -29,6 +29,13 @@ keepersRouter.post(
   requireRole("super_admin"),
   asyncHandler(controller.approve),
 );
+// Добавить тейп из заявки в справочник (когда тейпа там ещё нет)
+keepersRouter.post(
+  "/applications/:id/create-teip",
+  requireAuth,
+  requireRole("super_admin"),
+  asyncHandler(controller.createTeip),
+);
 keepersRouter.post(
   "/applications/:id/reject",
   requireAuth,

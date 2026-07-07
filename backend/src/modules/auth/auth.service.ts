@@ -9,6 +9,10 @@ import { query } from "../../db/pool.js";
 import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/http.js";
 import { sendVerificationCode } from "./mailer.js";
+import {
+  createTeipRequest,
+  resolveTeipIdByName,
+} from "../teips/teips.service.js";
 import type { UserRole } from "../../middleware/auth.js";
 
 interface UserRow {
@@ -56,21 +60,43 @@ function publicUser(u: UserRow) {
 }
 
 /**
- * Проверка, что выбранные тейп и село существуют в справочниках.
+ * Проверка, что выбранное село существует в справочнике.
  * Возвращаем понятную 400-ошибку вместо 500 от нарушения FK.
  */
-async function validateTeipAndVillage(
-  teipId: number,
-  villageId: number,
-): Promise<void> {
-  const [teip, village] = await Promise.all([
-    query<{ id: number }>("SELECT id FROM teips WHERE id = $1", [teipId]),
-    query<{ id: number }>("SELECT id FROM villages WHERE id = $1", [villageId]),
-  ]);
-  if (teip.length === 0) throw new ApiError(400, "Выбранный тейп не найден");
+async function validateVillage(villageId: number): Promise<void> {
+  const village = await query<{ id: number }>(
+    "SELECT id FROM villages WHERE id = $1",
+    [villageId],
+  );
   if (village.length === 0) {
     throw new ApiError(400, "Выбранный населённый пункт не найден");
   }
+}
+
+/**
+ * Определить тейп при регистрации. Явный id проверяется по справочнику;
+ * свободный текст ищется по названиям И алиасам. Если тейп неизвестен —
+ * регистрацию НЕ блокируем: пользователь создаётся без тейпа, а название
+ * уходит заявкой супер-админу (открытый справочник: точного числа тейпов
+ * не существует).
+ */
+async function resolveRegistrationTeip(input: {
+  teip_id?: number | null;
+  teip_name?: string | null;
+}): Promise<{ teipId: number | null; pendingName: string | null }> {
+  if (input.teip_id != null) {
+    const rows = await query<{ id: number }>(
+      "SELECT id FROM teips WHERE id = $1",
+      [input.teip_id],
+    );
+    if (rows.length === 0) throw new ApiError(400, "Выбранный тейп не найден");
+    return { teipId: input.teip_id, pendingName: null };
+  }
+  const name = input.teip_name?.trim() ?? "";
+  if (!name) throw new ApiError(400, "Укажите тейп");
+  const resolved = await resolveTeipIdByName(name);
+  if (resolved != null) return { teipId: resolved, pendingName: null };
+  return { teipId: null, pendingName: name };
 }
 
 /**
@@ -81,7 +107,8 @@ export async function register(input: {
   display_name: string;
   email: string;
   password: string;
-  teip_id: number;
+  teip_id?: number | null;
+  teip_name?: string | null;
   village_id: number;
 }): Promise<{ token: string; user: ReturnType<typeof publicUser> }> {
   const email = input.email.trim().toLowerCase();
@@ -92,7 +119,8 @@ export async function register(input: {
   if (existing.length > 0) {
     throw new ApiError(409, "Пользователь с таким e-mail уже существует");
   }
-  await validateTeipAndVillage(input.teip_id, input.village_id);
+  const { teipId, pendingName } = await resolveRegistrationTeip(input);
+  await validateVillage(input.village_id);
 
   const rows = await query<UserRow>(
     `INSERT INTO users (display_name, email, password_hash, role, teip_id, village_id)
@@ -101,11 +129,14 @@ export async function register(input: {
       input.display_name,
       email,
       hashPassword(input.password),
-      input.teip_id,
+      teipId,
       input.village_id,
     ],
   );
   const user = rows[0];
+  // Неизвестный тейп → заявка супер-админу; после одобрения тейп
+  // проставится пользователю автоматически.
+  if (pendingName) await createTeipRequest(pendingName, user.id);
   return { token: signToken(user), user: publicUser(user) };
 }
 
@@ -119,7 +150,8 @@ export async function requestEmailVerification(input: {
   display_name: string;
   email: string;
   password: string;
-  teip_id: number;
+  teip_id?: number | null;
+  teip_name?: string | null;
   village_id: number;
 }): Promise<{ pending: true; email: string }> {
   const email = input.email.trim().toLowerCase();
@@ -131,7 +163,8 @@ export async function requestEmailVerification(input: {
   if (existing.length > 0) {
     throw new ApiError(409, "Пользователь с таким e-mail уже существует");
   }
-  await validateTeipAndVillage(input.teip_id, input.village_id);
+  const { teipId, pendingName } = await resolveRegistrationTeip(input);
+  await validateVillage(input.village_id);
 
   // Антиспам: новый код на тот же адрес — не чаще раза в минуту.
   const recent = await query<{ created_at: string }>(
@@ -149,13 +182,14 @@ export async function requestEmailVerification(input: {
   const code = String(randomInt(100000, 1000000)); // 6 цифр
 
   await query(
-    `INSERT INTO email_verifications (email, code, display_name, password_hash, teip_id, village_id, attempts, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 0, now() + interval '15 minutes')
+    `INSERT INTO email_verifications (email, code, display_name, password_hash, teip_id, teip_name, village_id, attempts, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, now() + interval '15 minutes')
      ON CONFLICT (email) DO UPDATE SET
        code = EXCLUDED.code,
        display_name = EXCLUDED.display_name,
        password_hash = EXCLUDED.password_hash,
        teip_id = EXCLUDED.teip_id,
+       teip_name = EXCLUDED.teip_name,
        village_id = EXCLUDED.village_id,
        attempts = 0,
        expires_at = EXCLUDED.expires_at,
@@ -165,7 +199,8 @@ export async function requestEmailVerification(input: {
       code,
       input.display_name,
       hashPassword(input.password),
-      input.teip_id,
+      teipId,
+      pendingName,
       input.village_id,
     ],
   );
@@ -194,11 +229,12 @@ export async function verifyEmail(input: {
     display_name: string;
     password_hash: string;
     teip_id: number | null;
+    teip_name: string | null;
     village_id: number | null;
     attempts: number;
     expired: boolean;
   }>(
-    `SELECT id, code, display_name, password_hash, teip_id, village_id, attempts, (expires_at < now()) AS expired
+    `SELECT id, code, display_name, password_hash, teip_id, teip_name, village_id, attempts, (expires_at < now()) AS expired
      FROM email_verifications WHERE email = $1`,
     [email],
   );
@@ -243,6 +279,10 @@ export async function verifyEmail(input: {
   await query("DELETE FROM email_verifications WHERE id = $1", [row.id]);
 
   const user = created[0];
+  // Тейпа не было в справочнике на шаге 1 → заявка супер-админу.
+  if (row.teip_id == null && row.teip_name) {
+    await createTeipRequest(row.teip_name, user.id);
+  }
   return { token: signToken(user), user: publicUser(user) };
 }
 

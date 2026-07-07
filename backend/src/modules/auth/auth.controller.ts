@@ -17,22 +17,27 @@ const fullNameSchema = z
     message: "Укажите полное ФИО (минимум фамилию и имя)",
   });
 
-const registerSchema = z.object({
-  display_name: fullNameSchema,
-  email: z
-    .string({ required_error: "Укажите e-mail — регистрация по телефону недоступна" })
-    .email("Некорректный e-mail"),
-  password: z.string().min(8, "Пароль не короче 8 символов"),
-  teip_id: z
-    .number({ required_error: "Выберите тейп" })
-    .int()
-    .positive("Выберите тейп"),
-  village_id: z
-    .number({ required_error: "Выберите населённый пункт" })
-    .int()
-    .positive("Выберите населённый пункт"),
-  turnstile_token: z.string().optional(),
-});
+const registerSchema = z
+  .object({
+    display_name: fullNameSchema,
+    email: z
+      .string({ required_error: "Укажите e-mail — регистрация по телефону недоступна" })
+      .email("Некорректный e-mail"),
+    password: z.string().min(8, "Пароль не короче 8 символов"),
+    // Тейп: либо id из справочника, либо название текстом (если тейпа нет
+    // в справочнике — регистрация не блокируется, создаётся заявка).
+    teip_id: z.number().int().positive().nullable().optional(),
+    teip_name: z.string().trim().min(2, "Укажите тейп").max(120).nullable().optional(),
+    village_id: z
+      .number({ required_error: "Выберите населённый пункт" })
+      .int()
+      .positive("Выберите населённый пункт"),
+    turnstile_token: z.string().optional(),
+  })
+  .refine((d) => d.teip_id != null || Boolean(d.teip_name?.trim()), {
+    message: "Укажите тейп",
+    path: ["teip_id"],
+  });
 
 export async function register(req: Request, res: Response): Promise<void> {
   const input = registerSchema.parse(req.body);
@@ -54,7 +59,8 @@ export async function register(req: Request, res: Response): Promise<void> {
         display_name: input.display_name,
         email: input.email,
         password: input.password,
-        teip_id: input.teip_id,
+        teip_id: input.teip_id ?? null,
+        teip_name: input.teip_name ?? null,
         village_id: input.village_id,
       });
       res.status(202).json(ok(result));
@@ -85,16 +91,22 @@ export async function verifyEmail(req: Request, res: Response): Promise<void> {
   res.status(201).json(ok(result));
 }
 
-const resendSchema = z.object({
-  display_name: fullNameSchema,
-  email: z.string().email("Некорректный e-mail"),
-  password: z.string().min(8),
-  teip_id: z.number({ required_error: "Выберите тейп" }).int().positive(),
-  village_id: z
-    .number({ required_error: "Выберите населённый пункт" })
-    .int()
-    .positive(),
-});
+const resendSchema = z
+  .object({
+    display_name: fullNameSchema,
+    email: z.string().email("Некорректный e-mail"),
+    password: z.string().min(8),
+    teip_id: z.number().int().positive().nullable().optional(),
+    teip_name: z.string().trim().min(2).max(120).nullable().optional(),
+    village_id: z
+      .number({ required_error: "Выберите населённый пункт" })
+      .int()
+      .positive(),
+  })
+  .refine((d) => d.teip_id != null || Boolean(d.teip_name?.trim()), {
+    message: "Укажите тейп",
+    path: ["teip_id"],
+  });
 
 /** Повторная отправка кода (те же данные регистрации). */
 export async function resendCode(req: Request, res: Response): Promise<void> {

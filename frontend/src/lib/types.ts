@@ -342,6 +342,19 @@ export interface Teip {
   origin_lng: number | null;
   tukhum_approx_lat?: number | null;
   tukhum_approx_lng?: number | null;
+  /** Варианты написания названия (алиасы) — учитываются в поиске. */
+  aliases?: string[];
+}
+
+/** Заявка на добавление тейпа в справочник (создаётся при регистрации). */
+export interface TeipRequest {
+  id: number;
+  name: string;
+  status: "pending" | "approved" | "mapped" | "rejected";
+  created_at: string;
+  requested_by: number | null;
+  requester_name: string | null;
+  requester_email: string | null;
 }
 
 export interface Tukhum {

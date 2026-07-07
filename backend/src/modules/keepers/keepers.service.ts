@@ -1,5 +1,6 @@
 import { query, withTransaction } from "../../db/pool.js";
 import { ApiError } from "../../utils/http.js";
+import { resolveTeipIdByName } from "../teips/teips.service.js";
 
 // ============================================================================
 //  «Хранители тептара» — модераторы-знатоки своих тейпов.
@@ -266,6 +267,82 @@ export async function approveApplication(
       teip_id: effectiveTeipId,
       teip_name: teipNames.rows[0]?.name ?? app.teip_name,
     };
+  });
+}
+
+/**
+ * Добавить тейп из заявки хранителя в справочник (супер-админ).
+ * Если название уже есть (тейп или алиас) — дубль не создаётся. Тейп
+ * проставляется в заявку и в профиль заявителя, попутно закрываются
+ * одноимённые заявки на тейп из регистраций.
+ */
+export async function createTeipFromApplication(
+  appId: number,
+  adminId: number,
+): Promise<{ teip_id: number; teip_name: string }> {
+  const apps = await query<{
+    id: number;
+    user_id: number;
+    teip_id: number | null;
+    teip_name: string;
+    status: string;
+  }>(
+    `SELECT id, user_id, teip_id, teip_name, status FROM keeper_applications WHERE id = $1`,
+    [appId],
+  );
+  const app = apps[0];
+  if (!app) throw new ApiError(404, "Заявка не найдена");
+  if (app.status !== "pending")
+    throw new ApiError(409, "Заявка уже рассмотрена");
+  if (app.teip_id != null)
+    throw new ApiError(409, "У заявки уже указан тейп из справочника");
+
+  const existingId = await resolveTeipIdByName(app.teip_name);
+
+  return withTransaction(async (client) => {
+    let teipId = existingId;
+    let teipName = app.teip_name.trim();
+    if (teipId == null) {
+      const ins = await client.query<{ id: number; name: string }>(
+        `INSERT INTO teips (name) VALUES ($1) RETURNING id, name`,
+        [teipName],
+      );
+      teipId = ins.rows[0].id;
+      teipName = ins.rows[0].name;
+    } else {
+      const t = await client.query<{ name: string }>(
+        `SELECT name FROM teips WHERE id = $1`,
+        [teipId],
+      );
+      teipName = t.rows[0]?.name ?? teipName;
+    }
+
+    await client.query(
+      `UPDATE keeper_applications SET teip_id = $2 WHERE id = $1`,
+      [appId, teipId],
+    );
+    await client.query(
+      `UPDATE users SET teip_id = $2 WHERE id = $1 AND teip_id IS NULL`,
+      [app.user_id, teipId],
+    );
+    // Одноимённые заявки на тейп из регистраций закрываем и прикрепляем людей.
+    const reqs = await client.query<{ requested_by: number | null }>(
+      `UPDATE teip_requests
+       SET status = 'approved', resolved_teip_id = $2, resolved_by = $3, resolved_at = now()
+       WHERE status = 'pending' AND lower(name) = lower($1)
+       RETURNING requested_by`,
+      [app.teip_name, teipId, adminId],
+    );
+    const userIds = reqs.rows
+      .map((r) => r.requested_by)
+      .filter((v): v is number => v != null);
+    if (userIds.length > 0) {
+      await client.query(
+        `UPDATE users SET teip_id = $1 WHERE id = ANY($2::bigint[]) AND teip_id IS NULL`,
+        [teipId, userIds],
+      );
+    }
+    return { teip_id: teipId, teip_name: teipName };
   });
 }
 

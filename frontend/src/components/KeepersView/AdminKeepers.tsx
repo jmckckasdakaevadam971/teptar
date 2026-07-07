@@ -52,6 +52,21 @@ export function KeeperApplicationsCard({
     }
   }
 
+  /** Создать тейп из заявки: появится в справочнике, заявку можно одобрять. */
+  async function createTeip(id: number) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await api.keepers.createTeipFromApplication(id);
+      await load();
+      onApproved?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось создать тейп");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (apps === null) {
     return (
       <div className={CARD}>
@@ -140,21 +155,32 @@ export function KeeperApplicationsCard({
 
               {a.teip_id == null ? (
                 <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  Тейпа нет в справочнике и в профиле заявителя. Одобрить
-                  заявку нельзя, пока тейп не появится в справочнике: хранитель
-                  закрепляется только за своим тейпом.
+                  Тейпа нет в справочнике и в профиле заявителя. Сначала
+                  добавьте тейп в справочник — он закрепится за заявителем, и
+                  заявку можно будет одобрить.
                 </p>
               ) : null}
 
               <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  className={BTN_PRIMARY}
-                  disabled={busyId === a.id}
-                  onClick={() => void decide(a.id, "approve")}
-                >
-                  Одобрить
-                </button>
+                {a.teip_id == null ? (
+                  <button
+                    type="button"
+                    className={BTN_PRIMARY}
+                    disabled={busyId === a.id}
+                    onClick={() => void createTeip(a.id)}
+                  >
+                    Добавить тейп в справочник
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={BTN_PRIMARY}
+                    disabled={busyId === a.id}
+                    onClick={() => void decide(a.id, "approve")}
+                  >
+                    Одобрить
+                  </button>
+                )}
                 <button
                   type="button"
                   className={BTN_SECONDARY}

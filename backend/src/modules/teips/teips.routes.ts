@@ -7,6 +7,48 @@ import * as controller from './teips.controller.js';
 export const teipsRouter = Router();
 
 teipsRouter.get('/', asyncHandler(controller.list));
+
+// Заявки на добавление тейпа — только супер-админ.
+// ВАЖНО: маршруты /requests должны стоять ДО catch-all '/:id'.
+teipsRouter.get(
+  '/requests',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.requests),
+);
+teipsRouter.post(
+  '/requests/:id/approve',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.approveRequest),
+);
+teipsRouter.post(
+  '/requests/:id/map',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.mapRequest),
+);
+teipsRouter.post(
+  '/requests/:id/reject',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.rejectRequest),
+);
+
+// Варианты написания тейпа (алиасы) — только супер-админ.
+teipsRouter.delete(
+  '/aliases/:aliasId',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.removeAlias),
+);
+teipsRouter.post(
+  '/:id/aliases',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.addAlias),
+);
+
 teipsRouter.get('/:id', asyncHandler(controller.getById));
 teipsRouter.get('/:id/gars', asyncHandler(controller.gars));
 

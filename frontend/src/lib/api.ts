@@ -4,6 +4,7 @@ import type {
   Family,
   TreeNode,
   Teip,
+  TeipRequest,
   Tukhum,
   Gar,
   Nekyi,
@@ -221,6 +222,31 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    /** Заявки на добавление тейпа в справочник (super_admin). */
+    requests: () => request<TeipRequest[]>("/teips/requests"),
+    /** Одобрить заявку: создать тейп с этим названием. */
+    approveRequest: (id: number) =>
+      request<Teip>(`/teips/requests/${id}/approve`, { method: "POST" }),
+    /** Привязать заявку как вариант написания существующего тейпа. */
+    mapRequest: (id: number, teipId: number) =>
+      request<Teip>(`/teips/requests/${id}/map`, {
+        method: "POST",
+        body: JSON.stringify({ teip_id: teipId }),
+      }),
+    rejectRequest: (id: number) =>
+      request<{ rejected: boolean }>(`/teips/requests/${id}/reject`, {
+        method: "POST",
+      }),
+    /** Добавить тейпу вариант написания (super_admin). */
+    addAlias: (id: number, name: string) =>
+      request<{ id: number; teip_id: number; name: string }>(
+        `/teips/${id}/aliases`,
+        { method: "POST", body: JSON.stringify({ name }) },
+      ),
+    removeAlias: (aliasId: number) =>
+      request<{ deleted: boolean }>(`/teips/aliases/${aliasId}`, {
+        method: "DELETE",
+      }),
   },
 
   tukhums: {
@@ -258,7 +284,8 @@ export const api = {
       display_name: string;
       email: string;
       password: string;
-      teip_id: number;
+      teip_id?: number;
+      teip_name?: string;
       village_id: number;
       turnstile_token?: string;
     }) =>
@@ -277,7 +304,8 @@ export const api = {
       display_name: string;
       email: string;
       password: string;
-      teip_id: number;
+      teip_id?: number;
+      teip_name?: string;
       village_id: number;
     }) =>
       request<{ pending: true; email: string }>("/auth/resend-code", {
@@ -494,6 +522,12 @@ export const api = {
       request<{ rejected: boolean }>(`/keepers/applications/${id}/reject`, {
         method: "POST",
       }),
+    /** Добавить тейп из заявки в справочник (super_admin). */
+    createTeipFromApplication: (id: number) =>
+      request<{ teip_id: number; teip_name: string }>(
+        `/keepers/applications/${id}/create-teip`,
+        { method: "POST" },
+      ),
   },
 
   /** Запросы доступа к ветви родословной. */

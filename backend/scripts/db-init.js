@@ -87,7 +87,32 @@ async function run() {
          );
          CREATE UNIQUE INDEX IF NOT EXISTS uq_email_verif_email ON email_verifications(email);
          ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS teip_id BIGINT REFERENCES teips(id) ON DELETE SET NULL;
+         ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS teip_name TEXT;
          ALTER TABLE email_verifications ADD COLUMN IF NOT EXISTS village_id BIGINT REFERENCES villages(id) ON DELETE SET NULL;`,
+      );
+
+      // Открытый справочник тейпов: алиасы (варианты написания) и заявки
+      // на добавление тейпа (создаются при регистрации с неизвестным тейпом).
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS teip_aliases (
+           id         BIGSERIAL PRIMARY KEY,
+           teip_id    BIGINT NOT NULL REFERENCES teips(id) ON DELETE CASCADE,
+           name       TEXT NOT NULL UNIQUE,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_teip_aliases_teip ON teip_aliases(teip_id);
+         CREATE TABLE IF NOT EXISTS teip_requests (
+           id               BIGSERIAL PRIMARY KEY,
+           name             TEXT NOT NULL,
+           requested_by     BIGINT REFERENCES users(id) ON DELETE SET NULL,
+           status           TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending','approved','mapped','rejected')),
+           resolved_teip_id BIGINT REFERENCES teips(id) ON DELETE SET NULL,
+           resolved_by      BIGINT REFERENCES users(id) ON DELETE SET NULL,
+           resolved_at      TIMESTAMPTZ,
+           created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_teip_requests_status ON teip_requests(status);`,
       );
 
       // Очередь предложений объединения древ (создаётся, если ещё нет).

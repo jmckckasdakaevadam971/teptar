@@ -62,6 +62,15 @@ export async function approve(req: Request, res: Response): Promise<void> {
   res.json(ok({ approved: true }));
 }
 
+/** Добавить тейп из заявки в справочник (супер-админ). */
+export async function createTeip(req: Request, res: Response): Promise<void> {
+  const result = await service.createTeipFromApplication(
+    Number(req.params.id),
+    req.user!.userId,
+  );
+  res.json(ok(result));
+}
+
 /** Отклонить заявку (супер-админ). */
 export async function reject(req: Request, res: Response): Promise<void> {
   const app = await service.rejectApplication(

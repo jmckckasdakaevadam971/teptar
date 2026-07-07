@@ -47,6 +47,15 @@ CREATE TABLE teips (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Варианты написания тейпа (алиасы): «Аьккхий» ↔ «Аккинцы» и т.п.
+-- Поиск и автоподсказка учитывают и основное имя, и алиасы.
+CREATE TABLE teip_aliases (
+    id         BIGSERIAL PRIMARY KEY,
+    teip_id    BIGINT NOT NULL REFERENCES teips(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Гар — ветвь внутри тейпа (опционально)
 CREATE TABLE gars (
     id          BIGSERIAL PRIMARY KEY,
@@ -108,12 +117,33 @@ CREATE TABLE email_verifications (
     display_name  TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     teip_id       BIGINT REFERENCES teips(id)    ON DELETE SET NULL,
+    teip_name     TEXT,                         -- тейп текстом (если нет в справочнике)
     village_id    BIGINT REFERENCES villages(id) ON DELETE SET NULL,
     attempts      INT  NOT NULL DEFAULT 0,     -- неверные попытки ввода
     expires_at    TIMESTAMPTZ NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX uq_email_verif_email ON email_verifications(email);
+
+-- ============================================================================
+--  ЗАЯВКИ НА ДОБАВЛЕНИЕ ТЕЙПА В СПРАВОЧНИК
+--  Точного научного числа тейпов не существует, поэтому справочник открытый:
+--  при регистрации с неизвестным тейпом создаётся заявка. Супер-админ решает:
+--  добавить как новый тейп, привязать как вариант написания существующего
+--  (алиас) или отклонить. При решении тейп проставляется всем заявителям.
+-- ============================================================================
+
+CREATE TABLE teip_requests (
+    id               BIGSERIAL PRIMARY KEY,
+    name             TEXT NOT NULL,             -- название, введённое пользователем
+    requested_by     BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    status           TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending','approved','mapped','rejected')),
+    resolved_teip_id BIGINT REFERENCES teips(id) ON DELETE SET NULL,
+    resolved_by      BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at      TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ============================================================================
 --  ЯДРО — ПЕРСОНЫ
@@ -356,6 +386,8 @@ CREATE INDEX idx_marriages_wife    ON marriages(wife_id);
 CREATE INDEX idx_changelog_person  ON change_log(person_id);
 
 CREATE INDEX idx_teips_tukhum      ON teips(tukhum_id);
+CREATE INDEX idx_teip_aliases_teip ON teip_aliases(teip_id);
+CREATE INDEX idx_teip_requests_status ON teip_requests(status);
 CREATE INDEX idx_gars_teip         ON gars(teip_id);
 CREATE INDEX idx_nekyi_gar         ON nekyi(gar_id);
 CREATE INDEX idx_villages_district ON villages(district);

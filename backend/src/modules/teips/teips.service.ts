@@ -1,4 +1,6 @@
-import { query } from "../../db/pool.js";
+import type { PoolClient } from "pg";
+import { query, withTransaction } from "../../db/pool.js";
+import { ApiError } from "../../utils/http.js";
 
 export interface TeipRow {
   id: number;
@@ -11,6 +13,7 @@ export interface TeipRow {
   tukhum_name?: string | null;
   tukhum_approx_lat?: number | null;
   tukhum_approx_lng?: number | null;
+  aliases?: string[];
 }
 
 export interface GarRow {
@@ -23,7 +26,9 @@ export interface GarRow {
 export async function listTeips(): Promise<TeipRow[]> {
   return query<TeipRow>(
     `SELECT t.*, tk.name AS tukhum_name,
-            tk.approx_lat AS tukhum_approx_lat, tk.approx_lng AS tukhum_approx_lng
+            tk.approx_lat AS tukhum_approx_lat, tk.approx_lng AS tukhum_approx_lng,
+            COALESCE((SELECT array_agg(a.name ORDER BY a.name)
+                      FROM teip_aliases a WHERE a.teip_id = t.id), '{}') AS aliases
      FROM teips t
      LEFT JOIN tukhums tk ON tk.id = t.tukhum_id
      ORDER BY t.name`,
@@ -86,4 +91,236 @@ export async function teipStats(id: number): Promise<{ persons: number }> {
     [id],
   );
   return { persons: Number(rows[0]?.count ?? 0) };
+}
+
+// ============================================================================
+//  Открытый справочник: алиасы (варианты написания) и заявки на тейп.
+//  Точного научного числа тейпов нет, поэтому неизвестные названия не
+//  блокируют регистрацию, а уходят заявкой на решение супер-админа.
+// ============================================================================
+
+/**
+ * Нормализация названия для сравнения: регистр не важен, а «Ӏ» (палочка),
+ * латинские I/l/i и «!»/«|» считаются одной буквой — их постоянно путают.
+ */
+export function normalizeTeipName(s: string): string {
+  return s.trim().toLowerCase().replace(/[ӏіil|!1]/g, "1");
+}
+
+/** Найти тейп по названию ИЛИ алиасу (без учёта регистра и написания «Ӏ»). */
+export async function resolveTeipIdByName(name: string): Promise<number | null> {
+  const norm = normalizeTeipName(name);
+  if (!norm) return null;
+  // Справочник маленький (сотни строк) — сравниваем в JS, чтобы применить
+  // одну и ту же нормализацию к обеим сторонам.
+  const rows = await query<{ id: number; name: string }>(
+    `SELECT id, name FROM teips
+     UNION ALL
+     SELECT teip_id AS id, name FROM teip_aliases`,
+  );
+  return rows.find((r) => normalizeTeipName(r.name) === norm)?.id ?? null;
+}
+
+export interface TeipAliasRow {
+  id: number;
+  teip_id: number;
+  name: string;
+}
+
+/** Добавить тейпу вариант написания (супер-админ). */
+export async function createTeipAlias(
+  teipId: number,
+  name: string,
+): Promise<TeipAliasRow> {
+  const teip = await getTeip(teipId);
+  if (!teip) throw new ApiError(404, "Тейп не найден");
+  const existing = await resolveTeipIdByName(name);
+  if (existing != null) {
+    throw new ApiError(
+      409,
+      existing === teipId
+        ? "Такое название у этого тейпа уже есть"
+        : "Такое название уже занято другим тейпом в справочнике",
+    );
+  }
+  const rows = await query<TeipAliasRow>(
+    `INSERT INTO teip_aliases (teip_id, name) VALUES ($1, $2) RETURNING id, teip_id, name`,
+    [teipId, name.trim()],
+  );
+  return rows[0];
+}
+
+/** Удалить вариант написания (супер-админ). */
+export async function deleteTeipAlias(aliasId: number): Promise<void> {
+  const rows = await query<{ id: number }>(
+    `DELETE FROM teip_aliases WHERE id = $1 RETURNING id`,
+    [aliasId],
+  );
+  if (rows.length === 0) throw new ApiError(404, "Алиас не найден");
+}
+
+export interface TeipRequestRow {
+  id: number;
+  name: string;
+  status: string;
+  created_at: string;
+  requested_by: number | null;
+  requester_name: string | null;
+  requester_email: string | null;
+}
+
+/**
+ * Создать заявку на добавление тейпа (вызывается при регистрации с
+ * неизвестным тейпом). Повторная заявка того же пользователя на то же
+ * название не дублируется.
+ */
+export async function createTeipRequest(
+  name: string,
+  userId: number | null,
+): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const dup = await query<{ id: number }>(
+    `SELECT id FROM teip_requests
+     WHERE status = 'pending' AND lower(name) = lower($1)
+       AND requested_by IS NOT DISTINCT FROM $2`,
+    [trimmed, userId],
+  );
+  if (dup.length > 0) return;
+  await query(`INSERT INTO teip_requests (name, requested_by) VALUES ($1, $2)`, [
+    trimmed,
+    userId,
+  ]);
+}
+
+/** Очередь заявок на тейпы (для супер-админа). */
+export async function listTeipRequests(): Promise<TeipRequestRow[]> {
+  return query<TeipRequestRow>(
+    `SELECT r.id, r.name, r.status, r.created_at, r.requested_by,
+            u.display_name AS requester_name, u.email AS requester_email
+     FROM teip_requests r
+     LEFT JOIN users u ON u.id = r.requested_by
+     WHERE r.status = 'pending'
+     ORDER BY lower(r.name), r.created_at`,
+  );
+}
+
+/**
+ * Закрыть разом ВСЕ pending-заявки с тем же названием и проставить тейп
+ * заявителям, у которых он ещё не указан.
+ */
+async function finalizeRequests(
+  client: PoolClient,
+  name: string,
+  teipId: number,
+  adminId: number,
+  status: "approved" | "mapped" | "rejected",
+): Promise<void> {
+  const res = await client.query<{ requested_by: number | null }>(
+    `UPDATE teip_requests
+     SET status = $2, resolved_teip_id = $3, resolved_by = $4, resolved_at = now()
+     WHERE status = 'pending' AND lower(name) = lower($1)
+     RETURNING requested_by`,
+    [name, status, status === "rejected" ? null : teipId, adminId],
+  );
+  if (status === "rejected") return;
+  const userIds = res.rows
+    .map((r) => r.requested_by)
+    .filter((v): v is number => v != null);
+  if (userIds.length > 0) {
+    await client.query(
+      `UPDATE users SET teip_id = $1 WHERE id = ANY($2::bigint[]) AND teip_id IS NULL`,
+      [teipId, userIds],
+    );
+  }
+}
+
+/** Взять заявку под замок и проверить, что она ещё не рассмотрена. */
+async function lockPendingRequest(
+  client: PoolClient,
+  requestId: number,
+): Promise<{ id: number; name: string; status: string }> {
+  const { rows } = await client.query<{ id: number; name: string; status: string }>(
+    `SELECT id, name, status FROM teip_requests WHERE id = $1 FOR UPDATE`,
+    [requestId],
+  );
+  const req = rows[0];
+  if (!req) throw new ApiError(404, "Заявка не найдена");
+  if (req.status !== "pending") throw new ApiError(409, "Заявка уже рассмотрена");
+  return req;
+}
+
+/**
+ * Одобрить заявку: создать тейп с этим названием. Если такое название уже
+ * есть в справочнике (тейп или алиас) — дубль не создаётся, заявители
+ * привязываются к существующему тейпу.
+ */
+export async function approveTeipRequest(
+  requestId: number,
+  adminId: number,
+): Promise<TeipRow> {
+  return withTransaction(async (client) => {
+    const req = await lockPendingRequest(client, requestId);
+    const existingId = await resolveTeipIdByName(req.name);
+    let teip: TeipRow;
+    if (existingId != null) {
+      teip = (await getTeip(existingId)) as TeipRow;
+    } else {
+      const ins = await client.query<TeipRow>(
+        `INSERT INTO teips (name) VALUES ($1) RETURNING *`,
+        [req.name.trim()],
+      );
+      teip = ins.rows[0];
+    }
+    await finalizeRequests(
+      client,
+      req.name,
+      teip.id,
+      adminId,
+      existingId != null ? "mapped" : "approved",
+    );
+    return teip;
+  });
+}
+
+/**
+ * Привязать заявку как вариант написания существующего тейпа: название
+ * становится алиасом, заявители прикрепляются к выбранному тейпу.
+ */
+export async function mapTeipRequest(
+  requestId: number,
+  adminId: number,
+  teipId: number,
+): Promise<TeipRow> {
+  return withTransaction(async (client) => {
+    const req = await lockPendingRequest(client, requestId);
+    const teip = await getTeip(teipId);
+    if (!teip) throw new ApiError(404, "Тейп не найден");
+    const existingId = await resolveTeipIdByName(req.name);
+    if (existingId == null) {
+      await client.query(
+        `INSERT INTO teip_aliases (teip_id, name) VALUES ($1, $2)
+         ON CONFLICT (name) DO NOTHING`,
+        [teipId, req.name.trim()],
+      );
+    } else if (existingId !== teipId) {
+      throw new ApiError(
+        409,
+        `Название «${req.name}» уже привязано к другому тейпу справочника`,
+      );
+    }
+    await finalizeRequests(client, req.name, teipId, adminId, "mapped");
+    return teip;
+  });
+}
+
+/** Отклонить заявку (закрывает все одноимённые pending-заявки). */
+export async function rejectTeipRequest(
+  requestId: number,
+  adminId: number,
+): Promise<void> {
+  await withTransaction(async (client) => {
+    const req = await lockPendingRequest(client, requestId);
+    await finalizeRequests(client, req.name, 0, adminId, "rejected");
+  });
 }
