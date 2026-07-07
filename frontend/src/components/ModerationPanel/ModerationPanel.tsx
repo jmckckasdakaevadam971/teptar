@@ -1974,13 +1974,15 @@ export function ModerationPanel() {
               ))}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                className={manualOpen ? BTN_PRIMARY : BTN_SECONDARY}
-                onClick={() => setManualOpen((v) => !v)}
-              >
-                + Объединить вручную
-              </button>
+              {user?.role === "super_admin" && (
+                <button
+                  type="button"
+                  className={manualOpen ? BTN_PRIMARY : BTN_SECONDARY}
+                  onClick={() => setManualOpen((v) => !v)}
+                >
+                  + Объединить вручную
+                </button>
+              )}
               <button
                 type="button"
                 className={BTN_SECONDARY}
@@ -1992,7 +1994,7 @@ export function ModerationPanel() {
             </div>
           </div>
 
-          {manualOpen && (
+          {manualOpen && user?.role === "super_admin" && (
             <ManualMergePanel
               onDone={manualMergeDone}
               onCancel={() => setManualOpen(false)}

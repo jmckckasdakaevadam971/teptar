@@ -180,13 +180,13 @@ personsRouter.get(
 personsRouter.get(
   "/moderation/person-search",
   requireAuth,
-  requireRole("teip_admin", "super_admin"),
+  requireRole("super_admin"),
   asyncHandler(controller.mergePersonSearch),
 );
 personsRouter.post(
   "/moderation/tree-merges/manual",
   requireAuth,
-  requireRole("teip_admin", "super_admin"),
+  requireRole("super_admin"),
   asyncHandler(controller.manualMerge),
 );
 personsRouter.post(
