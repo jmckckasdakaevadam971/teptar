@@ -978,7 +978,6 @@ function SuggestionBody({
   );
   const keepId = auto.id;
 
-  const [open, setOpen] = useState(false);
   const [confirmDismiss, setConfirmDismiss] = useState(false);
 
   // Автоматическая сверка данных двух записей (чек-лист ok/warn/block).
@@ -1018,27 +1017,15 @@ function SuggestionBody({
   const smaller = roleA === "larger" ? s.owner_b : s.owner_a;
   const largerAnchor = roleA === "larger" ? s.anchor_a : s.anchor_b;
 
-  // Итоговые поля предка: берём из основы, недостающее — из второй записи.
-  const [name, setName] = useState(base.full_name);
-  const [birth, setBirth] = useState<string>(
-    (base.birth_year ?? other.birth_year ?? "").toString(),
-  );
-  const [death, setDeath] = useState<string>(
-    (base.death_year ?? other.death_year ?? "").toString(),
-  );
-  const [note, setNote] = useState<string>(base.note ?? other.note ?? "");
-
+  // Итоговые поля предка система собирает сама: основа + недостающее из второй записи.
   function submit() {
     onMerge(keepId, {
-      full_name: name.trim() || base.full_name,
-      birth_year: birth.trim() ? Number(birth) : null,
-      death_year: death.trim() ? Number(death) : null,
-      note: note.trim() ? note.trim() : null,
+      full_name: base.full_name,
+      birth_year: base.birth_year ?? other.birth_year ?? null,
+      death_year: base.death_year ?? other.death_year ?? null,
+      note: base.note ?? other.note ?? null,
     });
   }
-
-  const inputCls =
-    "w-full rounded-md border border-line bg-background/60 px-2 py-1 text-[13px] text-cream outline-none focus:border-gold-soft";
 
   return (
     <div>
@@ -1082,125 +1069,51 @@ function SuggestionBody({
 
       <MergeCheckList check={check} loading={checkLoading} />
 
-      {open && (
-        <div className="mt-3 rounded-lg border border-line bg-background/40 p-3">
-          <div className="mb-2 text-[13px] font-semibold text-cream">
-            Данные общего предка после объединения
-          </div>
-          <p className="m-0 mb-2 rounded-md border border-line bg-background/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-sand">
-            За основу система взяла древо{" "}
-            <b className="text-cream">{auto.owner ?? "—"}</b>: {auto.reason}.
-            Недостающие поля дополнены из второй записи — при необходимости
-            поправьте их ниже.
-          </p>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-[12px] text-sand">
-              Имя
-              <input
-                className={inputCls}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-[12px] text-sand">
-                Год рождения
-                <input
-                  className={inputCls}
-                  inputMode="numeric"
-                  value={birth}
-                  onChange={(e) => setBirth(e.target.value)}
-                />
-              </label>
-              <label className="text-[12px] text-sand">
-                Год смерти
-                <input
-                  className={inputCls}
-                  inputMode="numeric"
-                  value={death}
-                  onChange={(e) => setDeath(e.target.value)}
-                />
-              </label>
-            </div>
-            <label className="text-[12px] text-sand sm:col-span-2">
-              Примечание
-              <textarea
-                className={`${inputCls} min-h-[52px]`}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-              disabled={busy || checkLoading || blocked}
-              onClick={submit}
-            >
-              Подтвердить объединение
-            </button>
-            <button
-              type="button"
-              className={`${BTN_SECONDARY} !px-3 !py-1.5 !text-[13px]`}
-              disabled={busy}
-              onClick={() => setOpen(false)}
-            >
-              Отмена
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!open && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-            disabled={busy || checkLoading || blocked}
-            title={
-              blocked
-                ? "Объединение заблокировано: см. проверку выше"
-                : undefined
-            }
-            onClick={() => setOpen(true)}
-          >
-            Объединить древа
-          </button>
-          {confirmDismiss ? (
-            <span className="flex items-center gap-2 text-[13px] text-sand">
-              Это разные люди?
-              <button
-                type="button"
-                className={LINK_DANGER}
-                disabled={busy}
-                onClick={onDismiss}
-              >
-                Да, не совпадают
-              </button>
-              <button
-                type="button"
-                className={BTN_SECONDARY}
-                disabled={busy}
-                onClick={() => setConfirmDismiss(false)}
-              >
-                Отмена
-              </button>
-            </span>
-          ) : (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
+          disabled={busy || checkLoading || blocked}
+          title={
+            blocked
+              ? "Объединение заблокировано: см. проверку выше"
+              : undefined
+          }
+          onClick={submit}
+        >
+          Объединить древа
+        </button>
+        {confirmDismiss ? (
+          <span className="flex items-center gap-2 text-[13px] text-sand">
+            Это разные люди?
             <button
               type="button"
               className={LINK_DANGER}
               disabled={busy}
-              onClick={() => setConfirmDismiss(true)}
+              onClick={onDismiss}
             >
-              Не совпадают
+              Да, не совпадают
             </button>
-          )}
-        </div>
-      )}
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              disabled={busy}
+              onClick={() => setConfirmDismiss(false)}
+            >
+              Отмена
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={LINK_DANGER}
+            disabled={busy}
+            onClick={() => setConfirmDismiss(true)}
+          >
+            Не совпадают
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1333,12 +1246,6 @@ function ManualMergePanel({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Поля общего предка (основу выбирает система — autoBaseChoice).
-  const [name, setName] = useState("");
-  const [birth, setBirth] = useState("");
-  const [death, setDeath] = useState("");
-  const [note, setNote] = useState("");
-
   // Сверка при выборе обеих персон.
   useEffect(() => {
     if (!selA || !selB) {
@@ -1353,13 +1260,6 @@ function ManualMergePanel({
       .then((c) => {
         if (!alive) return;
         setCheck(c);
-        // Основу выбирает система: поколения выше > размер древа > полнота.
-        const chosen = autoBaseChoice(sideOf(c.a), sideOf(c.b));
-        const base = chosen.id === c.a.id ? c.a : c.b;
-        const other = base.id === c.a.id ? c.b : c.a;
-        setName(base.full_name);
-        setBirth((base.birth_year ?? other.birth_year ?? "").toString());
-        setDeath((base.death_year ?? other.death_year ?? "").toString());
       })
       .catch((e) => {
         if (!alive) return;
@@ -1374,10 +1274,14 @@ function ManualMergePanel({
     };
   }, [selA, selB]);
 
+  // Основу выбирает система: поколения выше > размер древа > полнота записи.
   const auto = check ? autoBaseChoice(sideOf(check.a), sideOf(check.b)) : null;
 
   async function submit() {
-    if (!selA || !selB) return;
+    if (!selA || !selB || !check) return;
+    // Итоговые поля предка: основа + недостающее из второй записи.
+    const base = auto && auto.id === check.b.id ? check.b : check.a;
+    const other = base.id === check.a.id ? check.b : check.a;
     setBusy(true);
     setErr(null);
     try {
@@ -1385,10 +1289,10 @@ function ManualMergePanel({
         anchor_a_id: selA.id,
         anchor_b_id: selB.id,
         keep_id: auto?.id,
-        full_name: name.trim() || undefined,
-        birth_year: birth.trim() ? Number(birth) : null,
-        death_year: death.trim() ? Number(death) : null,
-        note: note.trim() ? note.trim() : null,
+        full_name: base.full_name || undefined,
+        birth_year: base.birth_year ?? other.birth_year ?? null,
+        death_year: base.death_year ?? other.death_year ?? null,
+        note: null,
       });
       onDone(res.tree_merge_id);
     } catch (e) {
@@ -1399,8 +1303,6 @@ function ManualMergePanel({
   }
 
   const blocked = check != null && !check.can_merge;
-  const inputCls =
-    "w-full rounded-md border border-line bg-background/60 px-2 py-1 text-[13px] text-cream outline-none focus:border-gold-soft";
 
   return (
     <div className="mb-3 rounded-xl border border-gold-soft/50 bg-gold/[0.04] p-3.5">
@@ -1439,58 +1341,12 @@ function ManualMergePanel({
         <MergeCheckList check={check} loading={checkLoading} />
       )}
 
-      {check && !blocked && (
-        <div className="mt-3 rounded-lg border border-line bg-background/40 p-3">
-          <div className="mb-2 text-[13px] font-semibold text-cream">
-            Данные общего предка после объединения
-          </div>
-          {auto && (
-            <p className="m-0 mb-2 rounded-md border border-line bg-background/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-sand">
-              За основу система взяла древо{" "}
-              <b className="text-cream">{auto.owner ?? "—"}</b>: {auto.reason}.
-              Недостающие поля дополнены из второй записи — при необходимости
-              поправьте их ниже.
-            </p>
-          )}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-[12px] text-sand">
-              Имя
-              <input
-                className={inputCls}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-[12px] text-sand">
-                Год рождения
-                <input
-                  className={inputCls}
-                  inputMode="numeric"
-                  value={birth}
-                  onChange={(e) => setBirth(e.target.value)}
-                />
-              </label>
-              <label className="text-[12px] text-sand">
-                Год смерти
-                <input
-                  className={inputCls}
-                  inputMode="numeric"
-                  value={death}
-                  onChange={(e) => setDeath(e.target.value)}
-                />
-              </label>
-            </div>
-            <label className="text-[12px] text-sand sm:col-span-2">
-              Примечание
-              <textarea
-                className={`${inputCls} min-h-[52px]`}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-            </label>
-          </div>
-        </div>
+      {check && !blocked && auto && (
+        <p className="m-0 mt-3 rounded-md border border-line bg-background/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-sand">
+          За основу система возьмёт древо{" "}
+          <b className="text-cream">{auto.owner ?? "—"}</b>: {auto.reason}.
+          Недостающие данные предка дополнятся из второй записи автоматически.
+        </p>
       )}
 
       {err && <p className="m-0 mt-2 text-[13px] text-danger-strong">{err}</p>}
