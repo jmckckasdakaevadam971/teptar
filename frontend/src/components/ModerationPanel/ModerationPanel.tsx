@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -25,7 +25,6 @@ import type {
   MergeCheckPerson,
   MergeSearchHit,
   TreeMerge,
-  TreeMergeCandidate,
   TreeChange,
   TreeNode,
 } from "@/lib/types";
@@ -294,29 +293,6 @@ function StatBox({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-line bg-background/40 px-3 py-2">
       <div className="text-[11px] text-sand">{label}</div>
       <div className="mt-0.5 text-[14px] text-cream">{value}</div>
-    </div>
-  );
-}
-
-/** Карточка якоря (общего человека) одной из сторон объединения. */
-function AnchorBox({ title, p }: { title: string; p: MergeCheckPerson }) {
-  return (
-    <div className="rounded-lg border border-line bg-background/40 px-3 py-2">
-      <div className="text-[11px] text-sand">{title}</div>
-      <div className="mt-0.5 text-[14px] font-semibold text-cream">
-        {p.full_name}
-      </div>
-      <div className="mt-0.5 text-[12px] leading-relaxed text-sand">
-        {anchorYears(p.birth_year, p.death_year)}
-        {p.father_name ? ` · отец: ${p.father_name}` : ""}
-        {p.teip_name ? ` · тейп ${p.teip_name}` : ""}
-      </div>
-      <div className="text-[12px] leading-relaxed text-sand">
-        {p.tree_size} {personWord(p.tree_size)} в древе
-        {p.children.length > 0
-          ? ` · дети: ${p.children.map((c) => c.full_name).join(", ")}`
-          : ""}
-      </div>
     </div>
   );
 }
@@ -699,25 +675,17 @@ function RejectTreeForm({
 function TreeBody({
   tree,
   busy,
-  candidates,
   onView,
   onApprove,
   onReject,
-  onPreviewCandidate,
-  onApproveWithMerge,
 }: {
   tree: PendingTree;
   busy: boolean;
-  /** undefined — ещё не грузили; null — идёт поиск; [] — совпадений нет. */
-  candidates: TreeMergeCandidate[] | null | undefined;
   onView: () => void;
   onApprove: () => void;
   onReject: (reason?: string) => void;
-  onPreviewCandidate: (c: TreeMergeCandidate) => void;
-  onApproveWithMerge: (c: TreeMergeCandidate) => void;
 }) {
   const [confirmReject, setConfirmReject] = useState(false);
-  const hasCandidates = !!candidates && candidates.length > 0;
   return (
     <div>
       <p className="m-0 mb-3 text-[13px] leading-relaxed text-sand">
@@ -764,81 +732,6 @@ function TreeBody({
         <StatBox label="Годы" value={yearsLabel(tree.min_year, tree.max_year)} />
       </div>
 
-      {/* ---- Автопоиск точек объединения с опубликованной базой ---- */}
-      {candidates === null && (
-        <p className="m-0 mb-3 text-[13px] text-sand">
-          ⏳ Ищем возможные продолжения в опубликованных древах…
-        </p>
-      )}
-      {candidates && candidates.length === 0 && (
-        <p className="m-0 mb-3 text-[13px] text-sand">
-          Совпадений с опубликованными древами не найдено — древо можно
-          публиковать отдельно.
-        </p>
-      )}
-      {hasCandidates &&
-        candidates!.map((c) => (
-          <div
-            key={`${c.anchor_own_id}-${c.anchor_other_id}`}
-            className="mb-3 rounded-xl border border-gold/40 bg-gold/[0.05] px-3 py-2.5"
-          >
-            <p className="m-0 text-[13.5px] font-semibold text-gold-light">
-              ⚭ Возможное продолжение древа «{c.other_owner_name ?? "—"}»
-            </p>
-            <p className="m-0 mt-1 text-[12.5px] leading-relaxed text-sand">
-              Система нашла общего человека в обоих древах (сходство имён{" "}
-              {Math.round(c.similarity * 100)}%). Если это один и тот же
-              человек — древо автора станет продолжением опубликованного:
-              получится одно непрерывное древо без дубликатов.
-            </p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <AnchorBox title="В проверяемом древе" p={c.check.a} />
-              <AnchorBox
-                title={`В опубликованном древе «${c.other_owner_name ?? "—"}»`}
-                p={c.check.b}
-              />
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <StatBox
-                label="Итоговое древо"
-                value={`${c.merged_stats.total} ${personWord(c.merged_stats.total)}`}
-              />
-              <StatBox
-                label="Первопредок"
-                value={c.merged_stats.root_name ?? "—"}
-              />
-              <StatBox
-                label="Новых людей"
-                value={`+${c.merged_stats.added_count}`}
-              />
-            </div>
-            <MergeCheckList check={c.check} loading={false} />
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={`${BTN_SECONDARY} !px-3 !py-1.5 !text-[13px]`}
-                disabled={busy}
-                onClick={() => onPreviewCandidate(c)}
-              >
-                Посмотреть общее древо
-              </button>
-              <button
-                type="button"
-                className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-                disabled={busy || !c.check.can_merge}
-                title={
-                  c.check.can_merge
-                    ? "Древо будет опубликовано и сразу объединено по этой точке"
-                    : "Объединение заблокировано противоречиями в данных"
-                }
-                onClick={() => onApproveWithMerge(c)}
-              >
-                ⚭ Опубликовать и объединить
-              </button>
-            </div>
-          </div>
-        ))}
-
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -850,11 +743,11 @@ function TreeBody({
         </button>
         <button
           type="button"
-          className={`${hasCandidates ? BTN_SECONDARY : BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
+          className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
           disabled={busy}
           onClick={onApprove}
         >
-          ✓ {hasCandidates ? "Опубликовать отдельно" : "Одобрить"}
+          ✓ Одобрить
         </button>
         {!confirmReject && (
           <button
@@ -1597,24 +1490,16 @@ export function ModerationPanel() {
     confirmReject: boolean;
   } | null>(null);
 
-  // Полноэкранный просмотр общего древа (для объединений и превью пар).
+  // Полноэкранный просмотр общего древа (для объединений).
   const [mergePreview, setMergePreview] = useState<{
-    key: string; // "merge-5" — сохранённое объединение, "pair-12-34" — превью пары якорей
+    key: string; // "merge-5" — сохранённое объединение
     title: string;
     subtitle: string;
     approveId: number | null; // если задан — в шапке есть кнопка «Одобрить»
-    /** Превью кандидата: в шапке кнопка «Опубликовать и объединить». */
-    approveWith: { ownerId: number; cand: TreeMergeCandidate } | null;
     nodes: TreeNode[] | null;
     loading: boolean;
     selectedId: string | null;
   } | null>(null);
-
-  // Автоподсказки точек объединения по каждому проверяемому древу.
-  // undefined — не грузили; null — идёт поиск; [] — совпадений нет.
-  const [candidates, setCandidates] = useState<
-    Record<number, TreeMergeCandidate[] | null | undefined>
-  >({});
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -1653,22 +1538,6 @@ export function ModerationPanel() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
-
-  // При раскрытии карточки «Публикация древа» система сама ищет возможные
-  // точки объединения с опубликованной базой.
-  const candidatesRequested = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    if (!expandedKey || !expandedKey.startsWith("tree-")) return;
-    const ownerId = Number(expandedKey.slice("tree-".length));
-    if (!Number.isFinite(ownerId)) return;
-    if (candidatesRequested.current.has(ownerId)) return;
-    candidatesRequested.current.add(ownerId);
-    setCandidates((p) => ({ ...p, [ownerId]: null }));
-    api.moderation
-      .mergeCandidates(ownerId)
-      .then((list) => setCandidates((p) => ({ ...p, [ownerId]: list })))
-      .catch(() => setCandidates((p) => ({ ...p, [ownerId]: [] })));
-  }, [expandedKey]);
 
   // Тейпы, закреплённые за хранителем — он видит заявки только по ним.
   useEffect(() => {
@@ -1786,7 +1655,6 @@ export function ModerationPanel() {
     setMergePreview({
       key,
       ...opts,
-      approveWith: null,
       nodes: null,
       loading: true,
       selectedId: null,
@@ -1802,81 +1670,6 @@ export function ModerationPanel() {
           ? { ...prev, nodes: [], loading: false }
           : prev,
       );
-    }
-  }
-
-  /** Превью общего древа по паре якорей — до публикации и объединения. */
-  async function openPairPreview(ownerId: number, cand: TreeMergeCandidate) {
-    const key = `pair-${cand.anchor_own_id}-${cand.anchor_other_id}`;
-    setMergePreview({
-      key,
-      title: "Общее древо — предпросмотр",
-      subtitle:
-        "Так будет выглядеть древо после публикации и объединения. Зелёным — присоединяемая ветвь.",
-      approveId: null,
-      approveWith: cand.check.can_merge ? { ownerId, cand } : null,
-      nodes: null,
-      loading: true,
-      selectedId: null,
-    });
-    try {
-      const nodes = await api.tree.mergedTreePreview(
-        cand.anchor_own_id,
-        cand.anchor_other_id,
-      );
-      setMergePreview((prev) =>
-        prev && prev.key === key ? { ...prev, nodes, loading: false } : prev,
-      );
-    } catch {
-      setMergePreview((prev) =>
-        prev && prev.key === key
-          ? { ...prev, nodes: [], loading: false }
-          : prev,
-      );
-    }
-  }
-
-  /** Одно решение: опубликовать древо и сразу объединить по найденной точке. */
-  async function approveTreeWithMerge(
-    item: Extract<FeedItem, { kind: "tree" }>,
-    cand: TreeMergeCandidate,
-  ) {
-    setBusyKey(item.key);
-    setError(null);
-    try {
-      const res = await api.moderation.approveWithMerge(item.tree.owner_id, {
-        anchor_own_id: cand.anchor_own_id,
-        anchor_other_id: cand.anchor_other_id,
-      });
-      setTrees((prev) => prev.filter((t) => t.owner_id !== item.tree.owner_id));
-      finish(item, "merged");
-      if (viewer?.tree.owner_id === item.tree.owner_id) setViewer(null);
-      // Обновим каталог опубликованных объединений и покажем результат.
-      try {
-        setApprovedMerges(await api.persons.publicMerges());
-      } catch {
-        /* не критично */
-      }
-      void openMergedPreview(res.tree_merge_id, {
-        title: "Древо опубликовано и объединено",
-        subtitle: "Общее древо уже видно всем в разделе «Древа».",
-        approveId: null,
-      });
-    } catch (e) {
-      if (isStale(e)) {
-        setError(
-          "Данные изменились — точка объединения устарела. Список обновлён.",
-        );
-        setCandidates((p) => ({ ...p, [item.tree.owner_id]: undefined }));
-        candidatesRequested.current.delete(item.tree.owner_id);
-        void loadAll();
-      } else {
-        setError(
-          e instanceof Error ? e.message : "Не удалось опубликовать и объединить",
-        );
-      }
-    } finally {
-      setBusyKey(null);
     }
   }
 
@@ -2026,14 +1819,9 @@ export function ModerationPanel() {
           <TreeBody
             tree={item.tree}
             busy={busy}
-            candidates={candidates[item.tree.owner_id]}
             onView={() => void openTreeViewer(item.tree)}
             onApprove={() => void decideTree(item, "approve")}
             onReject={(reason) => void decideTree(item, "reject", reason)}
-            onPreviewCandidate={(c) =>
-              void openPairPreview(item.tree.owner_id, c)
-            }
-            onApproveWithMerge={(c) => void approveTreeWithMerge(item, c)}
           />
         );
       case "suggestion":
@@ -2552,27 +2340,6 @@ export function ModerationPanel() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {mergePreview.approveWith != null && (
-                  <button
-                    type="button"
-                    className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-[13px]`}
-                    disabled={
-                      busyKey === `tree-${mergePreview.approveWith.ownerId}`
-                    }
-                    onClick={() => {
-                      const aw = mergePreview.approveWith!;
-                      const t = trees.find((x) => x.owner_id === aw.ownerId);
-                      if (!t) return;
-                      setMergePreview(null);
-                      void approveTreeWithMerge(
-                        { kind: "tree", key: `tree-${t.owner_id}`, tree: t },
-                        aw.cand,
-                      );
-                    }}
-                  >
-                    ⚭ Опубликовать и объединить
-                  </button>
-                )}
                 {mergePreview.approveId != null && (
                   <button
                     type="button"
@@ -2595,17 +2362,13 @@ export function ModerationPanel() {
                 <button
                   type="button"
                   className={
-                    mergePreview.approveId != null ||
-                    mergePreview.approveWith != null
+                    mergePreview.approveId != null
                       ? BTN_SECONDARY
                       : BTN_PRIMARY
                   }
                   onClick={() => setMergePreview(null)}
                 >
-                  {mergePreview.approveId != null ||
-                  mergePreview.approveWith != null
-                    ? "Закрыть"
-                    : "Готово"}
+                  {mergePreview.approveId != null ? "Закрыть" : "Готово"}
                 </button>
               </div>
             </div>
