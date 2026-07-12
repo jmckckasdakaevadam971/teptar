@@ -1569,7 +1569,8 @@ export function TreeView({
   }, [selectedId, people, layout, scale]);
 
   /** Снимок полного древа на canvas (общий для PNG и PDF).
-   *  Всегда рисуется ПОЛНОЕ древо — свёрнутые ветви не влияют. */
+   *  Всегда рисуется ПОЛНОЕ древо — свёрнутые ветви не влияют.
+   *  Палитра следует текущей теме сайта (тёмная/светлая). */
   const renderTreeCanvas = useCallback((): HTMLCanvasElement | null => {
     // отдельная раскладка полного древа без запаса под плейсхолдеры «+»
     const full = computeTreeLayout(people, false);
@@ -1582,8 +1583,36 @@ export function TreeView({
     if (!ctx) return null;
     ctx.scale(dpr, dpr);
 
+    // Палитра по теме сайта: тёмная — как раньше, светлая — светлый фон
+    const isDark = document.documentElement.classList.contains("dark");
+    const P = isDark
+      ? {
+          bg: "#14100c",
+          connector: "rgba(201,162,39,0.5)",
+          marriage: "#9c6b74",
+          cardFill: "#201a12",
+          cardStroke: "#c9a227",
+          name: "#f2ecdd",
+          years: "#a99a78",
+          wifeFill: "#221619",
+          wifeStroke: "#8a5560",
+          wifeLabel: "#d8a7b1",
+        }
+      : {
+          bg: "#f9f5eb",
+          connector: "rgba(154,116,21,0.55)",
+          marriage: "#b07a87",
+          cardFill: "#fffdf7",
+          cardStroke: "#9a7415",
+          name: "#2c2517",
+          years: "#7a6c50",
+          wifeFill: "#fdf1f4",
+          wifeStroke: "#c48894",
+          wifeLabel: "#a3566b",
+        };
+
     // Фон в цветах сайта
-    ctx.fillStyle = "#14100c";
+    ctx.fillStyle = P.bg;
     ctx.fillRect(0, 0, full.width + PAD * 2, full.height + PAD * 2);
     ctx.translate(PAD, PAD);
 
@@ -1591,7 +1620,7 @@ export function TreeView({
     const bColors = computeBranchColors(people);
     const strokeFor = (id?: string) => {
       const bc = id ? bColors.get(id) : undefined;
-      return bc ? `${bc}b3` : "rgba(201,162,39,0.5)";
+      return bc ? `${bc}b3` : P.connector;
     };
     ctx.lineWidth = 4;
     for (const c of buildConnectors(people, full.pos, () => NODE_H)) {
@@ -1622,7 +1651,7 @@ export function TreeView({
     }
 
     // Линии брака: муж — жена (рисуем до карточек, чтобы линия шла под ними)
-    ctx.strokeStyle = "#9c6b74";
+    ctx.strokeStyle = P.marriage;
     ctx.lineWidth = 4;
     for (const person of people) {
       const p = full.pos[person.id];
@@ -1674,9 +1703,9 @@ export function TreeView({
       const r = 18;
       ctx.beginPath();
       ctx.roundRect(p.x, p.y, NODE_W, cardH, r);
-      ctx.fillStyle = "#201a12";
+      ctx.fillStyle = P.cardFill;
       ctx.fill();
-      ctx.strokeStyle = "#c9a227";
+      ctx.strokeStyle = P.cardStroke;
       ctx.lineWidth = 3;
       ctx.stroke();
 
@@ -1692,13 +1721,13 @@ export function TreeView({
       const tx = p.x + 16;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      ctx.fillStyle = "#f2ecdd";
+      ctx.fillStyle = P.name;
       ctx.font = "600 26px Georgia, serif";
       nameLines.forEach((l, i) => ctx.fillText(l, tx, p.y + 18 + i * 32));
 
       const cursorY = p.y + 18 + nameLines.length * 32 + 8;
       if (years) {
-        ctx.fillStyle = "#a99a78";
+        ctx.fillStyle = P.years;
         ctx.font = "22px Arial, sans-serif";
         ctx.fillText(years, tx, cursorY);
       }
@@ -1710,14 +1739,14 @@ export function TreeView({
         const wx = p.x + SLOT * (i + 1);
         ctx.beginPath();
         ctx.roundRect(wx, p.y, NODE_W, cardH, r);
-        ctx.fillStyle = "#221619";
+        ctx.fillStyle = P.wifeFill;
         ctx.fill();
-        ctx.strokeStyle = "#8a5560";
+        ctx.strokeStyle = P.wifeStroke;
         ctx.lineWidth = 3;
         ctx.stroke();
 
         const wtx = wx + 16;
-        ctx.fillStyle = "#d8a7b1";
+        ctx.fillStyle = P.wifeLabel;
         ctx.font = "600 18px Arial, sans-serif";
         const label = female
           ? "МУЖ"
@@ -1726,7 +1755,7 @@ export function TreeView({
             : "ЖЕНА";
         ctx.fillText(`⚭ ${label}`, wtx, p.y + 18);
 
-        ctx.fillStyle = "#f2ecdd";
+        ctx.fillStyle = P.name;
         ctx.font = "600 26px Georgia, serif";
         wrapText(wifeName, maxTextW, 3).forEach((l, j) =>
           ctx.fillText(l, wtx, p.y + 50 + j * 32),
