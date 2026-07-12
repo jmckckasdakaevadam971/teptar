@@ -67,3 +67,17 @@ teipsRouter.patch(
   requireRole('super_admin'),
   asyncHandler(controller.updateOrigin),
 );
+
+// Редактирование справочника: название/описание/тукхум и удаление тейпа
+teipsRouter.patch(
+  '/:id',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.update),
+);
+teipsRouter.delete(
+  '/:id',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.remove),
+);

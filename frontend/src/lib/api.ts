@@ -222,6 +222,32 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    /** Создать тейп в справочнике (super_admin). */
+    create: (data: {
+      name: string;
+      description?: string | null;
+      tukhum_id?: number | null;
+    }) =>
+      request<Teip>("/teips", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    /** Обновить название/описание/тукхум тейпа (super_admin). */
+    update: (
+      id: number,
+      data: {
+        name?: string;
+        description?: string | null;
+        tukhum_id?: number | null;
+      },
+    ) =>
+      request<Teip>(`/teips/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    /** Удалить тейп из справочника (super_admin). */
+    remove: (id: number) =>
+      request<{ deleted: boolean }>(`/teips/${id}`, { method: "DELETE" }),
     /** Заявки на добавление тейпа в справочник (super_admin). */
     requests: () => request<TeipRequest[]>("/teips/requests"),
     /** Одобрить заявку: создать тейп с этим названием. */

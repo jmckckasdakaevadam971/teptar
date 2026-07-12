@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { X, MapPin } from "lucide-react";
-import type { Teip } from "@/lib/types";
+import type { Teip, Tukhum } from "@/lib/types";
 import { api } from "@/lib/api";
 
 const TeipMap = dynamic(() => import("./TeipMap").then((m) => m.TeipMap), {
@@ -16,6 +16,7 @@ interface TeipMapModalProps {
   canEdit: boolean;
   onClose: () => void;
   onSaved: (teip: Teip) => void;
+  onDeleted: (id: number) => void;
 }
 
 export function TeipMapModal({
@@ -23,6 +24,7 @@ export function TeipMapModal({
   canEdit,
   onClose,
   onSaved,
+  onDeleted,
 }: TeipMapModalProps) {
   const [editing, setEditing] = useState(false);
   const [place, setPlace] = useState(teip.origin_place ?? "");
@@ -35,13 +37,36 @@ export function TeipMapModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Редактирование основных данных (название/тукхум/описание).
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [name, setName] = useState(teip.name);
+  const [desc, setDesc] = useState(teip.description ?? "");
+  const [tukhumId, setTukhumId] = useState(
+    teip.tukhum_id != null ? String(teip.tukhum_id) : "",
+  );
+  const [tukhums, setTukhums] = useState<Tukhum[] | null>(null);
+
   useEffect(() => {
     setPlace(teip.origin_place ?? "");
     setLat(teip.origin_lat != null ? String(teip.origin_lat) : "");
     setLng(teip.origin_lng != null ? String(teip.origin_lng) : "");
+    setName(teip.name);
+    setDesc(teip.description ?? "");
+    setTukhumId(teip.tukhum_id != null ? String(teip.tukhum_id) : "");
     setEditing(false);
+    setEditingInfo(false);
     setError(null);
   }, [teip]);
+
+  // Список тукхумов нужен только для формы редактирования — грузим лениво.
+  useEffect(() => {
+    if (editingInfo && tukhums === null) {
+      api.tukhums
+        .list()
+        .then(setTukhums)
+        .catch(() => setTukhums([]));
+    }
+  }, [editingInfo, tukhums]);
 
   async function save() {
     setSaving(true);
@@ -65,6 +90,43 @@ export function TeipMapModal({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
     } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveInfo() {
+    setSaving(true);
+    setError(null);
+    try {
+      if (name.trim().length < 2) throw new Error("Укажите название");
+      const updated = await api.teips.update(teip.id, {
+        name: name.trim(),
+        description: desc.trim() || null,
+        tukhum_id: tukhumId ? Number(tukhumId) : null,
+      });
+      onSaved(updated);
+      setEditingInfo(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeTeip() {
+    if (
+      !confirm(
+        `Удалить тейп «${teip.name}» из справочника? Действие необратимо.`,
+      )
+    )
+      return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.teips.remove(teip.id);
+      onDeleted(teip.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить");
       setSaving(false);
     }
   }
@@ -154,7 +216,69 @@ export function TeipMapModal({
           )}
 
           {canEdit ? (
-            editing ? (
+            editingInfo ? (
+              <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border p-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Название
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Тукхум
+                  </label>
+                  <select
+                    value={tukhumId}
+                    onChange={(e) => setTukhumId(e.target.value)}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  >
+                    <option value="">Без тукхума</option>
+                    {(tukhums ?? []).map((tk) => (
+                      <option key={tk.id} value={String(tk.id)}>
+                        {tk.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Описание
+                  </label>
+                  <textarea
+                    value={desc}
+                    onChange={(e) => setDesc(e.target.value)}
+                    rows={4}
+                    className="resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                    placeholder="Краткие сведения о тейпе"
+                  />
+                </div>
+                {error ? (
+                  <p className="text-sm text-danger">{error}</p>
+                ) : null}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingInfo(false)}
+                    className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void saveInfo()}
+                    className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-60"
+                  >
+                    {saving ? "Сохраняю…" : "Сохранить"}
+                  </button>
+                </div>
+              </div>
+            ) : editing ? (
               <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border p-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium text-muted-foreground">
@@ -213,13 +337,33 @@ export function TeipMapModal({
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="mt-4 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-              >
-                Указать/изменить место на карте
-              </button>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingInfo(true)}
+                  className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  Редактировать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  Указать/изменить место на карте
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void removeTeip()}
+                  className="rounded-xl border border-danger/40 px-4 py-2 text-sm font-medium text-danger transition-colors hover:border-danger disabled:opacity-60"
+                >
+                  Удалить
+                </button>
+                {error ? (
+                  <p className="w-full text-sm text-danger">{error}</p>
+                ) : null}
+              </div>
             )
           ) : null}
         </div>

@@ -71,6 +71,72 @@ export interface TeipOriginInput {
   origin_lng: number | null;
 }
 
+export interface TeipUpdateInput {
+  name?: string;
+  description?: string | null;
+  tukhum_id?: number | null;
+}
+
+/** Обновить основные поля тейпа: название, описание, тукхум (супер-админ). */
+export async function updateTeip(
+  id: number,
+  input: TeipUpdateInput,
+): Promise<TeipRow> {
+  const teip = await getTeip(id);
+  if (!teip) throw new ApiError(404, "Тейп не найден");
+
+  if (input.name !== undefined && input.name.trim() !== teip.name) {
+    // Название не должно совпадать с другим тейпом или его алиасом.
+    const existing = await resolveTeipIdByName(input.name);
+    if (existing != null && existing !== id) {
+      throw new ApiError(409, "Такое название уже есть в справочнике");
+    }
+  }
+  if (input.tukhum_id != null) {
+    const rows = await query<{ id: number }>(
+      `SELECT id FROM tukhums WHERE id = $1`,
+      [input.tukhum_id],
+    );
+    if (rows.length === 0) throw new ApiError(404, "Тукхум не найден");
+  }
+
+  // Сливаем поля в JS и пишем итоговые значения — просто и предсказуемо.
+  const next = {
+    name: input.name !== undefined ? input.name.trim() : teip.name,
+    description:
+      input.description !== undefined ? input.description : teip.description,
+    tukhum_id:
+      input.tukhum_id !== undefined ? input.tukhum_id : teip.tukhum_id,
+  };
+  await query(
+    `UPDATE teips SET name = $2, description = $3, tukhum_id = $4 WHERE id = $1`,
+    [id, next.name, next.description, next.tukhum_id],
+  );
+  // Возвращаем обогащённую строку (с tukhum_name) — фронт обновит карточку.
+  return (await getTeip(id))!;
+}
+
+/**
+ * Удалить тейп из справочника (супер-админ). Запрещено, если к тейпу
+ * привязаны одобренные персоны — сначала нужно перенести их данные.
+ * Профили пользователей и заявки отвязываются автоматически (SET NULL).
+ */
+export async function deleteTeip(id: number): Promise<void> {
+  const teip = await getTeip(id);
+  if (!teip) throw new ApiError(404, "Тейп не найден");
+  const persons = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM persons WHERE teip_id = $1`,
+    [id],
+  );
+  if (Number(persons[0]?.count ?? 0) > 0) {
+    throw new ApiError(
+      409,
+      "К тейпу привязаны персоны в родословных — удалить нельзя",
+    );
+  }
+  await query(`DELETE FROM teips WHERE id = $1`, [id]);
+}
+
 /** Обновить место основания тейпа (для метки на карте). */
 export async function updateTeipOrigin(
   id: number,

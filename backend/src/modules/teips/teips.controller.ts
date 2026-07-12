@@ -52,6 +52,23 @@ export async function updateOrigin(req: Request, res: Response): Promise<void> {
   res.json(ok(teip));
 }
 
+const updateSchema = z.object({
+  name: z.string().trim().min(2, "Название слишком короткое").max(120).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  tukhum_id: z.coerce.number().int().positive().nullable().optional(),
+});
+
+export async function update(req: Request, res: Response): Promise<void> {
+  const input = updateSchema.parse(req.body);
+  const teip = await service.updateTeip(Number(req.params.id), input);
+  res.json(ok(teip));
+}
+
+export async function remove(req: Request, res: Response): Promise<void> {
+  await service.deleteTeip(Number(req.params.id));
+  res.json(ok({ deleted: true }));
+}
+
 // ---------------------------------------------------------------------------
 //  Алиасы (варианты написания) и заявки на добавление тейпа
 // ---------------------------------------------------------------------------

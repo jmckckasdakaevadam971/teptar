@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, MapPin } from "lucide-react";
+import { Search, MapPin, Plus } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Teip } from "@/lib/types";
+import type { Teip, Tukhum } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { TeipMapModal } from "./TeipMapModal";
@@ -17,6 +17,16 @@ export function DirectoryView() {
   const [selected, setSelected] = useState<Teip | null>(null);
   const [mounted, setMounted] = useState(false);
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
+
+  // Форма добавления тейпа (только super_admin).
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newTukhumId, setNewTukhumId] = useState("");
+  const [tukhumOptions, setTukhumOptions] = useState<Tukhum[] | null>(null);
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -31,6 +41,38 @@ export function DirectoryView() {
       )
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (adding && tukhumOptions === null) {
+      api.tukhums
+        .list()
+        .then(setTukhumOptions)
+        .catch(() => setTukhumOptions([]));
+    }
+  }, [adding, tukhumOptions]);
+
+  async function createTeip() {
+    setAddSaving(true);
+    setAddError(null);
+    try {
+      if (newName.trim().length < 2) throw new Error("Укажите название");
+      await api.teips.create({
+        name: newName.trim(),
+        description: newDesc.trim() || null,
+        tukhum_id: newTukhumId ? Number(newTukhumId) : null,
+      });
+      // Перезагружаем список — сразу с tukhum_name и алиасами.
+      setTeips(await api.teips.list());
+      setAdding(false);
+      setNewName("");
+      setNewDesc("");
+      setNewTukhumId("");
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : "Не удалось создать");
+    } finally {
+      setAddSaving(false);
+    }
+  }
 
   const tukkhums = useMemo(
     () => [
@@ -81,8 +123,72 @@ export function DirectoryView() {
               {t}
             </button>
           ))}
+          {isSuperAdmin ? (
+            <button
+              type="button"
+              onClick={() => setAdding((v) => !v)}
+              className="flex items-center gap-1 rounded-lg border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:border-primary"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Добавить тейп
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {isSuperAdmin && adding ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
+          <h3 className="font-semibold text-foreground">Новый тейп</h3>
+          <div className="flex flex-col gap-3 md:flex-row">
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Название тейпа"
+              className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <select
+              value={newTukhumId}
+              onChange={(e) => setNewTukhumId(e.target.value)}
+              className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary md:w-56"
+            >
+              <option value="">Без тукхума</option>
+              {(tukhumOptions ?? []).map((tk) => (
+                <option key={tk.id} value={String(tk.id)}>
+                  {tk.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <textarea
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            rows={3}
+            placeholder="Описание (необязательно)"
+            className="resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+          />
+          {addError ? <p className="text-sm text-danger">{addError}</p> : null}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false);
+                setAddError(null);
+              }}
+              className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              disabled={addSaving}
+              onClick={() => void createTeip()}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-60"
+            >
+              {addSaving ? "Создаю…" : "Создать"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <p className="py-12 text-center text-muted-foreground">Загрузка…</p>
@@ -146,7 +252,7 @@ export function DirectoryView() {
             return (
               <TeipMapModal
                 teip={current}
-                canEdit={user?.role === "super_admin"}
+                canEdit={isSuperAdmin}
                 onClose={() => setSelected(null)}
                 onSaved={(updated) =>
                   setTeips((prev) =>
@@ -155,6 +261,10 @@ export function DirectoryView() {
                     ),
                   )
                 }
+                onDeleted={(id) => {
+                  setTeips((prev) => prev.filter((t) => t.id !== id));
+                  setSelected(null);
+                }}
               />
             );
           })()
