@@ -18,7 +18,7 @@ const jsonLd = {
       "@id": `${SITE}/#organization`,
       name: "Vorhda · Ворх Да",
       url: SITE,
-      logo: `${SITE}/logo-square.svg`,
+      logo: `${SITE}/icon-512.png`,
       email: "vorhda@yandex.com",
       description:
         "Платформа родовой памяти чеченских тейпов: родовые древа, справочник тейпов и сёл, поиск предков.",
