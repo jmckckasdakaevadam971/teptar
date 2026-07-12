@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { ok } from "../../utils/http.js";
 import { applyKeeperSchema } from "./keepers.types.js";
 import * as service from "./keepers.service.js";
@@ -63,10 +64,16 @@ export async function approve(req: Request, res: Response): Promise<void> {
 }
 
 /** Добавить тейп из заявки в справочник (супер-админ). */
+const createTeipSchema = z.object({
+  tukhum_id: z.coerce.number().int().positive().nullable().optional(),
+});
+
 export async function createTeip(req: Request, res: Response): Promise<void> {
+  const input = createTeipSchema.parse(req.body ?? {});
   const result = await service.createTeipFromApplication(
     Number(req.params.id),
     req.user!.userId,
+    input.tukhum_id ?? null,
   );
   res.json(ok(result));
 }

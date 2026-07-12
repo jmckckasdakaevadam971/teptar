@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Teip, TeipRequest } from "@/lib/types";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ERR_TEXT } from "@/lib/ui";
+import { TukhumPickDialog } from "./TukhumPickDialog";
 
 // ============================================================================
 //  Заявки на добавление тейпа в справочник (только super_admin).
@@ -57,6 +58,8 @@ export function TeipRequestsCard() {
   const [error, setError] = useState<string | null>(null);
   /** Группа, для которой открыт диалог «Это вариант написания…». */
   const [mapping, setMapping] = useState<RequestGroup | null>(null);
+  /** Группа, для которой открыт диалог выбора тукхума (одобрение). */
+  const [approving, setApproving] = useState<RequestGroup | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -76,16 +79,18 @@ export function TeipRequestsCard() {
     group: RequestGroup,
     action: "approve" | "reject" | "map",
     teipId?: number,
+    tukhumId?: number | null,
   ) {
     setBusyKey(group.key);
     setError(null);
     try {
       const id = group.ids[0];
-      if (action === "approve") await api.teips.approveRequest(id);
+      if (action === "approve") await api.teips.approveRequest(id, tukhumId);
       else if (action === "map" && teipId != null)
         await api.teips.mapRequest(id, teipId);
       else await api.teips.rejectRequest(id);
       setMapping(null);
+      setApproving(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось обработать заявку");
@@ -173,7 +178,7 @@ export function TeipRequestsCard() {
                   type="button"
                   className={BTN_PRIMARY}
                   disabled={busyKey === g.key}
-                  onClick={() => void decide(g, "approve")}
+                  onClick={() => setApproving(g)}
                 >
                   Добавить в справочник
                 </button>
@@ -205,6 +210,17 @@ export function TeipRequestsCard() {
           busy={busyKey === mapping.key}
           onPick={(teipId) => void decide(mapping, "map", teipId)}
           onCancel={() => setMapping(null)}
+        />
+      ) : null}
+
+      {approving ? (
+        <TukhumPickDialog
+          teipName={approving.name}
+          busy={busyKey === approving.key}
+          onConfirm={(tukhumId) =>
+            void decide(approving, "approve", undefined, tukhumId)
+          }
+          onCancel={() => setApproving(null)}
         />
       ) : null}
     </div>

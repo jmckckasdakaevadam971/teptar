@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { KeeperApplication } from "@/lib/types";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, ERR_TEXT } from "@/lib/ui";
+import { TukhumPickDialog } from "../TeipRequests/TukhumPickDialog";
 
 // ============================================================================
 //  Админ-компоненты программы «Хранители»: очередь заявок.
@@ -20,6 +21,10 @@ export function KeeperApplicationsCard({
   const [apps, setApps] = useState<KeeperApplication[] | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Заявка, для которой открыт диалог выбора тукхума (создание тейпа). */
+  const [creatingFor, setCreatingFor] = useState<KeeperApplication | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     try {
@@ -53,11 +58,12 @@ export function KeeperApplicationsCard({
   }
 
   /** Создать тейп из заявки: появится в справочнике, заявку можно одобрять. */
-  async function createTeip(id: number) {
+  async function createTeip(id: number, tukhumId: number | null) {
     setBusyId(id);
     setError(null);
     try {
-      await api.keepers.createTeipFromApplication(id);
+      await api.keepers.createTeipFromApplication(id, tukhumId);
+      setCreatingFor(null);
       await load();
       onApproved?.();
     } catch (e) {
@@ -167,7 +173,7 @@ export function KeeperApplicationsCard({
                     type="button"
                     className={BTN_PRIMARY}
                     disabled={busyId === a.id}
-                    onClick={() => void createTeip(a.id)}
+                    onClick={() => setCreatingFor(a)}
                   >
                     Добавить тейп в справочник
                   </button>
@@ -194,6 +200,15 @@ export function KeeperApplicationsCard({
           ))}
         </div>
       )}
+
+      {creatingFor ? (
+        <TukhumPickDialog
+          teipName={creatingFor.teip_name}
+          busy={busyId === creatingFor.id}
+          onConfirm={(tukhumId) => void createTeip(creatingFor.id, tukhumId)}
+          onCancel={() => setCreatingFor(null)}
+        />
+      ) : null}
     </div>
   );
 }

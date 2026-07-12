@@ -92,10 +92,16 @@ export async function requests(_req: Request, res: Response): Promise<void> {
   res.json(ok(await service.listTeipRequests()));
 }
 
+const approveSchema = z.object({
+  tukhum_id: z.coerce.number().int().positive().nullable().optional(),
+});
+
 export async function approveRequest(req: Request, res: Response): Promise<void> {
+  const input = approveSchema.parse(req.body ?? {});
   const teip = await service.approveTeipRequest(
     Number(req.params.id),
     req.user!.userId,
+    input.tukhum_id ?? null,
   );
   res.json(ok(teip));
 }

@@ -279,6 +279,7 @@ export async function approveApplication(
 export async function createTeipFromApplication(
   appId: number,
   adminId: number,
+  tukhumId: number | null = null,
 ): Promise<{ teip_id: number; teip_name: string }> {
   const apps = await query<{
     id: number;
@@ -297,6 +298,11 @@ export async function createTeipFromApplication(
   if (app.teip_id != null)
     throw new ApiError(409, "У заявки уже указан тейп из справочника");
 
+  if (tukhumId != null) {
+    const tk = await query(`SELECT id FROM tukhums WHERE id = $1`, [tukhumId]);
+    if (tk.length === 0) throw new ApiError(404, "Тукхум не найден");
+  }
+
   const existingId = await resolveTeipIdByName(app.teip_name);
 
   return withTransaction(async (client) => {
@@ -304,8 +310,8 @@ export async function createTeipFromApplication(
     let teipName = app.teip_name.trim();
     if (teipId == null) {
       const ins = await client.query<{ id: number; name: string }>(
-        `INSERT INTO teips (name) VALUES ($1) RETURNING id, name`,
-        [teipName],
+        `INSERT INTO teips (name, tukhum_id) VALUES ($1, $2) RETURNING id, name`,
+        [teipName, tukhumId],
       );
       teipId = ins.rows[0].id;
       teipName = ins.rows[0].name;

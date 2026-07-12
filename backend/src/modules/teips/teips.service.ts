@@ -317,14 +317,19 @@ async function lockPendingRequest(
 }
 
 /**
- * Одобрить заявку: создать тейп с этим названием. Если такое название уже
- * есть в справочнике (тейп или алиас) — дубль не создаётся, заявители
- * привязываются к существующему тейпу.
+ * Одобрить заявку: создать тейп с этим названием (и, опционально, тукхумом).
+ * Если такое название уже есть в справочнике (тейп или алиас) — дубль не
+ * создаётся, заявители привязываются к существующему тейпу.
  */
 export async function approveTeipRequest(
   requestId: number,
   adminId: number,
+  tukhumId: number | null = null,
 ): Promise<TeipRow> {
+  if (tukhumId != null) {
+    const tk = await query(`SELECT id FROM tukhums WHERE id = $1`, [tukhumId]);
+    if (tk.length === 0) throw new ApiError(404, "Тукхум не найден");
+  }
   return withTransaction(async (client) => {
     const req = await lockPendingRequest(client, requestId);
     const existingId = await resolveTeipIdByName(req.name);
@@ -333,8 +338,8 @@ export async function approveTeipRequest(
       teip = (await getTeip(existingId)) as TeipRow;
     } else {
       const ins = await client.query<TeipRow>(
-        `INSERT INTO teips (name) VALUES ($1) RETURNING *`,
-        [req.name.trim()],
+        `INSERT INTO teips (name, tukhum_id) VALUES ($1, $2) RETURNING *`,
+        [req.name.trim(), tukhumId],
       );
       teip = ins.rows[0];
     }

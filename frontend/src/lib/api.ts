@@ -250,9 +250,12 @@ export const api = {
       request<{ deleted: boolean }>(`/teips/${id}`, { method: "DELETE" }),
     /** Заявки на добавление тейпа в справочник (super_admin). */
     requests: () => request<TeipRequest[]>("/teips/requests"),
-    /** Одобрить заявку: создать тейп с этим названием. */
-    approveRequest: (id: number) =>
-      request<Teip>(`/teips/requests/${id}/approve`, { method: "POST" }),
+    /** Одобрить заявку: создать тейп с этим названием (опц. с тукхумом). */
+    approveRequest: (id: number, tukhumId?: number | null) =>
+      request<Teip>(`/teips/requests/${id}/approve`, {
+        method: "POST",
+        body: JSON.stringify({ tukhum_id: tukhumId ?? null }),
+      }),
     /** Привязать заявку как вариант написания существующего тейпа. */
     mapRequest: (id: number, teipId: number) =>
       request<Teip>(`/teips/requests/${id}/map`, {
@@ -549,10 +552,13 @@ export const api = {
         method: "POST",
       }),
     /** Добавить тейп из заявки в справочник (super_admin). */
-    createTeipFromApplication: (id: number) =>
+    createTeipFromApplication: (id: number, tukhumId?: number | null) =>
       request<{ teip_id: number; teip_name: string }>(
         `/keepers/applications/${id}/create-teip`,
-        { method: "POST" },
+        {
+          method: "POST",
+          body: JSON.stringify({ tukhum_id: tukhumId ?? null }),
+        },
       ),
   },
 
