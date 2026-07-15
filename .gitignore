@@ -43,6 +43,9 @@ Thumbs.db
 # Временные файлы развёртывания (содержат секреты — не коммитить!)
 .deploy-tmp/
 
+# Бэкапы прода (дампы БД с перс. данными + секреты — не коммитить!)
+BACKUP-*/
+
 # scratch / local artifacts
 .playwright-mcp/
 vorhda-*.png
