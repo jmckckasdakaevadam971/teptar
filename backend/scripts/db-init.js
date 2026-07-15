@@ -115,6 +115,19 @@ async function run() {
          CREATE INDEX IF NOT EXISTS idx_teip_requests_status ON teip_requests(status);`,
       );
 
+      // Исторические личности тейпа (страница тейпа в справочнике).
+      await client.query(
+        `CREATE TABLE IF NOT EXISTS teip_notables (
+           id          BIGSERIAL PRIMARY KEY,
+           teip_id     BIGINT NOT NULL REFERENCES teips(id) ON DELETE CASCADE,
+           name        TEXT NOT NULL,
+           years       TEXT,
+           description TEXT,
+           created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_teip_notables_teip ON teip_notables(teip_id);`,
+      );
+
       // Очередь предложений объединения древ (создаётся, если ещё нет).
       await client.query(
         `CREATE TABLE IF NOT EXISTS merge_suggestions (

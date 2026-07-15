@@ -49,6 +49,27 @@ teipsRouter.post(
   asyncHandler(controller.addAlias),
 );
 
+// Исторические личности тейпа: читают все, редактирует супер-админ.
+teipsRouter.patch(
+  '/notables/:notableId',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.updateNotable),
+);
+teipsRouter.delete(
+  '/notables/:notableId',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.removeNotable),
+);
+teipsRouter.get('/:id/notables', asyncHandler(controller.notables));
+teipsRouter.post(
+  '/:id/notables',
+  requireAuth,
+  requireRole('super_admin'),
+  asyncHandler(controller.addNotable),
+);
+
 teipsRouter.get('/:id', asyncHandler(controller.getById));
 teipsRouter.get('/:id/gars', asyncHandler(controller.gars));
 

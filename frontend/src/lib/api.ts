@@ -5,6 +5,7 @@ import type {
   TreeNode,
   Teip,
   TeipRequest,
+  TeipNotable,
   Tukhum,
   Gar,
   Nekyi,
@@ -274,6 +275,30 @@ export const api = {
       ),
     removeAlias: (aliasId: number) =>
       request<{ deleted: boolean }>(`/teips/aliases/${aliasId}`, {
+        method: "DELETE",
+      }),
+    /** Тейп по id (с тукхумом, алиасами и статистикой персон). */
+    get: (id: number) => request<Teip & { stats: { persons: number } }>(`/teips/${id}`),
+    /** Исторические личности тейпа. */
+    notables: (id: number) => request<TeipNotable[]>(`/teips/${id}/notables`),
+    addNotable: (
+      id: number,
+      data: { name: string; years?: string | null; description?: string | null },
+    ) =>
+      request<TeipNotable>(`/teips/${id}/notables`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updateNotable: (
+      notableId: number,
+      data: { name: string; years?: string | null; description?: string | null },
+    ) =>
+      request<TeipNotable>(`/teips/notables/${notableId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    removeNotable: (notableId: number) =>
+      request<{ deleted: boolean }>(`/teips/notables/${notableId}`, {
         method: "DELETE",
       }),
   },

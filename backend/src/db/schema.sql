@@ -56,6 +56,16 @@ CREATE TABLE teip_aliases (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Исторические личности тейпа — показываются на странице тейпа в справочнике
+CREATE TABLE teip_notables (
+    id          BIGSERIAL PRIMARY KEY,
+    teip_id     BIGINT NOT NULL REFERENCES teips(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,             -- имя личности
+    years       TEXT,                      -- годы жизни, напр. «1794–1861»
+    description TEXT,                      -- кем был, чем известен
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Гар — ветвь внутри тейпа (опционально)
 CREATE TABLE gars (
     id          BIGSERIAL PRIMARY KEY,

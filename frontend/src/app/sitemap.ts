@@ -22,6 +22,9 @@ interface PublicTreeLite {
 interface TreeMergeLite {
   id: number;
 }
+interface TeipLite {
+  id: number;
+}
 
 async function fetchData<T>(path: string): Promise<T[]> {
   try {
@@ -81,9 +84,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const [trees, merges] = await Promise.all([
+  const [trees, merges, teips] = await Promise.all([
     fetchData<PublicTreeLite>("/persons/trees/public"),
     fetchData<TreeMergeLite>("/persons/trees/merged"),
+    fetchData<TeipLite>("/teips"),
   ]);
 
   const treePages: MetadataRoute.Sitemap = trees
@@ -102,5 +106,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  return [...staticPages, ...treePages, ...mergePages];
+  const teipPages: MetadataRoute.Sitemap = teips.map((t) => ({
+    url: `${SITE}/reference/${t.id}`,
+    lastModified: now,
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+
+  return [...staticPages, ...treePages, ...mergePages, ...teipPages];
 }

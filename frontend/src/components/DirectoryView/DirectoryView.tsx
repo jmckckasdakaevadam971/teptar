@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Search, MapPin, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Teip, Tukhum } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { TeipMapModal } from "./TeipMapModal";
 
 export function DirectoryView() {
   const [teips, setTeips] = useState<Teip[]>([]);
@@ -14,8 +14,6 @@ export function DirectoryView() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [tukkhum, setTukkhum] = useState("Все");
-  const [selected, setSelected] = useState<Teip | null>(null);
-  const [mounted, setMounted] = useState(false);
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super_admin";
 
@@ -27,10 +25,6 @@ export function DirectoryView() {
   const [tukhumOptions, setTukhumOptions] = useState<Tukhum[] | null>(null);
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     api.teips
@@ -198,17 +192,9 @@ export function DirectoryView() {
         <>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {filtered.map((t) => (
-              <article
+              <Link
                 key={t.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelected(t)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelected(t);
-                  }
-                }}
+                href={`/reference/${t.id}`}
                 className="group flex cursor-pointer flex-col rounded-2xl border border-border bg-card p-6 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40"
               >
                 <div className="flex items-center justify-between gap-3">
@@ -233,8 +219,11 @@ export function DirectoryView() {
                       ? `Тукхум ${t.tukhum_name}`
                       : "Место основания на карте"}
                   </span>
+                  <span className="text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                    Подробнее →
+                  </span>
                 </div>
-              </article>
+              </Link>
             ))}
           </div>
 
@@ -245,30 +234,6 @@ export function DirectoryView() {
           ) : null}
         </>
       )}
-
-      {mounted && selected
-        ? (() => {
-            const current = teips.find((t) => t.id === selected.id) ?? selected;
-            return (
-              <TeipMapModal
-                teip={current}
-                canEdit={isSuperAdmin}
-                onClose={() => setSelected(null)}
-                onSaved={(updated) =>
-                  setTeips((prev) =>
-                    prev.map((t) =>
-                      t.id === updated.id ? { ...t, ...updated } : t,
-                    ),
-                  )
-                }
-                onDeleted={(id) => {
-                  setTeips((prev) => prev.filter((t) => t.id !== id));
-                  setSelected(null);
-                }}
-              />
-            );
-          })()
-        : null}
     </div>
   );
 }

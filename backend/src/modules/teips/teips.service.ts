@@ -38,7 +38,9 @@ export async function listTeips(): Promise<TeipRow[]> {
 export async function getTeip(id: number): Promise<TeipRow | undefined> {
   const rows = await query<TeipRow>(
     `SELECT t.*, tk.name AS tukhum_name,
-            tk.approx_lat AS tukhum_approx_lat, tk.approx_lng AS tukhum_approx_lng
+            tk.approx_lat AS tukhum_approx_lat, tk.approx_lng AS tukhum_approx_lng,
+            COALESCE((SELECT array_agg(a.name ORDER BY a.name)
+                      FROM teip_aliases a WHERE a.teip_id = t.id), '{}') AS aliases
      FROM teips t
      LEFT JOIN tukhums tk ON tk.id = t.tukhum_id
      WHERE t.id = $1`,
@@ -157,6 +159,70 @@ export async function teipStats(id: number): Promise<{ persons: number }> {
     [id],
   );
   return { persons: Number(rows[0]?.count ?? 0) };
+}
+
+// ============================================================================
+//  Исторические личности тейпа — редактирует супер-админ, видят все.
+// ============================================================================
+
+export interface TeipNotableRow {
+  id: number;
+  teip_id: number;
+  name: string;
+  years: string | null;
+  description: string | null;
+}
+
+export async function listNotables(teipId: number): Promise<TeipNotableRow[]> {
+  return query<TeipNotableRow>(
+    `SELECT id, teip_id, name, years, description
+     FROM teip_notables WHERE teip_id = $1
+     ORDER BY id`,
+    [teipId],
+  );
+}
+
+export interface NotableInput {
+  name: string;
+  years?: string | null;
+  description?: string | null;
+}
+
+export async function createNotable(
+  teipId: number,
+  input: NotableInput,
+): Promise<TeipNotableRow> {
+  const teip = await getTeip(teipId);
+  if (!teip) throw new ApiError(404, "Тейп не найден");
+  const rows = await query<TeipNotableRow>(
+    `INSERT INTO teip_notables (teip_id, name, years, description)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, teip_id, name, years, description`,
+    [teipId, input.name.trim(), input.years ?? null, input.description ?? null],
+  );
+  return rows[0];
+}
+
+export async function updateNotable(
+  notableId: number,
+  input: NotableInput,
+): Promise<TeipNotableRow> {
+  const rows = await query<TeipNotableRow>(
+    `UPDATE teip_notables SET name = $2, years = $3, description = $4
+     WHERE id = $1
+     RETURNING id, teip_id, name, years, description`,
+    [notableId, input.name.trim(), input.years ?? null, input.description ?? null],
+  );
+  if (rows.length === 0) throw new ApiError(404, "Запись не найдена");
+  return rows[0];
+}
+
+export async function deleteNotable(notableId: number): Promise<void> {
+  const rows = await query<{ id: number }>(
+    `DELETE FROM teip_notables WHERE id = $1 RETURNING id`,
+    [notableId],
+  );
+  if (rows.length === 0) throw new ApiError(404, "Запись не найдена");
 }
 
 // ============================================================================

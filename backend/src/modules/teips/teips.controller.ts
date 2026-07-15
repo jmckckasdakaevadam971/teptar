@@ -124,3 +124,42 @@ export async function rejectRequest(req: Request, res: Response): Promise<void> 
   await service.rejectTeipRequest(Number(req.params.id), req.user!.userId);
   res.json(ok({ rejected: true }));
 }
+
+// ---------------------------------------------------------------------------
+//  Исторические личности тейпа
+// ---------------------------------------------------------------------------
+
+const notableSchema = z.object({
+  name: z.string().trim().min(2, "Имя слишком короткое").max(160),
+  years: z.string().trim().max(60).nullable().optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+});
+
+export async function notables(req: Request, res: Response): Promise<void> {
+  res.json(ok(await service.listNotables(Number(req.params.id))));
+}
+
+export async function addNotable(req: Request, res: Response): Promise<void> {
+  const input = notableSchema.parse(req.body);
+  const row = await service.createNotable(Number(req.params.id), {
+    name: input.name,
+    years: input.years || null,
+    description: input.description || null,
+  });
+  res.status(201).json(ok(row));
+}
+
+export async function updateNotable(req: Request, res: Response): Promise<void> {
+  const input = notableSchema.parse(req.body);
+  const row = await service.updateNotable(Number(req.params.notableId), {
+    name: input.name,
+    years: input.years || null,
+    description: input.description || null,
+  });
+  res.json(ok(row));
+}
+
+export async function removeNotable(req: Request, res: Response): Promise<void> {
+  await service.deleteNotable(Number(req.params.notableId));
+  res.json(ok({ deleted: true }));
+}

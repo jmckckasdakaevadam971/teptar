@@ -371,6 +371,15 @@ export interface Gar {
   description: string | null;
 }
 
+/** Историческая личность тейпа (страница тейпа в справочнике). */
+export interface TeipNotable {
+  id: number;
+  teip_id: number;
+  name: string;
+  years: string | null;
+  description: string | null;
+}
+
 export interface Nekyi {
   id: number;
   gar_id: number;
